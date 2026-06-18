@@ -1,34 +1,29 @@
 // src/main.ts
+import 'reflect-metadata';
 import 'dotenv/config';
-import { createEcampusModule } from '@ecampus/ecampus.module';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '@/app.module';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
+import { HttpErrorFilter } from '@/shared/http/http-error.filter';
+import { accessLogMiddleware } from '@/shared/http/access-log.middleware';
 
-async function main() {
-    const userCpf = process.env.ECAMPUS_CPF;
-    const rawPassword = process.env.ECAMPUS_PASSWORD;
+async function bootstrap() {
+    const app = await NestFactory.create(AppModule);
+    app.use(accessLogMiddleware);
+    app.useGlobalFilters(new HttpErrorFilter());
+    app.enableCors({
+        origin: process.env.FRONTEND_ORIGIN || 'http://localhost:3000',
+        credentials: false
+    });
 
-    if (!userCpf || !rawPassword) {
-        logger.error("Credentials not found in the .env file.");
-        return;
-    }
-
-    const ecampusModule = createEcampusModule();
-    
-    // Mocking what comes from your database
-    const credentials = {
-        cpf: userCpf,
-        encryptedPassword: ecampusModule.credentialVault.encryptPassword(rawPassword)
-    };
+    const port = Number(process.env.PORT || 3001);
 
     try {
-        const profile = await ecampusModule.useCases.getStudentProfile.execute(credentials);
-        
-        console.log(`\nWelcome back, ${profile.personal.full_name}!`);
-        console.log(`Course: ${profile.academic.course}`);
-        
+        await app.listen(port);
+        logger.info(`HTTP server running on http://localhost:${port}`);
     } catch (error: any) {
-        logger.critical(`Execution failed: ${error.message}`);
+        logger.critical(`Server failed to start: ${error.message}`);
     }
 }
 
-main();
+bootstrap();

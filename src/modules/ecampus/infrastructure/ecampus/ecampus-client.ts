@@ -1,4 +1,4 @@
-import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios';
+import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import { wrapper } from 'axios-cookiejar-support';
 import { CookieJar } from 'tough-cookie';
 import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
@@ -58,7 +58,7 @@ export class EcampusClient {
             return false;
         } catch (error) {
             this.authenticated = false;
-            logger.warning("Session check failed or expired.");
+            logger.warning("Session check failed or expired.", this.toErrorContext(error, '/home/index'));
             return false;
         }
     }
@@ -95,15 +95,40 @@ export class EcampusClient {
             }
 
             const message = error instanceof Error ? error.message : String(error);
-            logger.error(`Connection error during login: ${message}`);
+            logger.error(`Connection error during login: ${message}`, this.toErrorContext(error, '/home/loginValida'));
             throw error;
         }
     }
 
     async setStudentModule(moduleId: number = 22): Promise<void> {
         logger.info(`Changing context to module ID: ${moduleId}`);
-        await this.session.get(`/home/setModulo/${moduleId}`, { timeout: 10000 });
+        try {
+            await this.session.get(`/home/setModulo/${moduleId}`, { timeout: 10000 });
+        } catch (error) {
+            logger.error("Failed to activate student module.", this.toErrorContext(error, `/home/setModulo/${moduleId}`));
+            throw error;
+        }
+
         logger.info(`Module ${moduleId} activated.`);
+    }
+
+    async logout(): Promise<void> {
+        try {
+            const response = await this.session.get('/home/logout', {
+                maxRedirects: 0,
+                timeout: 10000,
+                validateStatus: (status) => status === 302 || status === 200
+            });
+
+            this.authenticated = false;
+            logger.info("eCampus logout completed.", {
+                externalStatus: response.status,
+                location: response.headers.location
+            });
+        } catch (error) {
+            logger.error("Failed to logout from eCampus.", this.toErrorContext(error, '/home/logout'));
+            throw error;
+        }
     }
 
     async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
@@ -120,5 +145,32 @@ export class EcampusClient {
         if (!this.authenticated) {
             throw new AuthenticationError("Attempted to access protected route without auth.");
         }
+    }
+
+    private toErrorContext(error: unknown, fallbackUrl: string): Record<string, unknown> {
+        if (error instanceof AxiosError) {
+            return {
+                url: error.config?.url || fallbackUrl,
+                method: error.config?.method?.toUpperCase(),
+                externalStatus: error.response?.status,
+                externalStatusText: error.response?.statusText,
+                location: this.getStackLocation(error.stack)
+            };
+        }
+
+        if (error instanceof Error) {
+            return {
+                url: fallbackUrl,
+                errorName: error.name,
+                location: this.getStackLocation(error.stack)
+            };
+        }
+
+        return { url: fallbackUrl };
+    }
+
+    private getStackLocation(stack?: string): string | undefined {
+        if (!stack) return undefined;
+        return stack.split('\n').find((line) => line.includes('src\\') || line.includes('src/'))?.trim();
     }
 }

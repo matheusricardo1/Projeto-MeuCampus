@@ -2,3 +2,5 @@
 node_modules/
 dist/
 saved_sessions.json
+nestjs*.log
+*.log

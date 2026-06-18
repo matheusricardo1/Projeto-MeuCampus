@@ -1,7 +1,10 @@
 import { parse, type HTMLElement } from 'node-html-parser';
+import { AxiosError } from 'axios';
 import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
 import type { Grade } from '@ecampus/domain/models/grade';
 import type { LessonPlanItem } from '@ecampus/domain/models/lesson-plan-item';
+import type { LessonPlanSubject } from '@ecampus/domain/models/lesson-plan-subject';
+import { ResourceNotFoundError } from '@ecampus/domain/errors/resource-not-found.error';
 import type { ScheduleClass } from '@ecampus/domain/models/schedule-class';
 import type { StudentProfile } from '@ecampus/domain/models/student-profile';
 import type { EcampusRepository } from '@ecampus/domain/repositories/ecampus.repository';
@@ -10,6 +13,11 @@ import { logger } from '@ecampus/infrastructure/logging/console-logger';
 
 export class EcampusHttpRepository implements EcampusRepository {
     constructor(private readonly authService: EcampusAuthService) {}
+
+    async logout(credentials: EcampusCredentials): Promise<void> {
+        logger.info(`Logging out from eCampus for ${credentials.cpf}...`);
+        await this.authService.logout(credentials);
+    }
 
     async getStudentProfile(credentials: EcampusCredentials): Promise<StudentProfile> {
         const client = await this.authService.getAuthenticatedClient(credentials);
@@ -60,12 +68,12 @@ export class EcampusHttpRepository implements EcampusRepository {
         const client = await this.authService.getAuthenticatedClient(credentials);
         const params = new URLSearchParams();
         params.append('ano', year);
-        params.append('periodo', period);
+        params.append('periodo', this.normalizeGradePeriod(period));
 
         logger.info(`Fetching grades for year ${year}, period ${period}...`);
 
-        const response = await client.post<string>('/notasEFrequencia/getNotas', params, { timeout: 15000 });
-        const tree = parse(response.data);
+        const html = await this.fetchGradesHtml(client, params);
+        const tree = parse(html);
         const tables = tree.querySelectorAll('table.grid-notas');
 
         if (tables.length < 2) {
@@ -75,12 +83,16 @@ export class EcampusHttpRepository implements EcampusRepository {
 
         const tableGrades = tables[0]!;
         const tableNames = tables[1]!;
-        const subjectMap: Record<string, string> = {};
+        const subjectMap: Record<string, { subject: string; classIdentifier: string }> = {};
 
         for (const row of tableNames.querySelectorAll('tbody tr')) {
             const columns = row.querySelectorAll('td');
             if (columns.length >= 2) {
-                subjectMap[columns[0]!.textContent.trim()] = columns[1]!.textContent.trim();
+                const code = columns[0]!.textContent.trim();
+                subjectMap[code] = {
+                    subject: columns[1]!.textContent.trim(),
+                    classIdentifier: columns[2]?.textContent.trim() || ''
+                };
             }
         }
 
@@ -94,15 +106,84 @@ export class EcampusHttpRepository implements EcampusRepository {
 
             reportCard.push({
                 code,
-                subject: subjectMap[code] || 'Unknown Subject',
+                subject: subjectMap[code]?.subject || 'Unknown Subject',
+                class_identifier: subjectMap[code]?.classIdentifier || '',
+                evaluations: this.extractGradeEvaluations(columns),
+                exercise_average: columns[21]?.textContent.trim() || '',
+                final_exam: columns[22]?.textContent.trim() || '',
                 final_grade: columns[23]!.textContent.trim(),
                 absences: columns[24]!.textContent.trim(),
-                status: columns[25]!.textContent.trim()
+                status: columns[25]!.textContent.trim(),
+                history_effective: columns[26]?.textContent.trim() || ''
             });
         }
 
         logger.info(`Extraction complete: ${reportCard.length} subjects processed.`);
         return reportCard;
+    }
+
+    private extractGradeEvaluations(columns: HTMLElement[]): Grade['evaluations'] {
+        const evaluations: Grade['evaluations'] = [];
+
+        for (let index = 1; index <= 19; index += 2) {
+            const evaluationNumber = Math.floor((index + 1) / 2);
+            const weight = columns[index]?.textContent.trim() || '';
+            const score = columns[index + 1]?.textContent.trim() || '';
+
+            if (!weight && !score) {
+                continue;
+            }
+
+            evaluations.push({
+                label: `E${evaluationNumber}`,
+                weight,
+                score
+            });
+        }
+
+        return evaluations;
+    }
+
+    private async fetchGradesHtml(client: Awaited<ReturnType<EcampusAuthService['getAuthenticatedClient']>>, params: URLSearchParams): Promise<string> {
+        try {
+            const response = await client.post<string>('/notasEFrequencia/getNotas', params, { timeout: 15000 });
+            return response.data;
+        } catch (error) {
+            if (error instanceof AxiosError && error.response?.status === 500) {
+                logger.warning("Grades AJAX endpoint returned 500. Falling back to grades index page.", {
+                    url: '/notasEFrequencia/getNotas',
+                    externalStatus: error.response.status
+                });
+
+                const fallbackResponse = await client.get<string>('/notasEFrequencia/index', { timeout: 15000 });
+                return fallbackResponse.data;
+            }
+
+            throw error;
+        }
+    }
+
+    private normalizeGradePeriod(period: string): string {
+        const normalizedPeriod = period.trim().toLowerCase();
+        const periodMap: Record<string, string> = {
+            '1': '201',
+            '1o': '201',
+            '201': '201',
+            '2': '202',
+            '2o': '202',
+            '202': '202',
+            'ferias1': '203',
+            'ferias-1': '203',
+            '203': '203',
+            'ferias2': '204',
+            'ferias-2': '204',
+            '204': '204',
+            'especial': '401',
+            '5': '401',
+            '401': '401'
+        };
+
+        return periodMap[normalizedPeriod] || period;
     }
 
     async getSchedule(credentials: EcampusCredentials): Promise<ScheduleClass[]> {
@@ -160,15 +241,27 @@ export class EcampusHttpRepository implements EcampusRepository {
         return schedule;
     }
 
+    async getLessonPlanSubjects(credentials: EcampusCredentials): Promise<LessonPlanSubject[]> {
+        const client = await this.authService.getAuthenticatedClient(credentials);
+        logger.info("Fetching lesson plan subjects...");
+
+        const response = await client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 });
+        const subjects = this.extractLessonPlanSubjects(response.data);
+
+        logger.info(`Extraction complete: ${subjects.length} lesson plan subjects mapped.`);
+        return subjects;
+    }
+
     async getLessonPlan(credentials: EcampusCredentials, planId: string): Promise<LessonPlanItem[]> {
         const client = await this.authService.getAuthenticatedClient(credentials);
+        const resolvedPlanId = await this.resolveLessonPlanId(client, planId);
         const params = new URLSearchParams();
-        params.append('id', planId);
+        params.append('id', resolvedPlanId);
         params.append('version', '');
         params.append('form', 'true');
         params.append('formCreate', 'false');
 
-        logger.info(`Fetching lesson plan for ID: ${planId}...`);
+        logger.info(`Fetching lesson plan for ID: ${resolvedPlanId}...`);
 
         const response = await client.post<string>('/cienciaAlunoPE/getCronograma', params, { timeout: 15000 });
         const tree = parse(response.data);
@@ -193,6 +286,68 @@ export class EcampusHttpRepository implements EcampusRepository {
 
         logger.info(`Extraction complete: ${lessonPlan.length} lessons mapped.`);
         return lessonPlan;
+    }
+
+    private extractLessonPlanSubjects(html: string): LessonPlanSubject[] {
+        const tree = parse(html);
+        const candidateTables = tree.querySelectorAll('table');
+        const subjectTable = candidateTables.find((table) => {
+            return Boolean(table.querySelector('input[name="idPlano"]')) && table.querySelectorAll('tr').some((row) => row.querySelectorAll('td').length >= 7);
+        });
+
+        if (!subjectTable) {
+            logger.warning("Lesson plan subject table was not found in the returned HTML.");
+            return [];
+        }
+
+        const subjects: LessonPlanSubject[] = [];
+        for (const row of subjectTable.querySelectorAll('tr')) {
+            const columns = row.querySelectorAll('td');
+            if (columns.length < 7) continue;
+
+            const planInput = columns[0]!.querySelector('input[name="idPlano"]');
+            if (!planInput) continue;
+
+            const rawPlanId = planInput.getAttribute('value')?.trim() || null;
+            const planId = rawPlanId && rawPlanId !== 'null' ? rawPlanId : null;
+            const code = columns[1]!.textContent.trim();
+
+            if (!code) continue;
+
+            subjects.push({
+                planId,
+                code,
+                subject: columns[2]!.textContent.trim(),
+                classIdentifier: columns[3]!.textContent.trim(),
+                credits: columns[4]!.textContent.trim(),
+                workload: columns[5]!.textContent.trim(),
+                professor: columns[6]!.textContent.trim(),
+                available: Boolean(planId)
+            });
+        }
+
+        return subjects;
+    }
+
+    private async resolveLessonPlanId(client: Awaited<ReturnType<EcampusAuthService['getAuthenticatedClient']>>, planIdOrCode: string): Promise<string> {
+        const value = planIdOrCode.trim();
+        if (/^\d+$/.test(value)) {
+            return value;
+        }
+
+        const response = await client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 });
+        const subjects = this.extractLessonPlanSubjects(response.data);
+        const subject = subjects.find((item) => item.code.toLowerCase() === value.toLowerCase());
+
+        if (!subject) {
+            throw new ResourceNotFoundError(`Materia ${value} nao encontrada nos seus planos de ensino.`);
+        }
+
+        if (!subject.planId) {
+            throw new ResourceNotFoundError(`Plano de ensino ainda nao disponivel para ${subject.code} - ${subject.subject}.`);
+        }
+
+        return subject.planId;
     }
 
     private getInputValue(tree: HTMLElement, elementId: string): string {

@@ -23,6 +23,18 @@ export class FileSessionStore implements SessionStore {
         return data[userCpf] || null;
     }
 
+    async deleteSession(userCpf: string): Promise<void> {
+        const data = await this.loadAll();
+
+        if (!data[userCpf]) {
+            return;
+        }
+
+        delete data[userCpf];
+        await fs.writeFile(this.storageFile, JSON.stringify(data, null, 4), 'utf8');
+        logger.warning(`Invalid saved session removed for user ${userCpf}.`);
+    }
+
     private async loadAll(): Promise<Record<string, object>> {
         try {
             const fileContent = await fs.readFile(this.storageFile, 'utf8');
