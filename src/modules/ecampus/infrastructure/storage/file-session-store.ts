@@ -1,19 +1,19 @@
-// src/core/session-repository.ts
 import fs from 'fs/promises';
 import path from 'path';
-import { logger } from './logger';
+import type { SessionStore } from '@ecampus/application/ports/session-store';
+import { logger } from '@ecampus/infrastructure/logging/console-logger';
 
-export class SessionRepository {
+export class FileSessionStore implements SessionStore {
     private readonly storageFile: string;
 
     constructor(fileName: string = 'saved_sessions.json') {
-        this.storageFile = path.resolve(__dirname, '../../', fileName);
+        this.storageFile = path.resolve(process.cwd(), fileName);
     }
 
     async saveSession(userCpf: string, cookies: object): Promise<void> {
         const data = await this.loadAll();
         data[userCpf] = cookies;
-        
+
         await fs.writeFile(this.storageFile, JSON.stringify(data, null, 4), 'utf8');
         logger.info(`Session saved to storage for user ${userCpf}.`);
     }
@@ -23,10 +23,10 @@ export class SessionRepository {
         return data[userCpf] || null;
     }
 
-    private async loadAll(): Promise<Record<string, any>> {
+    private async loadAll(): Promise<Record<string, object>> {
         try {
             const fileContent = await fs.readFile(this.storageFile, 'utf8');
-            return JSON.parse(fileContent);
+            return JSON.parse(fileContent) as Record<string, object>;
         } catch (error) {
             return {};
         }

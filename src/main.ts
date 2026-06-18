@@ -1,13 +1,7 @@
 // src/main.ts
 import 'dotenv/config';
-import { logger } from './core/logger';
-import { SessionRepository } from './core/session-repository';
-import { CredentialVault } from './core/credential-vault';
-import { AuthService } from './core/auth-service';
-import { GetStudentProfileUseCase } from './use-cases/get-student-profile.usecase';
-// import { GetGradesUseCase } from './use-cases/get-grades.usecase';
-// import { GetScheduleUseCase } from './use-cases/get-schedule.usecase';
-// import { GetLessonPlanUseCase } from './use-cases/get-lesson-plan.usecase';
+import { createEcampusModule } from '@ecampus/ecampus.module';
+import { logger } from '@ecampus/infrastructure/logging/console-logger';
 
 async function main() {
     const userCpf = process.env.ECAMPUS_CPF;
@@ -18,24 +12,16 @@ async function main() {
         return;
     }
 
-    const sessionRepo = new SessionRepository();
-    const vault = new CredentialVault();
-    const authService = new AuthService(sessionRepo, vault);
+    const ecampusModule = createEcampusModule();
     
     // Mocking what comes from your database
-    const mockDatabaseRecord = {
+    const credentials = {
         cpf: userCpf,
-        encrypted_password: vault.encryptPassword(rawPassword)
+        encryptedPassword: ecampusModule.credentialVault.encryptPassword(rawPassword)
     };
 
     try {
-        const encryptedPwd = mockDatabaseRecord.encrypted_password;
-        const client = await authService.getAuthenticatedClient(userCpf, encryptedPwd);
-        
-        await client.session.get('/home/setModulo/22');
-        
-        const profileUsecase = new GetStudentProfileUseCase(client);
-        const profile = await profileUsecase.execute();
+        const profile = await ecampusModule.useCases.getStudentProfile.execute(credentials);
         
         console.log(`\nWelcome back, ${profile.personal.full_name}!`);
         console.log(`Course: ${profile.academic.course}`);

@@ -10,6 +10,12 @@
     "module": "Node16",
     "moduleResolution": "node16",
     "target": "es2022",
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@ecampus/*": ["src/modules/ecampus/*"]
+    },
     "types": ["node"],
     // For nodejs:
     // "lib": ["esnext"],
@@ -41,5 +47,8 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
+  },
+  "ts-node": {
+    "require": ["tsconfig-paths/register"]
   }
 }
