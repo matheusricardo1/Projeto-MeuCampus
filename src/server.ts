@@ -2,9 +2,19 @@ import 'reflect-metadata';
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
-import { AppModule } from '@/app.module';
-import { HttpErrorFilter } from '@/shared/http/http-error.filter';
-import { accessLogMiddleware } from '@/shared/http/access-log.middleware';
+import { register } from 'tsconfig-paths';
+
+register({
+    baseUrl: __dirname,
+    paths: {
+        '@/*': ['*'],
+        '@ecampus/*': ['modules/ecampus/*']
+    }
+});
+
+const { AppModule } = require('@/app.module') as typeof import('./app.module');
+const { HttpErrorFilter } = require('@/shared/http/http-error.filter') as typeof import('./shared/http/http-error.filter');
+const { accessLogMiddleware } = require('@/shared/http/access-log.middleware') as typeof import('./shared/http/access-log.middleware');
 
 export async function createNestApp(): Promise<INestApplication> {
     const app = await NestFactory.create(AppModule);
