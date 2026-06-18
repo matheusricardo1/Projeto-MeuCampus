@@ -1,3 +1,5 @@
+require('tsconfig-paths/register');
+
 const { createNestApp } = require('../dist/server');
 
 let cachedApp = null;

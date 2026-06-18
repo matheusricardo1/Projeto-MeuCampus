@@ -7,7 +7,8 @@ export class FileSessionStore implements SessionStore {
     private readonly storageFile: string;
 
     constructor(fileName: string = 'saved_sessions.json') {
-        this.storageFile = path.resolve(process.cwd(), fileName);
+        const storageDirectory = process.env.SESSION_STORAGE_DIR || (process.env.VERCEL ? '/tmp' : process.cwd());
+        this.storageFile = path.resolve(storageDirectory, fileName);
     }
 
     async saveSession(userCpf: string, cookies: object): Promise<void> {
