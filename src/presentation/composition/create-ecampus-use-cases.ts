@@ -1,0 +1,26 @@
+import { GetAuthSessionUseCase } from '@/application/use-cases/get-auth-session.usecase';
+import { GetGradesUseCase } from '@/application/use-cases/get-grades.usecase';
+import { GetLessonPlanUseCase } from '@/application/use-cases/get-lesson-plan.usecase';
+import { GetLessonPlanSubjectsUseCase } from '@/application/use-cases/get-lesson-plan-subjects.usecase';
+import { GetScheduleUseCase } from '@/application/use-cases/get-schedule.usecase';
+import { GetStudentProfileUseCase } from '@/application/use-cases/get-student-profile.usecase';
+import { LoginEcampusUseCase } from '@/application/use-cases/login-ecampus.usecase';
+import { LogoutUseCase } from '@/application/use-cases/logout.usecase';
+import { BrowserAuthSessionStore } from '@/infrastructure/auth/browser-auth-session-store';
+import { EcampusHttpRepository } from '@/infrastructure/http/ecampus-http-repository';
+
+export function createEcampusUseCases() {
+    const repository = new EcampusHttpRepository();
+    const sessionStore = new BrowserAuthSessionStore();
+
+    return {
+        getAuthSession: new GetAuthSessionUseCase(sessionStore),
+        getGrades: new GetGradesUseCase(repository, sessionStore),
+        getLessonPlan: new GetLessonPlanUseCase(repository, sessionStore),
+        getLessonPlanSubjects: new GetLessonPlanSubjectsUseCase(repository, sessionStore),
+        getSchedule: new GetScheduleUseCase(repository, sessionStore),
+        getStudentProfile: new GetStudentProfileUseCase(repository, sessionStore),
+        login: new LoginEcampusUseCase(repository, sessionStore),
+        logout: new LogoutUseCase(repository, sessionStore)
+    };
+}
