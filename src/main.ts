@@ -11,8 +11,9 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
     app.use(accessLogMiddleware);
     app.useGlobalFilters(new HttpErrorFilter());
+    app.enableShutdownHooks();
     app.enableCors({
-        origin: process.env.FRONTEND_ORIGIN || 'http://localhost:3000',
+        origin: getAllowedOrigins(),
         credentials: false
     });
 
@@ -23,7 +24,13 @@ async function bootstrap() {
         logger.info(`HTTP server running on http://localhost:${port}`);
     } catch (error: any) {
         logger.critical(`Server failed to start: ${error.message}`);
+        process.exitCode = 1;
     }
+}
+
+function getAllowedOrigins(): string[] {
+    const rawOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
+    return rawOrigin.split(',').map((origin) => origin.trim()).filter(Boolean);
 }
 
 bootstrap();
