@@ -10,7 +10,7 @@ export class GetScheduleUseCase {
     ) {}
 
     async execute(): Promise<ScheduleClass[]> {
-        const session = this.sessionStore.get();
+        const session = await this.sessionStore.get();
         if (!session) throw new AuthSessionExpiredError();
         return this.repository.getSchedule(session.accessToken);
     }

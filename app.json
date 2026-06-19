@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "UFAM Academics",
+    "slug": "ufam-academics",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "ufamacademics",
+    "android": {
+      "edgeToEdgeEnabled": true
+    },
+    "ios": {
+      "supportsTablet": true
+    }
+  }
+}

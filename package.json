@@ -1,31 +1,39 @@
 {
   "name": "app",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "index.ts",
+  "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
-    "start": "next start -p 3000",
-    "start:prod": "node .next/standalone/server.js",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint"
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "build:web": "expo export --platform web --output-dir web-build",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20.19.4"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
-  "devDependencies": {
-    "@types/node": "^25.9.3",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "eslint": "^9.39.4",
-    "eslint-config-next": "^16.2.9",
-    "typescript": "^6.0.3"
-  },
   "dependencies": {
-    "lucide-react": "^1.21.0",
-    "next": "^16.2.9",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "expo": "~56.0.12",
+    "expo-linear-gradient": "~56.0.4",
+    "expo-status-bar": "~56.0.4",
+    "lucide-react-native": "^0.553.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "^0.21.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "babel-plugin-module-resolver": "^5.0.2",
+    "typescript": "~6.0.3"
   }
 }

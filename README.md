@@ -1,51 +1,55 @@
-# UFAM Academics App
+# UFAM Academics Mobile
 
-Frontend Next.js do painel academico.
+Aplicativo React Native com Expo para consumir o backend do eCampus.
 
 ## Variaveis de ambiente
 
-Copie `.env.example` para `.env.local` em desenvolvimento ou configure no provedor de deploy:
-
-- `NEXT_PUBLIC_ECAMPUS_API_URL`: URL publica do backend NestJS.
-
-Exemplo local:
+Copie `.env.example` para `.env` e ajuste a URL da API:
 
 ```bash
-NEXT_PUBLIC_ECAMPUS_API_URL=http://localhost:3001
+EXPO_PUBLIC_ECAMPUS_API_URL=http://127.0.0.1:3001
 ```
 
-Exemplo em producao:
+No Android Emulator, `10.0.2.2` costuma funcionar melhor:
 
 ```bash
-NEXT_PUBLIC_ECAMPUS_API_URL=https://api.seu-dominio.com
+EXPO_PUBLIC_ECAMPUS_API_URL=http://10.0.2.2:3001
 ```
 
-Como essa variavel usa o prefixo `NEXT_PUBLIC_`, ela e embutida no bundle do navegador durante o build. No deploy, configure esse valor antes de executar `npm run build`.
+Em aparelho fisico, use o IP da maquina que esta rodando o backend.
 
 ## Scripts
 
 ```bash
-npm run dev
-npm run lint
+npm run start
+npm run android
+npm run ios
+npm run web
+npm run build:web
 npm run typecheck
-npm run build
-npm run start:prod
 ```
 
-## Deploy sem Docker
+## Validacao local
 
 ```bash
-npm ci
-NEXT_PUBLIC_ECAMPUS_API_URL=https://api.seu-dominio.com npm run build
-PORT=3000 npm run start:prod
+npm run typecheck
+npx expo export --platform android --output-dir dist
+npx expo export --platform web --output-dir web-build
 ```
 
-## Deploy com Docker
+## Deploy na Vercel
+
+Este projeto sobe na Vercel como **Expo Web**.
+
+Configure a variavel abaixo no projeto da Vercel antes do build:
 
 ```bash
-docker build \
-  --build-arg NEXT_PUBLIC_ECAMPUS_API_URL=https://api.seu-dominio.com \
-  -t ufam-academics-app .
-
-docker run -p 3000:3000 ufam-academics-app
+EXPO_PUBLIC_ECAMPUS_API_URL=https://sua-api.example.com
 ```
+
+Configuracao usada:
+
+- Build Command: `npm run build:web`
+- Output Directory: `web-build`
+
+Para Android e iOS nativos, o caminho correto continua sendo o **Expo EAS Build**, nao a Vercel.

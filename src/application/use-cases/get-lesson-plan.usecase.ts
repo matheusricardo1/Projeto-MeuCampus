@@ -10,7 +10,7 @@ export class GetLessonPlanUseCase {
     ) {}
 
     async execute(planId: string): Promise<LessonPlanItem[]> {
-        const session = this.sessionStore.get();
+        const session = await this.sessionStore.get();
         if (!session) throw new AuthSessionExpiredError();
         return this.repository.getLessonPlan(session.accessToken, planId);
     }

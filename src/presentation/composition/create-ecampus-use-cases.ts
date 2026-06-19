@@ -7,12 +7,12 @@ import { GetScheduleUseCase } from '@/application/use-cases/get-schedule.usecase
 import { GetStudentProfileUseCase } from '@/application/use-cases/get-student-profile.usecase';
 import { LoginEcampusUseCase } from '@/application/use-cases/login-ecampus.usecase';
 import { LogoutUseCase } from '@/application/use-cases/logout.usecase';
-import { BrowserAuthSessionStore } from '@/infrastructure/auth/browser-auth-session-store';
+import { AsyncAuthSessionStore } from '@/infrastructure/auth/async-auth-session-store';
 import { EcampusHttpRepository } from '@/infrastructure/http/ecampus-http-repository';
 
 export function createEcampusUseCases() {
     const repository = new EcampusHttpRepository();
-    const sessionStore = new BrowserAuthSessionStore();
+    const sessionStore = new AsyncAuthSessionStore();
 
     return {
         clearAuthSession: new ClearAuthSessionUseCase(sessionStore),

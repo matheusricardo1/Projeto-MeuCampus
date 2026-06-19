@@ -10,7 +10,7 @@ export class GetStudentProfileUseCase {
     ) {}
 
     async execute(): Promise<StudentProfile> {
-        const session = this.sessionStore.get();
+        const session = await this.sessionStore.get();
         if (!session) throw new AuthSessionExpiredError();
         return this.repository.getProfile(session.accessToken);
     }

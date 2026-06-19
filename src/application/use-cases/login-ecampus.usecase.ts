@@ -10,7 +10,7 @@ export class LoginEcampusUseCase {
 
     async execute(credentials: LoginCredentials): Promise<AuthSession> {
         const session = await this.repository.login(credentials);
-        this.sessionStore.save(session);
+        await this.sessionStore.save(session);
         return session;
     }
 }

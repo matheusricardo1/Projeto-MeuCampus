@@ -1,7 +1,7 @@
-.next/
+.expo/
+.expo-shared/
 node_modules/
 dist/
-.env.local
 *.log
-tsconfig.tsbuildinfo
 .env
+web-build/

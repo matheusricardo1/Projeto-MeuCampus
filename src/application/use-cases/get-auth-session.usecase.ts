@@ -4,7 +4,7 @@ import type { AuthSessionStore } from '@/application/ports/auth-session-store';
 export class GetAuthSessionUseCase {
     constructor(private readonly sessionStore: AuthSessionStore) {}
 
-    execute(): AuthSession | null {
+    execute(): Promise<AuthSession | null> {
         return this.sessionStore.get();
     }
 }

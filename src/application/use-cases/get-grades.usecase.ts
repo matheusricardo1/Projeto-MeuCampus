@@ -10,7 +10,7 @@ export class GetGradesUseCase {
     ) {}
 
     async execute(year: string, period: string): Promise<Grade[]> {
-        const session = this.sessionStore.get();
+        const session = await this.sessionStore.get();
         if (!session) throw new AuthSessionExpiredError();
         return this.repository.getGrades(session.accessToken, year, period);
     }

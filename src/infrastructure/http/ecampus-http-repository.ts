@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import type { AuthSession } from '@/domain/entities/auth-session';
 import type { Grade } from '@/domain/entities/grade';
 import type { LessonPlanItem } from '@/domain/entities/lesson-plan-item';
@@ -8,7 +9,11 @@ import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.er
 import type { EcampusRepository, LoginCredentials } from '@/domain/repositories/ecampus-repository';
 
 export class EcampusHttpRepository implements EcampusRepository {
-    constructor(private readonly baseUrl: string = process.env.NEXT_PUBLIC_ECAMPUS_API_URL || 'http://localhost:3001') {}
+    constructor(
+        private readonly baseUrl: string = process.env.EXPO_PUBLIC_ECAMPUS_API_URL
+            || process.env.NEXT_PUBLIC_ECAMPUS_API_URL
+            || (Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://127.0.0.1:3001')
+    ) {}
 
     login(credentials: LoginCredentials): Promise<AuthSession> {
         return this.request<AuthSession>('/ecampus/login', {

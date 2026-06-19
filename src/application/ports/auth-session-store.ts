@@ -1,7 +1,7 @@
 import type { AuthSession } from '@/domain/entities/auth-session';
 
 export interface AuthSessionStore {
-    get(): AuthSession | null;
-    save(session: AuthSession): void;
-    clear(): void;
+    get(): Promise<AuthSession | null>;
+    save(session: AuthSession): Promise<void>;
+    clear(): Promise<void>;
 }

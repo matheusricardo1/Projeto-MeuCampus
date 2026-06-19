@@ -8,14 +8,14 @@ export class LogoutUseCase {
     ) {}
 
     async execute(): Promise<void> {
-        const session = this.sessionStore.get();
+        const session = await this.sessionStore.get();
 
         try {
             if (session) {
                 await this.repository.logout(session.accessToken);
             }
         } finally {
-            this.sessionStore.clear();
+            await this.sessionStore.clear();
         }
     }
 }
