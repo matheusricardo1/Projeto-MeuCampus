@@ -12,114 +12,125 @@ import { EcampusAuthService } from '@ecampus/infrastructure/ecampus/ecampus-auth
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 
 export class EcampusHttpRepository implements EcampusRepository {
+    private readonly userQueues = new Map<string, Promise<void>>();
+
     constructor(private readonly authService: EcampusAuthService) {}
 
     async logout(credentials: EcampusCredentials): Promise<void> {
-        logger.info(`Logging out from eCampus for ${credentials.cpf}...`);
-        await this.authService.logout(credentials);
+        return this.runExclusive(credentials.cpf, async () => {
+            logger.info(`Logging out from eCampus for ${credentials.cpf}...`);
+            await this.authService.logout(credentials);
+        });
     }
 
     async getStudentProfile(credentials: EcampusCredentials): Promise<StudentProfile> {
-        const client = await this.authService.getAuthenticatedClient(credentials);
-        logger.info("Fetching student profile data...");
+        return this.runExclusive(credentials.cpf, async () => {
+            const client = await this.authService.getAuthenticatedClient(credentials);
+            logger.info("Fetching student profile data...");
 
-        const response = await client.get<string>('/atualizarDadosAluno/index', { timeout: 15000 });
-        const tree = parse(response.data);
+            const response = await this.withExternalRetry(
+                'student profile',
+                () => client.get<string>('/atualizarDadosAluno/index', { timeout: 15000 })
+            );
+            const tree = parse(response.data);
 
-        const profileData: StudentProfile = {
-            academic: {
-                admission_type: this.getInputValue(tree, "tipoIngresso"),
-                admission_term: this.getInputValue(tree, "anoIngresso"),
-                admission_date: this.getInputValue(tree, "dataIngresso"),
-                course: this.getInputValue(tree, "nomeCurso"),
-                shift: this.getInputValue(tree, "turno"),
-                enrollment_number: this.getInputValue(tree, "matricula"),
-            },
-            personal: {
-                full_name: this.getInputValue(tree, "nomePessoa"),
-                birth_date: this.getInputValue(tree, "aluno.dtNascimento"),
-                gender: this.getRadioValue(tree, "aluno.sexo"),
-                marital_status: this.getSelectText(tree, "aluno.estadoCivilItem"),
-                nationality: this.getSelectText(tree, "aluno.nacionalidadeItem"),
-                ethnicity: this.getSelectText(tree, "aluno.etniaItem"),
-                father_name: this.getInputValue(tree, "aluno.nomePai"),
-                mother_name: this.getInputValue(tree, "aluno.nomeMae"),
-            },
-            contact: {
-                email: this.getInputValue(tree, "endereco.descrMail"),
-                cellphone: this.getInputValue(tree, "endereco.foneCelular"),
-                home_phone: this.getInputValue(tree, "endereco.foneResidencial"),
-            },
-            address: {
-                zip_code: this.getInputValue(tree, "endereco.descrCep"),
-                street: this.getInputValue(tree, "endereco.descrRua"),
-                number: this.getInputValue(tree, "endereco.descrNumero"),
-                neighborhood: this.getInputValue(tree, "endereco.descrBairro"),
-                state: this.getSelectText(tree, "endereco.uf.id"),
-                city: this.getSelectText(tree, "endereco.cidade.id"),
-            }
-        };
+            const profileData: StudentProfile = {
+                academic: {
+                    admission_type: this.getInputValue(tree, "tipoIngresso"),
+                    admission_term: this.getInputValue(tree, "anoIngresso"),
+                    admission_date: this.getInputValue(tree, "dataIngresso"),
+                    course: this.getInputValue(tree, "nomeCurso"),
+                    shift: this.getInputValue(tree, "turno"),
+                    enrollment_number: this.getInputValue(tree, "matricula"),
+                },
+                personal: {
+                    full_name: this.getInputValue(tree, "nomePessoa"),
+                    birth_date: this.getInputValue(tree, "aluno.dtNascimento"),
+                    gender: this.getRadioValue(tree, "aluno.sexo"),
+                    marital_status: this.getSelectText(tree, "aluno.estadoCivilItem"),
+                    nationality: this.getSelectText(tree, "aluno.nacionalidadeItem"),
+                    ethnicity: this.getSelectText(tree, "aluno.etniaItem"),
+                    father_name: this.getInputValue(tree, "aluno.nomePai"),
+                    mother_name: this.getInputValue(tree, "aluno.nomeMae"),
+                },
+                contact: {
+                    email: this.getInputValue(tree, "endereco.descrMail"),
+                    cellphone: this.getInputValue(tree, "endereco.foneCelular"),
+                    home_phone: this.getInputValue(tree, "endereco.foneResidencial"),
+                },
+                address: {
+                    zip_code: this.getInputValue(tree, "endereco.descrCep"),
+                    street: this.getInputValue(tree, "endereco.descrRua"),
+                    number: this.getInputValue(tree, "endereco.descrNumero"),
+                    neighborhood: this.getInputValue(tree, "endereco.descrBairro"),
+                    state: this.getSelectText(tree, "endereco.uf.id"),
+                    city: this.getSelectText(tree, "endereco.cidade.id"),
+                }
+            };
 
-        logger.info("Profile data extraction complete.");
-        return profileData;
+            logger.info("Profile data extraction complete.");
+            return profileData;
+        });
     }
 
     async getGrades(credentials: EcampusCredentials, year: string, period: string): Promise<Grade[]> {
-        const client = await this.authService.getAuthenticatedClient(credentials);
-        const params = new URLSearchParams();
-        params.append('ano', year);
-        params.append('periodo', this.normalizeGradePeriod(period));
+        return this.runExclusive(credentials.cpf, async () => {
+            const client = await this.authService.getAuthenticatedClient(credentials);
+            const params = new URLSearchParams();
+            params.append('ano', year);
+            params.append('periodo', this.normalizeGradePeriod(period));
 
-        logger.info(`Fetching grades for year ${year}, period ${period}...`);
+            logger.info(`Fetching grades for year ${year}, period ${period}...`);
 
-        const html = await this.fetchGradesHtml(client, params);
-        const tree = parse(html);
-        const tables = tree.querySelectorAll('table.grid-notas');
+            const html = await this.fetchGradesHtml(client, params);
+            const tree = parse(html);
+            const tables = tree.querySelectorAll('table.grid-notas');
 
-        if (tables.length < 2) {
-            logger.warning("Grades tables were not found in the returned HTML.");
-            return [];
-        }
-
-        const tableGrades = tables[0]!;
-        const tableNames = tables[1]!;
-        const subjectMap: Record<string, { subject: string; classIdentifier: string }> = {};
-
-        for (const row of tableNames.querySelectorAll('tbody tr')) {
-            const columns = row.querySelectorAll('td');
-            if (columns.length >= 2) {
-                const code = columns[0]!.textContent.trim();
-                subjectMap[code] = {
-                    subject: columns[1]!.textContent.trim(),
-                    classIdentifier: columns[2]?.textContent.trim() || ''
-                };
+            if (tables.length < 2) {
+                logger.warning("Grades tables were not found in the returned HTML.");
+                return [];
             }
-        }
 
-        const reportCard: Grade[] = [];
-        for (const row of tableGrades.querySelectorAll('tbody tr')) {
-            const columns = row.querySelectorAll('td');
-            if (columns.length < 26) continue;
+            const tableGrades = tables[0]!;
+            const tableNames = tables[1]!;
+            const subjectMap: Record<string, { subject: string; classIdentifier: string }> = {};
 
-            const code = columns[0]!.textContent.trim();
-            if (!code) continue;
+            for (const row of tableNames.querySelectorAll('tbody tr')) {
+                const columns = row.querySelectorAll('td');
+                if (columns.length >= 2) {
+                    const code = columns[0]!.textContent.trim();
+                    subjectMap[code] = {
+                        subject: columns[1]!.textContent.trim(),
+                        classIdentifier: columns[2]?.textContent.trim() || ''
+                    };
+                }
+            }
 
-            reportCard.push({
-                code,
-                subject: subjectMap[code]?.subject || 'Unknown Subject',
-                class_identifier: subjectMap[code]?.classIdentifier || '',
-                evaluations: this.extractGradeEvaluations(columns),
-                exercise_average: columns[21]?.textContent.trim() || '',
-                final_exam: columns[22]?.textContent.trim() || '',
-                final_grade: columns[23]!.textContent.trim(),
-                absences: columns[24]!.textContent.trim(),
-                status: columns[25]!.textContent.trim(),
-                history_effective: columns[26]?.textContent.trim() || ''
-            });
-        }
+            const reportCard: Grade[] = [];
+            for (const row of tableGrades.querySelectorAll('tbody tr')) {
+                const columns = row.querySelectorAll('td');
+                if (columns.length < 26) continue;
 
-        logger.info(`Extraction complete: ${reportCard.length} subjects processed.`);
-        return reportCard;
+                const code = columns[0]!.textContent.trim();
+                if (!code) continue;
+
+                reportCard.push({
+                    code,
+                    subject: subjectMap[code]?.subject || 'Unknown Subject',
+                    class_identifier: subjectMap[code]?.classIdentifier || '',
+                    evaluations: this.extractGradeEvaluations(columns),
+                    exercise_average: columns[21]?.textContent.trim() || '',
+                    final_exam: columns[22]?.textContent.trim() || '',
+                    final_grade: columns[23]!.textContent.trim(),
+                    absences: columns[24]!.textContent.trim(),
+                    status: columns[25]!.textContent.trim(),
+                    history_effective: columns[26]?.textContent.trim() || ''
+                });
+            }
+
+            logger.info(`Extraction complete: ${reportCard.length} subjects processed.`);
+            return reportCard;
+        });
     }
 
     private extractGradeEvaluations(columns: HTMLElement[]): Grade['evaluations'] {
@@ -187,105 +198,120 @@ export class EcampusHttpRepository implements EcampusRepository {
     }
 
     async getSchedule(credentials: EcampusCredentials): Promise<ScheduleClass[]> {
-        const client = await this.authService.getAuthenticatedClient(credentials);
-        logger.info("Fetching the current schedule...");
+        return this.runExclusive(credentials.cpf, async () => {
+            const client = await this.authService.getAuthenticatedClient(credentials);
+            logger.info("Fetching the current schedule...");
 
-        const response = await client.post<string>('/quadroHorarioGraduacaoRegular/getHorarios', {}, { timeout: 15000 });
-        const html = response.data;
-        const tree = parse(html);
-        const subjectMap: Record<string, string> = {};
-        const tables = tree.querySelectorAll('table.grid-notas');
+            const response = await this.withExternalRetry(
+                'schedule',
+                () => client.post<string>('/quadroHorarioGraduacaoRegular/getHorarios', {}, { timeout: 15000 })
+            );
+            const html = response.data;
+            const tree = parse(html);
+            const subjectMap: Record<string, string> = {};
+            const tables = tree.querySelectorAll('table.grid-notas');
 
-        if (tables.length > 0) {
-            for (const row of tables[0]!.querySelectorAll('tbody tr')) {
-                const cols = row.querySelectorAll('td');
-                if (cols.length >= 3) {
-                    subjectMap[cols[0]!.textContent.trim()] = cols[1]!.textContent.trim();
+            if (tables.length > 0) {
+                for (const row of tables[0]!.querySelectorAll('tbody tr')) {
+                    const cols = row.querySelectorAll('td');
+                    if (cols.length >= 3) {
+                        subjectMap[cols[0]!.textContent.trim()] = cols[1]!.textContent.trim();
+                    }
                 }
             }
-        }
 
-        const pattern = /"start":\s*new Date\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\).*?"end":\s*new Date\(\d+,\s*\d+,\s*\d+,\s*(\d+),\s*(\d+)\).*?"title":\s*"(.*?)"/gs;
-        const schedule: ScheduleClass[] = [];
-        let match: RegExpExecArray | null;
+            const pattern = /"start":\s*new Date\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\).*?"end":\s*new Date\(\d+,\s*\d+,\s*\d+,\s*(\d+),\s*(\d+)\).*?"title":\s*"(.*?)"/gs;
+            const schedule: ScheduleClass[] = [];
+            let match: RegExpExecArray | null;
 
-        while ((match = pattern.exec(html)) !== null) {
-            const [, year, jsMonth, day, startH, startM, endH, endM, title] = match;
+            while ((match = pattern.exec(html)) !== null) {
+                const [, year, jsMonth, day, startH, startM, endH, endM, title] = match;
 
-            if (!year || !jsMonth || !day || !startH || !startM || !endH || !endM || !title) {
-                continue;
+                if (!year || !jsMonth || !day || !startH || !startM || !endH || !endM || !title) {
+                    continue;
+                }
+
+                const dateObj = new Date(parseInt(year), parseInt(jsMonth), parseInt(day));
+                const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
+                const code = title.includes(' - ') ? title.split(' - ')[0]!.trim() : title;
+
+                schedule.push({
+                    weekday,
+                    start_time: `${startH.padStart(2, '0')}:${startM.padStart(2, '0')}`,
+                    end_time: `${endH.padStart(2, '0')}:${endM.padStart(2, '0')}`,
+                    code,
+                    subject: subjectMap[code] || "Unknown Subject",
+                    class_identifier: title
+                });
             }
 
-            const dateObj = new Date(parseInt(year), parseInt(jsMonth), parseInt(day));
-            const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
-            const code = title.includes(' - ') ? title.split(' - ')[0]!.trim() : title;
-
-            schedule.push({
-                weekday,
-                start_time: `${startH.padStart(2, '0')}:${startM.padStart(2, '0')}`,
-                end_time: `${endH.padStart(2, '0')}:${endM.padStart(2, '0')}`,
-                code,
-                subject: subjectMap[code] || "Unknown Subject",
-                class_identifier: title
+            const daysOrder: Record<string, number> = { "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6, "Sunday": 7 };
+            schedule.sort((a, b) => {
+                const dayDiff = (daysOrder[a.weekday] || 8) - (daysOrder[b.weekday] || 8);
+                if (dayDiff !== 0) return dayDiff;
+                return a.start_time.localeCompare(b.start_time);
             });
-        }
 
-        const daysOrder: Record<string, number> = { "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6, "Sunday": 7 };
-        schedule.sort((a, b) => {
-            const dayDiff = (daysOrder[a.weekday] || 8) - (daysOrder[b.weekday] || 8);
-            if (dayDiff !== 0) return dayDiff;
-            return a.start_time.localeCompare(b.start_time);
+            logger.info(`Extraction complete: ${schedule.length} classes mapped.`);
+            return schedule;
         });
-
-        logger.info(`Extraction complete: ${schedule.length} classes mapped.`);
-        return schedule;
     }
 
     async getLessonPlanSubjects(credentials: EcampusCredentials): Promise<LessonPlanSubject[]> {
-        const client = await this.authService.getAuthenticatedClient(credentials);
-        logger.info("Fetching lesson plan subjects...");
+        return this.runExclusive(credentials.cpf, async () => {
+            const client = await this.authService.getAuthenticatedClient(credentials);
+            logger.info("Fetching lesson plan subjects...");
 
-        const response = await client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 });
-        const subjects = this.extractLessonPlanSubjects(response.data);
+            const response = await this.withExternalRetry(
+                'lesson plan subjects',
+                () => client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 })
+            );
+            const subjects = this.extractLessonPlanSubjects(response.data);
 
-        logger.info(`Extraction complete: ${subjects.length} lesson plan subjects mapped.`);
-        return subjects;
+            logger.info(`Extraction complete: ${subjects.length} lesson plan subjects mapped.`);
+            return subjects;
+        });
     }
 
     async getLessonPlan(credentials: EcampusCredentials, planId: string): Promise<LessonPlanItem[]> {
-        const client = await this.authService.getAuthenticatedClient(credentials);
-        const resolvedPlanId = await this.resolveLessonPlanId(client, planId);
-        const params = new URLSearchParams();
-        params.append('id', resolvedPlanId);
-        params.append('version', '');
-        params.append('form', 'true');
-        params.append('formCreate', 'false');
+        return this.runExclusive(credentials.cpf, async () => {
+            const client = await this.authService.getAuthenticatedClient(credentials);
+            const resolvedPlanId = await this.resolveLessonPlanId(client, planId);
+            const params = new URLSearchParams();
+            params.append('id', resolvedPlanId);
+            params.append('version', '');
+            params.append('form', 'true');
+            params.append('formCreate', 'false');
 
-        logger.info(`Fetching lesson plan for ID: ${resolvedPlanId}...`);
+            logger.info(`Fetching lesson plan for ID: ${resolvedPlanId}...`);
 
-        const response = await client.post<string>('/cienciaAlunoPE/getCronograma', params, { timeout: 15000 });
-        const tree = parse(response.data);
-        const lessonPlan: LessonPlanItem[] = [];
+            const response = await this.withExternalRetry(
+                'lesson plan',
+                () => client.post<string>('/cienciaAlunoPE/getCronograma', params, { timeout: 15000 })
+            );
+            const tree = parse(response.data);
+            const lessonPlan: LessonPlanItem[] = [];
 
-        for (const row of tree.querySelectorAll('tbody tr')) {
-            const columns = row.querySelectorAll('td');
-            if (columns.length >= 5) {
-                const date = columns[0]!.textContent.trim();
-                if (!date) continue;
+            for (const row of tree.querySelectorAll('tbody tr')) {
+                const columns = row.querySelectorAll('td');
+                if (columns.length >= 5) {
+                    const date = columns[0]!.textContent.trim();
+                    if (!date) continue;
 
-                const workload = columns[1]!.textContent.trim();
-                lessonPlan.push({
-                    date,
-                    workload: isNaN(Number(workload)) ? workload : parseInt(workload),
-                    type: columns[2]!.textContent.trim(),
-                    content: columns[3]!.textContent.trim(),
-                    professor: columns[4]!.textContent.trim()
-                });
+                    const workload = columns[1]!.textContent.trim();
+                    lessonPlan.push({
+                        date,
+                        workload: isNaN(Number(workload)) ? workload : parseInt(workload),
+                        type: columns[2]!.textContent.trim(),
+                        content: columns[3]!.textContent.trim(),
+                        professor: columns[4]!.textContent.trim()
+                    });
+                }
             }
-        }
 
-        logger.info(`Extraction complete: ${lessonPlan.length} lessons mapped.`);
-        return lessonPlan;
+            logger.info(`Extraction complete: ${lessonPlan.length} lessons mapped.`);
+            return lessonPlan;
+        });
     }
 
     private extractLessonPlanSubjects(html: string): LessonPlanSubject[] {
@@ -335,7 +361,10 @@ export class EcampusHttpRepository implements EcampusRepository {
             return value;
         }
 
-        const response = await client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 });
+        const response = await this.withExternalRetry(
+            'lesson plan subject resolution',
+            () => client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 })
+        );
         const subjects = this.extractLessonPlanSubjects(response.data);
         const subject = subjects.find((item) => item.code.toLowerCase() === value.toLowerCase());
 
@@ -348,6 +377,59 @@ export class EcampusHttpRepository implements EcampusRepository {
         }
 
         return subject.planId;
+    }
+
+    private async runExclusive<T>(key: string, operation: () => Promise<T>): Promise<T> {
+        const previous = this.userQueues.get(key) || Promise.resolve();
+        let release: () => void = () => undefined;
+        const current = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const queued = previous.catch(() => undefined).then(() => current);
+
+        this.userQueues.set(key, queued);
+
+        await previous.catch(() => undefined);
+
+        try {
+            return await operation();
+        } finally {
+            release();
+
+            if (this.userQueues.get(key) === queued) {
+                this.userQueues.delete(key);
+            }
+        }
+    }
+
+    private async withExternalRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {
+        const maxAttempts = 2;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+                return await operation();
+            } catch (error) {
+                const shouldRetry = error instanceof AxiosError && (error.response?.status || 0) >= 500 && attempt < maxAttempts;
+
+                if (!shouldRetry) {
+                    throw error;
+                }
+
+                logger.warning(`eCampus returned ${error.response?.status} while fetching ${label}. Retrying once...`, {
+                    externalStatus: error.response?.status,
+                    externalStatusText: error.response?.statusText,
+                    url: error.config?.url
+                });
+
+                await this.delay(700);
+            }
+        }
+
+        throw new Error(`Unable to fetch ${label}.`);
+    }
+
+    private delay(milliseconds: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, milliseconds));
     }
 
     private getInputValue(tree: HTMLElement, elementId: string): string {

@@ -22,7 +22,14 @@ export async function createNestApp(): Promise<INestApplication> {
     app.useGlobalFilters(new HttpErrorFilter());
     app.enableShutdownHooks();
     app.enableCors({
-        origin: getAllowedOrigins(),
+        origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
+            if (!origin || isAllowedOrigin(origin)) {
+                callback(null, true);
+                return;
+            }
+
+            callback(new Error(`Origin ${origin} is not allowed by CORS`), false);
+        },
         credentials: false
     });
 
@@ -32,4 +39,21 @@ export async function createNestApp(): Promise<INestApplication> {
 function getAllowedOrigins(): string[] {
     const rawOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
     return rawOrigin.split(',').map((origin) => origin.trim()).filter(Boolean);
+}
+
+function isAllowedOrigin(origin: string): boolean {
+    return getAllowedOrigins().some((allowedOrigin) => matchesOrigin(origin, allowedOrigin));
+}
+
+function matchesOrigin(origin: string, allowedOrigin: string): boolean {
+    if (allowedOrigin === '*') {
+        return true;
+    }
+
+    if (!allowedOrigin.includes('*')) {
+        return origin === allowedOrigin;
+    }
+
+    const escapedOrigin = allowedOrigin.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+    return new RegExp(`^${escapedOrigin}$`).test(origin);
 }
