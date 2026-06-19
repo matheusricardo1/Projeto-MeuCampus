@@ -1,3 +1,4 @@
+import { ClearAuthSessionUseCase } from '@/application/use-cases/clear-auth-session.usecase';
 import { GetAuthSessionUseCase } from '@/application/use-cases/get-auth-session.usecase';
 import { GetGradesUseCase } from '@/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@/application/use-cases/get-lesson-plan.usecase';
@@ -14,6 +15,7 @@ export function createEcampusUseCases() {
     const sessionStore = new BrowserAuthSessionStore();
 
     return {
+        clearAuthSession: new ClearAuthSessionUseCase(sessionStore),
         getAuthSession: new GetAuthSessionUseCase(sessionStore),
         getGrades: new GetGradesUseCase(repository, sessionStore),
         getLessonPlan: new GetLessonPlanUseCase(repository, sessionStore),

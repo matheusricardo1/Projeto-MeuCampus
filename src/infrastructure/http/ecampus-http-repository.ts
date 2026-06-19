@@ -4,6 +4,7 @@ import type { LessonPlanItem } from '@/domain/entities/lesson-plan-item';
 import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
 import type { ScheduleClass } from '@/domain/entities/schedule-class';
 import type { StudentProfile } from '@/domain/entities/student-profile';
+import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
 import type { EcampusRepository, LoginCredentials } from '@/domain/repositories/ecampus-repository';
 
 export class EcampusHttpRepository implements EcampusRepository {
@@ -73,6 +74,10 @@ export class EcampusHttpRepository implements EcampusRepository {
         const payload = body ? JSON.parse(body) : null;
 
         if (!response.ok) {
+            if (path !== '/ecampus/login' && (response.status === 401 || response.status === 403)) {
+                throw new AuthSessionExpiredError('Sua sessao expirou. Entre novamente.');
+            }
+
             const message = payload?.message || 'Falha ao comunicar com o eCampus.';
             throw new Error(Array.isArray(message) ? message.join(', ') : message);
         }

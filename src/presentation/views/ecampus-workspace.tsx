@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
     BookOpen,
     CalendarDays,
@@ -8,6 +8,7 @@ import {
     Eye,
     EyeOff,
     GraduationCap,
+    LayoutDashboard,
     LogOut,
     Mail,
     Phone,
@@ -22,8 +23,11 @@ type Workspace = ReturnType<typeof useEcampusWorkspace>;
 export function EcampusWorkspace() {
     const workspace = useEcampusWorkspace();
     const { restoreSession } = workspace;
+    const didRestoreSession = useRef(false);
 
     useEffect(() => {
+        if (didRestoreSession.current) return;
+        didRestoreSession.current = true;
         void restoreSession();
     }, [restoreSession]);
 
@@ -36,6 +40,7 @@ export function EcampusWorkspace() {
     }
 
     const tabs = [
+        { id: 'home' as const, label: 'Inicio', icon: LayoutDashboard, action: workspace.refreshDashboard },
         { id: 'profile' as const, label: 'Perfil', icon: UserRound, action: workspace.loadProfile },
         { id: 'schedule' as const, label: 'Horario', icon: CalendarDays, action: workspace.loadSchedule },
         { id: 'grades' as const, label: 'Notas', icon: GraduationCap, action: workspace.loadGrades },
@@ -79,6 +84,7 @@ export function EcampusWorkspace() {
             {workspace.error ? <div className="status status--error">{workspace.error}</div> : null}
 
             <section className="contentBand">
+                {workspace.activeTab === 'home' ? <DashboardPanel workspace={workspace} /> : null}
                 {workspace.activeTab === 'profile' ? <ProfilePanel profile={workspace.profile} onRefresh={workspace.loadProfile} loading={workspace.isLoading} /> : null}
                 {workspace.activeTab === 'schedule' ? <SchedulePanel schedule={workspace.schedule} onRefresh={workspace.loadSchedule} loading={workspace.isLoading} /> : null}
                 {workspace.activeTab === 'grades' ? (
@@ -112,8 +118,7 @@ export function EcampusWorkspace() {
                             key={tab.id}
                             type="button"
                             onClick={() => {
-                                workspace.setActiveTab(tab.id);
-                                void tab.action();
+                                workspace.openTab(tab.id);
                             }}
                         >
                             <Icon size={20} />
@@ -217,7 +222,112 @@ function formatCpf(value: string): string {
     return firstPart;
 }
 
+function DashboardPanel({ workspace }: { workspace: Workspace }) {
+    const { grades, isLoading, lessonPlanSubjects, profile, schedule } = workspace;
+    const groupedSchedule = useMemo(() => groupScheduleByDay(schedule), [schedule]);
+    const weekMap = useMemo(() => buildWeekMap(groupedSchedule), [groupedSchedule]);
+    const nextClass = useMemo(() => getNextScheduleClass(schedule), [schedule]);
+    const numericGrades = grades.map((grade) => parseGrade(grade.final_grade)).filter((grade): grade is number => grade !== null);
+    const averageNumber = numericGrades.length ? numericGrades.reduce((sum, grade) => sum + grade, 0) / numericGrades.length : null;
+    const approved = grades.filter((grade) => isApprovedStatus(grade.status)).length;
+    const totalAbsences = grades.reduce((sum, grade) => sum + parseAbsences(grade.absences), 0);
+    const activityCount = grades.reduce((sum, grade) => sum + grade.evaluations.length, 0);
+    const subjectCount = Math.max(lessonPlanSubjects.length, grades.length, new Set(schedule.map((item) => item.code)).size);
+    const chartMax = Math.max(...weekMap.map((day) => day.items.length), 1);
+    const weakestGrades = grades
+        .map((grade) => ({ grade, parsedFinal: parseGrade(grade.final_grade) }))
+        .filter((entry): entry is { grade: Workspace['grades'][number]; parsedFinal: number } => entry.parsedFinal !== null)
+        .sort((a, b) => a.parsedFinal - b.parsedFinal)
+        .slice(0, 3);
+
+    if (isLoading && !profile && schedule.length === 0 && grades.length === 0) return <DashboardSkeleton />;
+
+    return (
+        <div className="screenStack">
+            <section className="homeHero">
+                <div>
+                    <span className="sectionKicker">Resumo academico</span>
+                    <strong>{profile?.personal.full_name || 'Carregando dados'}</strong>
+                    <p>{profile?.academic.course || 'Seu painel vai aparecer aqui assim que os dados chegarem.'}</p>
+                </div>
+                <div className="homeHeroScore">
+                    <span>Media</span>
+                    <strong>{averageNumber === null ? '-' : averageNumber.toFixed(1)}</strong>
+                </div>
+            </section>
+
+            <section className="dashboardMetricGrid">
+                <MetricCard label="Materias" value={String(subjectCount)} />
+                <MetricCard label="Aulas semanais" value={String(schedule.length)} />
+                <MetricCard label="Atividades" value={String(activityCount)} />
+                <MetricCard label="Faltas" value={String(totalAbsences)} />
+            </section>
+
+            <section className="dashboardGrid">
+                <article className="panel dashboardPanel">
+                    <PanelHeader title={nextClass?.isHappening ? 'Aula acontecendo' : 'Proxima aula'} loading={isLoading} onRefresh={workspace.refreshDashboard} />
+                    <div className="nextClassCard">
+                        <div>
+                            <span>{nextClass?.label || 'Horario'}</span>
+                            <strong>{nextClass?.item.subject || 'Nenhuma aula carregada'}</strong>
+                            <p>{nextClass ? `${nextClass.item.start_time} ate ${nextClass.item.end_time}` : 'Atualize para buscar seu horario.'}</p>
+                        </div>
+                        <div className="nextClassTime">{nextClass?.item.start_time || '--:--'}</div>
+                    </div>
+                </article>
+
+                <article className="panel dashboardPanel">
+                    <PanelHeader title="Semana" loading={isLoading} onRefresh={workspace.loadSchedule} />
+                    <div className="weekChart">
+                        {weekMap.map((day) => (
+                            <div className="weekBar" key={day.weekday}>
+                                <div>
+                                    <i style={{ height: `${Math.max(12, (day.items.length / chartMax) * 92)}px` }} />
+                                </div>
+                                <span>{day.short}</span>
+                                <strong>{day.items.length}</strong>
+                            </div>
+                        ))}
+                    </div>
+                </article>
+            </section>
+
+            <section className="dashboardGrid">
+                <article className="panel dashboardPanel">
+                    <PanelHeader title="Notas" loading={isLoading} onRefresh={workspace.loadGrades} />
+                    <div className="gradeHealth">
+                        <div className="gradeRing" style={{ '--grade-progress': `${Math.min(100, Math.max(0, (averageNumber || 0) * 10))}%` } as CSSProperties}>
+                            <strong>{averageNumber === null ? '-' : averageNumber.toFixed(1)}</strong>
+                            <span>geral</span>
+                        </div>
+                        <div className="gradeHealthStats">
+                            <span><strong>{approved}</strong> aprovadas</span>
+                            <span><strong>{grades.length - approved}</strong> em atencao</span>
+                            <span><strong>{grades.length}</strong> lancadas</span>
+                        </div>
+                    </div>
+                </article>
+
+                <article className="panel dashboardPanel">
+                    <PanelHeader title="Pontos de atencao" loading={isLoading} onRefresh={workspace.loadGrades} />
+                    <div className="attentionList">
+                        {weakestGrades.length === 0 ? <EmptyInline text="Nenhuma nota carregada." /> : null}
+                        {weakestGrades.map(({ grade }) => (
+                            <div className="attentionItem" key={`${grade.code}-${grade.subject}`}>
+                                <span>{grade.code}</span>
+                                <strong>{grade.subject}</strong>
+                                <small>MF {grade.final_grade || '-'}</small>
+                            </div>
+                        ))}
+                    </div>
+                </article>
+            </section>
+        </div>
+    );
+}
+
 function ProfilePanel({ loading, onRefresh, profile }: { loading: boolean; onRefresh: () => Promise<void>; profile: Workspace['profile'] }) {
+    if (loading && !profile) return <ProfileSkeleton />;
     if (!profile) return <EmptyState loading={loading} onRefresh={onRefresh} label="Carregar perfil" />;
 
     const contactRows = [
@@ -277,6 +387,8 @@ function SchedulePanel({ loading, onRefresh, schedule }: { loading: boolean; onR
     const weekMap = useMemo(() => buildWeekMap(groupedSchedule), [groupedSchedule]);
     const busiestDay = weekMap.reduce((current, day) => (day.items.length > current.items.length ? day : current), weekMap[0]!);
     const nextClass = useMemo(() => getNextScheduleClass(schedule), [schedule]);
+
+    if (loading && schedule.length === 0) return <ScheduleSkeleton />;
 
     return (
         <div className="screenStack">
@@ -354,10 +466,12 @@ function GradesPanel({
     onChange: Workspace['setGradesInput'];
     onRefresh: () => Promise<void>;
 }) {
+    if (loading && grades.length === 0) return <GradesSkeleton />;
+
     const numericGrades = grades.map((grade) => parseGrade(grade.final_grade)).filter((grade): grade is number => grade !== null);
     const averageNumber = numericGrades.length ? numericGrades.reduce((sum, grade) => sum + grade, 0) / numericGrades.length : null;
     const average = averageNumber === null ? '-' : averageNumber.toFixed(1);
-    const approved = grades.filter((grade) => grade.status.toLowerCase().includes('aprov')).length;
+    const approved = grades.filter((grade) => isApprovedStatus(grade.status)).length;
     const totalAbsences = grades.reduce((sum, grade) => sum + parseAbsences(grade.absences), 0);
     const pending = grades.length - approved;
 
@@ -461,6 +575,8 @@ function LessonPlanPanel({
     const selectedSubject = subjects.find((subject) => subject.code === selectedSubjectCode) || null;
     const availableSubjects = subjects.filter((subject) => subject.available).length;
 
+    if (loading && subjects.length === 0 && items.length === 0) return <LessonPlanSkeleton />;
+
     return (
         <div className="screenStack">
             <section className="metricStrip">
@@ -563,6 +679,82 @@ function EmptyState({ label, loading, onRefresh }: { label: string; loading: boo
 
 function EmptyInline({ text }: { text: string }) {
     return <p className="emptyInline">{text}</p>;
+}
+
+function DashboardSkeleton() {
+    return (
+        <div className="screenStack">
+            <section className="homeHero skeletonBlock skeletonHero" />
+            <section className="dashboardMetricGrid">
+                {Array.from({ length: 4 }).map((_, index) => <div className="metricCard skeletonBlock" key={index} />)}
+            </section>
+            <section className="dashboardGrid">
+                <div className="panel skeletonPanel" />
+                <div className="panel skeletonPanel" />
+            </section>
+        </div>
+    );
+}
+
+function ProfileSkeleton() {
+    return (
+        <div className="screenStack">
+            <section className="profileHero skeletonBlock skeletonHero" />
+            <section className="quickGrid">
+                <div className="quickTile skeletonBlock" />
+                <div className="quickTile skeletonBlock" />
+            </section>
+            <section className="panel">
+                <SkeletonLines count={6} />
+            </section>
+        </div>
+    );
+}
+
+function ScheduleSkeleton() {
+    return (
+        <div className="screenStack">
+            <section className="metricStrip">
+                {Array.from({ length: 3 }).map((_, index) => <div className="metricCard skeletonBlock" key={index} />)}
+            </section>
+            <section className="scheduleHero skeletonBlock skeletonHero" />
+            <section className="panel">
+                <SkeletonLines count={5} />
+            </section>
+        </div>
+    );
+}
+
+function GradesSkeleton() {
+    return (
+        <div className="screenStack">
+            <section className="gradeOverview skeletonBlock skeletonHero" />
+            <section className="panel">
+                <SkeletonLines count={7} />
+            </section>
+        </div>
+    );
+}
+
+function LessonPlanSkeleton() {
+    return (
+        <div className="screenStack">
+            <section className="metricStrip">
+                {Array.from({ length: 3 }).map((_, index) => <div className="metricCard skeletonBlock" key={index} />)}
+            </section>
+            <section className="panel">
+                <SkeletonLines count={6} />
+            </section>
+        </div>
+    );
+}
+
+function SkeletonLines({ count }: { count: number }) {
+    return (
+        <div className="skeletonLines">
+            {Array.from({ length: count }).map((_, index) => <span className="skeletonBlock" key={index} />)}
+        </div>
+    );
 }
 
 function getInitials(name: string): string {
@@ -693,6 +885,11 @@ function getGradeTone(status: string): string {
     if (normalized.includes('aprov')) return 'statusPill--ok';
     if (normalized.includes('reprov')) return 'statusPill--danger';
     return 'statusPill--warn';
+}
+
+function isApprovedStatus(status: string): boolean {
+    const normalized = status.toLowerCase();
+    return normalized.includes('aprov') || normalized === 'ap';
 }
 
 function formatWorkload(workload: string | number): string {

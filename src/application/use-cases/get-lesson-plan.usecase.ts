@@ -1,5 +1,6 @@
 import type { AuthSessionStore } from '@/application/ports/auth-session-store';
 import type { LessonPlanItem } from '@/domain/entities/lesson-plan-item';
+import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
 import type { EcampusRepository } from '@/domain/repositories/ecampus-repository';
 
 export class GetLessonPlanUseCase {
@@ -10,7 +11,7 @@ export class GetLessonPlanUseCase {
 
     async execute(planId: string): Promise<LessonPlanItem[]> {
         const session = this.sessionStore.get();
-        if (!session) throw new Error('Sessao expirada.');
+        if (!session) throw new AuthSessionExpiredError();
         return this.repository.getLessonPlan(session.accessToken, planId);
     }
 }
