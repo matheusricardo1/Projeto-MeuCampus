@@ -37,21 +37,48 @@ export async function createNestApp(): Promise<INestApplication> {
                 return;
             }
 
-            callback(new Error(`Origin ${origin} is not allowed by CORS`), false);
+            callback(null, false);
         },
-        credentials: false
+        credentials: false,
+        methods: ['GET', 'POST', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+        optionsSuccessStatus: 204
     });
 
     return app;
 }
 
 function getAllowedOrigins(): string[] {
-    const rawOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
-    return rawOrigin.split(',').map((origin) => origin.trim()).filter(Boolean);
+    const configuredOrigins = process.env.FRONTEND_ORIGIN || '';
+    const rawOrigins = [...getDefaultAllowedOrigins(), ...configuredOrigins.split(',')];
+
+    return Array.from(new Set(rawOrigins
+        .map((origin) => normalizeOrigin(origin))
+        .filter((origin): origin is string => Boolean(origin))));
+}
+
+function getDefaultAllowedOrigins(): string[] {
+    const productionOrigins = ['https://meucampus.vercel.app'];
+
+    if (process.env.NODE_ENV === 'production') {
+        return productionOrigins;
+    }
+
+    return [
+        ...productionOrigins,
+        'http://localhost:3000',
+        'http://localhost:8081',
+        'http://127.0.0.1:8081'
+    ];
 }
 
 function isAllowedOrigin(origin: string): boolean {
-    return getAllowedOrigins().some((allowedOrigin) => matchesOrigin(origin, allowedOrigin));
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (!normalizedOrigin) {
+        return false;
+    }
+
+    return getAllowedOrigins().some((allowedOrigin) => matchesOrigin(normalizedOrigin, allowedOrigin));
 }
 
 function matchesOrigin(origin: string, allowedOrigin: string): boolean {
@@ -65,4 +92,22 @@ function matchesOrigin(origin: string, allowedOrigin: string): boolean {
 
     const escapedOrigin = allowedOrigin.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
     return new RegExp(`^${escapedOrigin}$`).test(origin);
+}
+
+function normalizeOrigin(value: string): string | null {
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+        return null;
+    }
+
+    if (trimmed === '*') {
+        return trimmed;
+    }
+
+    try {
+        return new URL(trimmed).origin;
+    } catch {
+        return trimmed.replace(/\/+$/, '');
+    }
 }
