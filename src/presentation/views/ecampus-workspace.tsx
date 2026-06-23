@@ -65,7 +65,7 @@ export function EcampusWorkspace() {
     ];
     const activeTab = tabs.find((tab) => tab.id === workspace.activeTab) || tabs[0]!;
     const ActiveIcon = activeTab.icon;
-    const displayName = workspace.profile?.personal.full_name || 'Painel academico';
+    const displayName = workspace.profile?.personal.full_name || 'Meu Campus';
 
     return (
         <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -79,7 +79,7 @@ export function EcampusWorkspace() {
                                 <Text style={styles.avatarBadgeText}>{getInitials(displayName)}</Text>
                             </View>
                             <View style={styles.headerTextStack}>
-                                <Text style={styles.eyebrow}>UFAM Academics</Text>
+                                <Text style={styles.eyebrow}>Meu Campus</Text>
                                 <Text numberOfLines={1} style={styles.headerTitle}>{activeTab.label}</Text>
                                 <Text numberOfLines={1} style={styles.headerSubtitle}>{displayName}</Text>
                             </View>
@@ -211,7 +211,7 @@ function BootScreen() {
         <SafeAreaView style={styles.bootScreen}>
             <LinearGradient colors={gradients.brand} style={[styles.bootCard, { maxWidth: layout.isTablet ? 560 : 420 }]}>
                 <LockKeyhole color={colors.brandMuted} size={28} />
-                <Text style={styles.bootTitle}>UFAM Academics</Text>
+                <Text style={styles.bootTitle}>Meu Campus</Text>
                             <Text style={styles.bootText}>Carregando dados academicos...</Text>
                 <ActivityIndicator color={colors.brandMuted} />
             </LinearGradient>
@@ -249,7 +249,7 @@ function LoginScreen({ workspace }: { workspace: Workspace }) {
                             </View>
                             <View style={styles.loginHeaderText}>
                                 <Text style={styles.eyebrow}>Acesso eCampus</Text>
-                                <Text style={styles.loginTitle}>UFAM Academics</Text>
+                                <Text style={styles.loginTitle}>Meu Campus</Text>
                                 <Text style={styles.loginSubtitle}>Acesse suas informacoes academicas com seguranca.</Text>
                             </View>
 

@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "UFAM Academics",
-    "slug": "ufam-academics",
+    "name": "Meu Campus",
+    "slug": "meu-campus",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "scheme": "ufamacademics",
+    "scheme": "meucampus",
     "icon": "./assets/images/icon.png",
     "splash": {
       "image": "./assets/images/splash-icon.png",
@@ -16,7 +16,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "android": {
-      "package": "br.edu.ufam.academics",
+      "package": "br.edu.ufam.meucampus",
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -24,7 +24,7 @@
       }
     },
     "ios": {
-      "bundleIdentifier": "br.edu.ufam.academics",
+      "bundleIdentifier": "br.edu.ufam.meucampus",
       "supportsTablet": true
     }
   }

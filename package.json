@@ -11,7 +11,8 @@
     "ios": "cross-env EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 expo start --ios",
     "web": "cross-env EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 expo start --web",
     "build:web": "expo export --platform web --output-dir web-build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "audit": "npm audit --audit-level=moderate"
   },
   "engines": {
     "node": ">=20.19.4"

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AuthSession } from '@/domain/entities/auth-session';
 import type { AuthSessionStore } from '@/application/ports/auth-session-store';
 
-const STORAGE_KEY = 'ufam-academics.ecampus.session';
+const STORAGE_KEY = 'meu-campus.ecampus.session';
 
 export class AsyncAuthSessionStore implements AuthSessionStore {
     async get(): Promise<AuthSession | null> {

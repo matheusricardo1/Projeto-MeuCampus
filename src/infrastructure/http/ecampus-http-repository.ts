@@ -9,11 +9,15 @@ import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.er
 import type { EcampusRepository, LoginCredentials } from '@/domain/repositories/ecampus-repository';
 
 export class EcampusHttpRepository implements EcampusRepository {
+    private readonly baseUrl: string;
+
     constructor(
-        private readonly baseUrl: string = process.env.EXPO_PUBLIC_ECAMPUS_API_URL
+        baseUrl: string = process.env.EXPO_PUBLIC_ECAMPUS_API_URL
             || process.env.NEXT_PUBLIC_ECAMPUS_API_URL
             || (Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://127.0.0.1:3001')
-    ) {}
+    ) {
+        this.baseUrl = this.normalizeBaseUrl(baseUrl);
+    }
 
     login(credentials: LoginCredentials): Promise<AuthSession> {
         return this.request<AuthSession>('/ecampus/login', {
@@ -88,5 +92,17 @@ export class EcampusHttpRepository implements EcampusRepository {
         }
 
         return payload as T;
+    }
+
+    private normalizeBaseUrl(baseUrl: string): string {
+        const parsedUrl = new URL(baseUrl);
+        const isLocalhost = ['localhost', '127.0.0.1', '10.0.2.2'].includes(parsedUrl.hostname);
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        if (isProduction && parsedUrl.protocol !== 'https:' && !isLocalhost) {
+            throw new Error('A API precisa usar HTTPS em producao.');
+        }
+
+        return baseUrl.replace(/\/+$/, '');
     }
 }

@@ -1,4 +1,4 @@
-# UFAM Academics Mobile
+# Meu Campus Mobile
 
 Aplicativo React Native com Expo para consumir o backend do eCampus.
 
@@ -29,6 +29,7 @@ npm run ios
 npm run web
 npm run build:web
 npm run typecheck
+npm audit
 ```
 
 Os scripts locais usam `EXPO_OFFLINE=1` para evitar chamadas desnecessarias do Expo CLI para a API da Expo durante o desenvolvimento. Use `npm run start:online` quando precisar conectar com conta Expo/EAS.
