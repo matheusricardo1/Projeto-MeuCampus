@@ -2,7 +2,6 @@ node_modules
 dist
 .env
 *.log
-saved_sessions.json
 .git
 .codex-api.log
 .codex-api.err.log

@@ -64,7 +64,6 @@ export function EcampusWorkspace() {
         { id: 'lessonPlan' as const, label: 'Plano', icon: ClipboardList, action: workspace.loadLessonPlanSubjects }
     ];
     const activeTab = tabs.find((tab) => tab.id === workspace.activeTab) || tabs[0]!;
-    const ActiveIcon = activeTab.icon;
     const displayName = workspace.profile?.personal.full_name || 'Meu Campus';
 
     return (
@@ -85,9 +84,14 @@ export function EcampusWorkspace() {
                             </View>
                         </View>
 
-                        <Pressable onPress={() => void workspace.logout()} style={styles.iconButton}>
-                            <LogOut color={colors.text} size={18} />
-                        </Pressable>
+                        <View style={styles.headerActions}>
+                            <Pressable onPress={() => void activeTab.action()} style={styles.iconButton}>
+                                <RefreshCw color={colors.brand} size={18} />
+                            </Pressable>
+                            <Pressable onPress={() => void workspace.logout()} style={styles.iconButton}>
+                                <LogOut color={colors.text} size={18} />
+                            </Pressable>
+                        </View>
                     </View>
 
                     {layout.isTablet ? (
@@ -123,33 +127,6 @@ export function EcampusWorkspace() {
                     showsVerticalScrollIndicator={false}
                 >
                     <View style={[styles.contentShell, { maxWidth: layout.contentMaxWidth }]}>
-                        <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.heroCard, layout.isTablet ? styles.heroCardWide : null]}>
-                            <View style={styles.heroContent}>
-                                <View style={styles.heroTopRow}>
-                                    <View style={styles.heroLabel}>
-                                        <ActiveIcon color={colors.brandMuted} size={18} />
-                                        <Text style={styles.heroLabelText}>{activeTab.label}</Text>
-                                    </View>
-                                    <Pressable onPress={() => void activeTab.action()} style={styles.heroRefresh}>
-                                        <RefreshCw color={colors.inverseText} size={16} />
-                                        <Text style={styles.heroRefreshText}>Atualizar</Text>
-                                    </Pressable>
-                                </View>
-                                <Text numberOfLines={3} style={styles.heroTitle}>{workspace.profile?.academic.course || 'eCampus'}</Text>
-                                <Text style={styles.heroSubtitle}>
-                                    {workspace.profile?.academic.enrollment_number
-                                        ? `Matricula ${workspace.profile.academic.enrollment_number}`
-                                        : 'Acompanhe suas informacoes academicas em um painel objetivo.'}
-                                </Text>
-                            </View>
-
-                            <View style={[styles.heroMetaGrid, layout.isTablet ? styles.heroMetaGridWide : null]}>
-                                <HeroMetaCard label="Aluno" value={workspace.profile?.personal.full_name || 'Sessao ativa'} />
-                                <HeroMetaCard label="Periodo" value={workspace.gradesInput.year && workspace.gradesInput.period ? `${workspace.gradesInput.year}.${workspace.gradesInput.period}` : 'Atual'} />
-                                <HeroMetaCard label="Visao" value={activeTab.label} />
-                            </View>
-                        </LinearGradient>
-
                         {workspace.error ? (
                             <View style={styles.errorBanner}>
                                 <Text style={styles.errorText}>{workspace.error}</Text>
@@ -850,15 +827,6 @@ function StatPill({ label, value }: { label: string; value: string }) {
     );
 }
 
-function HeroMetaCard({ label, value }: { label: string; value: string }) {
-    return (
-        <View style={styles.heroMetaCard}>
-            <Text style={styles.heroMetaLabel}>{label}</Text>
-            <Text numberOfLines={2} style={styles.heroMetaValue}>{value}</Text>
-        </View>
-    );
-}
-
 function EmptyState({ label, loading, onRefresh }: { label: string; loading: boolean; onRefresh: () => Promise<void> }) {
     return (
         <View style={styles.panel}>
@@ -1361,16 +1329,24 @@ const styles = StyleSheet.create({
     },
     headerShell: {
         alignSelf: 'center',
-        gap: spacing[3],
+        gap: spacing[2],
         paddingHorizontal: spacing[5],
         paddingTop: spacing[3],
         width: '100%'
     },
     header: {
+        ...shadows.surface,
         alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.md,
+        borderWidth: 1,
         flexDirection: 'row',
+        gap: spacing[3],
         justifyContent: 'space-between',
-        paddingBottom: 4
+        minHeight: 68,
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[2]
     },
     headerIdentity: {
         alignItems: 'center',
@@ -1381,16 +1357,16 @@ const styles = StyleSheet.create({
     },
     avatarBadge: {
         alignItems: 'center',
-        backgroundColor: colors.brandMuted,
+        backgroundColor: colors.brand,
         borderRadius: radii.md,
-        height: 48,
+        height: 44,
         justifyContent: 'center',
-        width: 48
+        width: 44
     },
     avatarBadgeText: {
-        color: colors.brand,
+        color: colors.inverseText,
         fontFamily: fonts.medium,
-        fontSize: 18,
+        fontSize: 16,
         fontWeight: '700'
     },
     headerTextStack: {
@@ -1400,17 +1376,25 @@ const styles = StyleSheet.create({
     headerTitle: {
         color: colors.text,
         fontFamily: fonts.medium,
-        fontSize: 18,
-        fontWeight: '700'
+        fontSize: 20,
+        fontWeight: '800',
+        lineHeight: 24
     },
     headerSubtitle: {
-        color: colors.textMuted,
-        fontFamily: fonts.sans,
-        fontSize: 13
+        color: colors.text,
+        fontFamily: fonts.medium,
+        fontSize: 13,
+        fontWeight: '600',
+        lineHeight: 18
+    },
+    headerActions: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing[2]
     },
     iconButton: {
         alignItems: 'center',
-        backgroundColor: colors.surface,
+        backgroundColor: colors.surfaceSubtle,
         borderRadius: radii.md,
         borderWidth: 1,
         borderColor: colors.border,
@@ -1460,94 +1444,6 @@ const styles = StyleSheet.create({
         alignSelf: 'center',
         gap: spacing[4],
         width: '100%'
-    },
-    heroCard: {
-        borderRadius: radii.md,
-        gap: spacing[5],
-        overflow: 'hidden',
-        padding: spacing[6]
-    },
-    heroCardWide: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'space-between'
-    },
-    heroContent: {
-        flex: 1,
-        gap: spacing[3]
-    },
-    heroTopRow: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: spacing[3],
-        justifyContent: 'space-between'
-    },
-    heroLabel: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        gap: spacing[2]
-    },
-    heroLabelText: {
-        color: colors.brandMuted,
-        fontFamily: fonts.medium,
-        fontSize: 13,
-        fontWeight: '700'
-    },
-    heroRefresh: {
-        alignItems: 'center',
-        backgroundColor: colors.overlayOnBrand,
-        borderRadius: radii.md,
-        flexDirection: 'row',
-        gap: spacing[2],
-        paddingHorizontal: spacing[4],
-        paddingVertical: spacing[2]
-    },
-    heroRefreshText: {
-        color: colors.inverseText,
-        fontFamily: fonts.medium,
-        fontSize: 13,
-        fontWeight: '700'
-    },
-    heroTitle: {
-        color: colors.inverseText,
-        fontFamily: fonts.medium,
-        fontSize: 26,
-        fontWeight: '700',
-        lineHeight: 32
-    },
-    heroSubtitle: {
-        color: colors.brandMuted,
-        fontFamily: fonts.sans,
-        fontSize: 14,
-        lineHeight: 21
-    },
-    heroMetaGrid: {
-        gap: spacing[2]
-    },
-    heroMetaGridWide: {
-        marginLeft: 20,
-        width: 280
-    },
-    heroMetaCard: {
-        backgroundColor: colors.overlayOnBrand,
-        borderColor: colors.overlayBorderOnBrand,
-        borderRadius: radii.md,
-        borderWidth: 1,
-        gap: spacing[2],
-        padding: spacing[3]
-    },
-    heroMetaLabel: {
-        ...typography.label,
-        color: colors.brandMuted,
-        textTransform: 'uppercase'
-    },
-    heroMetaValue: {
-        color: colors.inverseText,
-        fontFamily: fonts.medium,
-        fontSize: 14,
-        fontWeight: '600',
-        lineHeight: 20
     },
     errorBanner: {
         backgroundColor: colors.dangerSubtle,

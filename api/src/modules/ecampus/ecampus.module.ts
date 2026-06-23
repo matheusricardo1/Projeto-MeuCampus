@@ -9,7 +9,7 @@ import { LogoutEcampusUseCase } from '@ecampus/application/use-cases/logout-ecam
 import { EcampusAuthService } from '@ecampus/infrastructure/ecampus/ecampus-auth-service';
 import { EcampusHttpRepository } from '@ecampus/infrastructure/ecampus/ecampus-http.repository';
 import { JwtAccessTokenService } from '@ecampus/infrastructure/security/jwt-access-token-service';
-import { FileSessionStore } from '@ecampus/infrastructure/storage/file-session-store';
+import { MemorySessionStore } from '@ecampus/infrastructure/storage/memory-session-store';
 import { EcampusController } from '@ecampus/presentation/http/ecampus.controller';
 import { EcampusJwtGuard } from '@ecampus/presentation/http/guards/ecampus-jwt.guard';
 
@@ -17,14 +17,14 @@ import { EcampusJwtGuard } from '@ecampus/presentation/http/guards/ecampus-jwt.g
     controllers: [EcampusController],
     providers: [
         JwtAccessTokenService,
-        FileSessionStore,
+        MemorySessionStore,
         EcampusJwtGuard,
         {
             provide: EcampusAuthService,
-            useFactory: (sessionStore: FileSessionStore) => {
+            useFactory: (sessionStore: MemorySessionStore) => {
                 return new EcampusAuthService(sessionStore);
             },
-            inject: [FileSessionStore]
+            inject: [MemorySessionStore]
         },
         {
             provide: EcampusHttpRepository,
