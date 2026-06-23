@@ -8,13 +8,15 @@ import type { StudentProfile } from '@/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
 import type { EcampusRepository, LoginCredentials } from '@/domain/repositories/ecampus-repository';
 
+const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://127.0.0.1:3001';
+
 export class EcampusHttpRepository implements EcampusRepository {
     private readonly baseUrl: string;
 
     constructor(
         baseUrl: string = process.env.EXPO_PUBLIC_ECAMPUS_API_URL
             || process.env.NEXT_PUBLIC_ECAMPUS_API_URL
-            || (Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://127.0.0.1:3001')
+            || DEFAULT_API_BASE_URL
     ) {
         this.baseUrl = this.normalizeBaseUrl(baseUrl);
     }
@@ -71,6 +73,8 @@ export class EcampusHttpRepository implements EcampusRepository {
     }
 
     private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+        this.assertSecureBaseUrl();
+
         const response = await fetch(`${this.baseUrl}${path}`, {
             ...init,
             headers: {
@@ -95,14 +99,20 @@ export class EcampusHttpRepository implements EcampusRepository {
     }
 
     private normalizeBaseUrl(baseUrl: string): string {
-        const parsedUrl = new URL(baseUrl);
+        try {
+            return new URL(baseUrl).toString().replace(/\/+$/, '');
+        } catch {
+            return DEFAULT_API_BASE_URL;
+        }
+    }
+
+    private assertSecureBaseUrl(): void {
+        const parsedUrl = new URL(this.baseUrl);
         const isLocalhost = ['localhost', '127.0.0.1', '10.0.2.2'].includes(parsedUrl.hostname);
         const isProduction = process.env.NODE_ENV === 'production';
 
         if (isProduction && parsedUrl.protocol !== 'https:' && !isLocalhost) {
             throw new Error('A API precisa usar HTTPS em producao.');
         }
-
-        return baseUrl.replace(/\/+$/, '');
     }
 }

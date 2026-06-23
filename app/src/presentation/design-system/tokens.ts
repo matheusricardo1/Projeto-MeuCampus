@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export const colors = {
     canvas: '#F6F7F9',
     surface: '#FFFFFF',
@@ -106,4 +108,3 @@ export const shadows = {
         shadowRadius: 12
     }
 } as const;
-import { Platform } from 'react-native';
