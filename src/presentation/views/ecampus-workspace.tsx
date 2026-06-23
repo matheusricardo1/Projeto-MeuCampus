@@ -10,31 +10,37 @@ import {
     StyleSheet,
     Text,
     TextInput,
+    useWindowDimensions,
     View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-    BookOpen,
-    CalendarDays,
+    Calendar,
+    ChartColumn,
     Clock3,
+    ClipboardList,
     Eye,
     EyeOff,
-    GraduationCap,
-    LayoutDashboard,
+    IdCard,
+    KeyRound,
+    Landmark,
+    LockKeyhole,
     LogOut,
     Mail,
     Phone,
-    RefreshCw,
-    ShieldCheck,
-    UserRound
+    RefreshCw
 } from 'lucide-react-native';
+import { colors, fonts, gradients, radii, shadows, spacing, typography } from '@/presentation/design-system';
 import { useEcampusWorkspace } from '@/presentation/hooks/use-ecampus-workspace';
 
 type Workspace = ReturnType<typeof useEcampusWorkspace>;
+type ResponsiveLayout = ReturnType<typeof getResponsiveLayout>;
 
 export function EcampusWorkspace() {
     const workspace = useEcampusWorkspace();
     const didRestoreSession = useRef(false);
+    const layout = useResponsiveLayout();
+    const insets = useSafeAreaInsets();
 
     useEffect(() => {
         if (didRestoreSession.current) return;
@@ -51,11 +57,11 @@ export function EcampusWorkspace() {
     }
 
     const tabs = [
-        { id: 'home' as const, label: 'Inicio', icon: LayoutDashboard, action: workspace.refreshDashboard },
-        { id: 'profile' as const, label: 'Perfil', icon: UserRound, action: workspace.loadProfile },
-        { id: 'schedule' as const, label: 'Horario', icon: CalendarDays, action: workspace.loadSchedule },
-        { id: 'grades' as const, label: 'Notas', icon: GraduationCap, action: workspace.loadGrades },
-        { id: 'lessonPlan' as const, label: 'Plano', icon: BookOpen, action: workspace.loadLessonPlanSubjects }
+        { id: 'home' as const, label: 'Inicio', icon: Landmark, action: workspace.refreshDashboard },
+        { id: 'profile' as const, label: 'Perfil', icon: IdCard, action: workspace.loadProfile },
+        { id: 'schedule' as const, label: 'Horario', icon: Calendar, action: workspace.loadSchedule },
+        { id: 'grades' as const, label: 'Notas', icon: ChartColumn, action: workspace.loadGrades },
+        { id: 'lessonPlan' as const, label: 'Plano', icon: ClipboardList, action: workspace.loadLessonPlanSubjects }
     ];
     const activeTab = tabs.find((tab) => tab.id === workspace.activeTab) || tabs[0]!;
     const ActiveIcon = activeTab.icon;
@@ -63,105 +69,151 @@ export function EcampusWorkspace() {
 
     return (
         <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-            <LinearGradient colors={['#f7f1e6', '#eef6f1', '#e5efe8']} style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={gradients.app} style={StyleSheet.absoluteFill} />
 
-            <View style={styles.header}>
-                <View style={styles.headerIdentity}>
-                    <View style={styles.avatarBadge}>
-                        <Text style={styles.avatarBadgeText}>{getInitials(displayName)}</Text>
+            <View style={[styles.appShell, layout.isDesktop ? styles.appShellDesktop : null]}>
+                <View style={[styles.headerShell, { maxWidth: layout.contentMaxWidth, paddingHorizontal: layout.pagePadding }]}>
+                    <View style={styles.header}>
+                        <View style={styles.headerIdentity}>
+                            <View style={styles.avatarBadge}>
+                                <Text style={styles.avatarBadgeText}>{getInitials(displayName)}</Text>
+                            </View>
+                            <View style={styles.headerTextStack}>
+                                <Text style={styles.eyebrow}>UFAM Academics</Text>
+                                <Text numberOfLines={1} style={styles.headerTitle}>{activeTab.label}</Text>
+                                <Text numberOfLines={1} style={styles.headerSubtitle}>{displayName}</Text>
+                            </View>
+                        </View>
+
+                        <Pressable onPress={() => void workspace.logout()} style={styles.iconButton}>
+                            <LogOut color={colors.text} size={18} />
+                        </Pressable>
                     </View>
-                    <View style={styles.headerTextStack}>
-                        <Text style={styles.eyebrow}>UFAM Academics</Text>
-                        <Text style={styles.headerTitle}>{activeTab.label}</Text>
-                        <Text numberOfLines={1} style={styles.headerSubtitle}>{displayName}</Text>
-                    </View>
+
+                    {layout.isTablet ? (
+                        <View style={styles.desktopNav}>
+                            {tabs.map((tab) => {
+                                const Icon = tab.icon;
+                                const active = workspace.activeTab === tab.id;
+
+                                return (
+                                    <Pressable
+                                        key={tab.id}
+                                        onPress={() => workspace.openTab(tab.id)}
+                                        style={[styles.desktopNavItem, active ? styles.desktopNavItemActive : null]}
+                                    >
+                                        <Icon color={active ? colors.inverseText : colors.textMuted} size={18} />
+                                        <Text numberOfLines={1} style={[styles.desktopNavText, active ? styles.desktopNavTextActive : null]}>{tab.label}</Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
+                    ) : null}
                 </View>
 
-                <Pressable onPress={() => void workspace.logout()} style={styles.iconButton}>
-                    <LogOut color="#16352f" size={18} />
-                </Pressable>
-            </View>
+                <ScrollView
+                    contentContainerStyle={[
+                        styles.content,
+                        {
+                            paddingBottom: layout.showBottomNav ? 112 + insets.bottom : 40,
+                            paddingHorizontal: layout.pagePadding
+                        }
+                    ]}
+                    refreshControl={<RefreshControl refreshing={workspace.isLoading} onRefresh={() => void activeTab.action()} tintColor={colors.brand} />}
+                    showsVerticalScrollIndicator={false}
+                >
+                    <View style={[styles.contentShell, { maxWidth: layout.contentMaxWidth }]}>
+                        <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.heroCard, layout.isTablet ? styles.heroCardWide : null]}>
+                            <View style={styles.heroContent}>
+                                <View style={styles.heroTopRow}>
+                                    <View style={styles.heroLabel}>
+                                        <ActiveIcon color={colors.brandMuted} size={18} />
+                                        <Text style={styles.heroLabelText}>{activeTab.label}</Text>
+                                    </View>
+                                    <Pressable onPress={() => void activeTab.action()} style={styles.heroRefresh}>
+                                        <RefreshCw color={colors.inverseText} size={16} />
+                                        <Text style={styles.heroRefreshText}>Atualizar</Text>
+                                    </Pressable>
+                                </View>
+                                <Text numberOfLines={3} style={styles.heroTitle}>{workspace.profile?.academic.course || 'eCampus'}</Text>
+                                <Text style={styles.heroSubtitle}>
+                                    {workspace.profile?.academic.enrollment_number
+                                        ? `Matricula ${workspace.profile.academic.enrollment_number}`
+                                        : 'Acompanhe suas informacoes academicas em um painel objetivo.'}
+                                </Text>
+                            </View>
 
-            <ScrollView
-                contentContainerStyle={styles.content}
-                refreshControl={<RefreshControl refreshing={workspace.isLoading} onRefresh={() => void activeTab.action()} tintColor="#0d7b5d" />}
-                showsVerticalScrollIndicator={false}
-            >
-                <LinearGradient colors={['#10372f', '#165548']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroCard}>
-                    <View style={styles.heroTopRow}>
-                        <View style={styles.heroLabel}>
-                            <ActiveIcon color="#b7ead9" size={18} />
-                            <Text style={styles.heroLabelText}>{activeTab.label}</Text>
+                            <View style={[styles.heroMetaGrid, layout.isTablet ? styles.heroMetaGridWide : null]}>
+                                <HeroMetaCard label="Aluno" value={workspace.profile?.personal.full_name || 'Sessao ativa'} />
+                                <HeroMetaCard label="Periodo" value={workspace.gradesInput.year && workspace.gradesInput.period ? `${workspace.gradesInput.year}.${workspace.gradesInput.period}` : 'Atual'} />
+                                <HeroMetaCard label="Visao" value={activeTab.label} />
+                            </View>
+                        </LinearGradient>
+
+                        {workspace.error ? (
+                            <View style={styles.errorBanner}>
+                                <Text style={styles.errorText}>{workspace.error}</Text>
+                            </View>
+                        ) : null}
+
+                        {workspace.activeTab === 'home' ? <DashboardPanel workspace={workspace} /> : null}
+                        {workspace.activeTab === 'profile' ? <ProfilePanel profile={workspace.profile} onRefresh={workspace.loadProfile} loading={workspace.isLoading} /> : null}
+                        {workspace.activeTab === 'schedule' ? <SchedulePanel schedule={workspace.schedule} onRefresh={workspace.loadSchedule} loading={workspace.isLoading} /> : null}
+                        {workspace.activeTab === 'grades' ? (
+                            <GradesPanel
+                                grades={workspace.grades}
+                                input={workspace.gradesInput}
+                                loading={workspace.isLoading}
+                                onChange={workspace.setGradesInput}
+                                onRefresh={workspace.loadGrades}
+                            />
+                        ) : null}
+                        {workspace.activeTab === 'lessonPlan' ? (
+                            <LessonPlanPanel
+                                items={workspace.lessonPlan}
+                                loading={workspace.isLoading}
+                                onChangeSubjectCode={workspace.changeLessonPlanSubject}
+                                onRefresh={workspace.loadLessonPlan}
+                                onRefreshSubjects={workspace.loadLessonPlanSubjects}
+                                selectedSubjectCode={workspace.selectedLessonPlanSubjectCode}
+                                subjects={workspace.lessonPlanSubjects}
+                            />
+                        ) : null}
+                    </View>
+                </ScrollView>
+
+                {layout.showBottomNav ? (
+                    <View style={[styles.bottomNavShell, { bottom: 12 + insets.bottom, left: layout.pagePadding, right: layout.pagePadding }]}>
+                        <View style={styles.bottomNav}>
+                            {tabs.map((tab) => {
+                                const Icon = tab.icon;
+                                const active = workspace.activeTab === tab.id;
+
+                                return (
+                                    <Pressable key={tab.id} onPress={() => workspace.openTab(tab.id)} style={[styles.navItem, active ? styles.navItemActive : null]}>
+                                        <Icon color={active ? colors.brand : colors.textMuted} size={20} />
+                                        <Text numberOfLines={1} style={[styles.navText, active ? styles.navTextActive : null]}>{tab.label}</Text>
+                                    </Pressable>
+                                );
+                            })}
                         </View>
-                        <Pressable onPress={() => void activeTab.action()} style={styles.heroRefresh}>
-                            <RefreshCw color="#fff" size={16} />
-                            <Text style={styles.heroRefreshText}>Atualizar</Text>
-                        </Pressable>
-                    </View>
-                    <Text style={styles.heroTitle}>{workspace.profile?.academic.course || 'eCampus'}</Text>
-                    <Text style={styles.heroSubtitle}>
-                        {workspace.profile?.academic.enrollment_number
-                            ? `Matricula ${workspace.profile.academic.enrollment_number}`
-                            : 'Dados academicos'}
-                    </Text>
-                </LinearGradient>
-
-                {workspace.error ? (
-                    <View style={styles.errorBanner}>
-                        <Text style={styles.errorText}>{workspace.error}</Text>
                     </View>
                 ) : null}
-
-                {workspace.activeTab === 'home' ? <DashboardPanel workspace={workspace} /> : null}
-                {workspace.activeTab === 'profile' ? <ProfilePanel profile={workspace.profile} onRefresh={workspace.loadProfile} loading={workspace.isLoading} /> : null}
-                {workspace.activeTab === 'schedule' ? <SchedulePanel schedule={workspace.schedule} onRefresh={workspace.loadSchedule} loading={workspace.isLoading} /> : null}
-                {workspace.activeTab === 'grades' ? (
-                    <GradesPanel
-                        grades={workspace.grades}
-                        input={workspace.gradesInput}
-                        loading={workspace.isLoading}
-                        onChange={workspace.setGradesInput}
-                        onRefresh={workspace.loadGrades}
-                    />
-                ) : null}
-                {workspace.activeTab === 'lessonPlan' ? (
-                    <LessonPlanPanel
-                        items={workspace.lessonPlan}
-                        loading={workspace.isLoading}
-                        onChangeSubjectCode={workspace.changeLessonPlanSubject}
-                        onRefresh={workspace.loadLessonPlan}
-                        onRefreshSubjects={workspace.loadLessonPlanSubjects}
-                        selectedSubjectCode={workspace.selectedLessonPlanSubjectCode}
-                        subjects={workspace.lessonPlanSubjects}
-                    />
-                ) : null}
-            </ScrollView>
-
-            <View style={styles.bottomNav}>
-                {tabs.map((tab) => {
-                    const Icon = tab.icon;
-                    const active = workspace.activeTab === tab.id;
-
-                    return (
-                        <Pressable key={tab.id} onPress={() => workspace.openTab(tab.id)} style={[styles.navItem, active ? styles.navItemActive : null]}>
-                            <Icon color={active ? '#0d7b5d' : '#607670'} size={20} />
-                            <Text style={[styles.navText, active ? styles.navTextActive : null]}>{tab.label}</Text>
-                        </Pressable>
-                    );
-                })}
             </View>
         </SafeAreaView>
     );
 }
 
 function BootScreen() {
+    const layout = useResponsiveLayout();
+
     return (
         <SafeAreaView style={styles.bootScreen}>
-            <LinearGradient colors={['#10372f', '#165548']} style={styles.bootCard}>
-                <ShieldCheck color="#d6f4e9" size={28} />
+            <LinearGradient colors={gradients.brand} style={[styles.bootCard, { maxWidth: layout.isTablet ? 560 : 420 }]}>
+                <LockKeyhole color={colors.brandMuted} size={28} />
                 <Text style={styles.bootTitle}>UFAM Academics</Text>
-                <Text style={styles.bootText}>Preparando seu espaco academico...</Text>
-                <ActivityIndicator color="#d6f4e9" />
+                            <Text style={styles.bootText}>Carregando dados academicos...</Text>
+                <ActivityIndicator color={colors.brandMuted} />
             </LinearGradient>
         </SafeAreaView>
     );
@@ -171,78 +223,104 @@ function LoginScreen({ workspace }: { workspace: Workspace }) {
     const [user, setUser] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const layout = useResponsiveLayout();
+    const insets = useSafeAreaInsets();
 
     return (
         <SafeAreaView style={styles.loginScreen}>
-            <LinearGradient colors={['#f7f1e6', '#eef6f1', '#e5efe8']} style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={gradients.app} style={StyleSheet.absoluteFill} />
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.loginContainer}>
-                <View style={styles.loginCard}>
-                    <LinearGradient colors={['#10372f', '#165548']} style={styles.loginHeader}>
-                        <View style={styles.loginMark}>
-                            <ShieldCheck color="#d6f4e9" size={28} />
-                        </View>
-                        <View style={styles.loginHeaderText}>
-                            <Text style={styles.eyebrow}>Acesso eCampus</Text>
-                            <Text style={styles.loginTitle}>UFAM Academics</Text>
-                            <Text style={styles.loginSubtitle}>Entre com sua conta institucional</Text>
-                        </View>
-                    </LinearGradient>
+                <ScrollView
+                    contentContainerStyle={[
+                        styles.loginScrollContent,
+                        {
+                            paddingBottom: Math.max(20, insets.bottom + 20),
+                            paddingHorizontal: layout.pagePadding,
+                            paddingTop: Math.max(20, insets.top + 20)
+                        }
+                    ]}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    <View style={[styles.loginCard, layout.isTablet ? styles.loginCardWide : null, { maxWidth: layout.loginMaxWidth }]}>
+                        <LinearGradient colors={gradients.brand} style={[styles.loginShowcase, layout.isTablet ? styles.loginShowcaseWide : null]}>
+                            <View style={styles.loginMark}>
+                                <LockKeyhole color={colors.brandMuted} size={32} />
+                            </View>
+                            <View style={styles.loginHeaderText}>
+                                <Text style={styles.eyebrow}>Acesso eCampus</Text>
+                                <Text style={styles.loginTitle}>UFAM Academics</Text>
+                                <Text style={styles.loginSubtitle}>Acesse suas informacoes academicas com seguranca.</Text>
+                            </View>
 
-                    <View style={styles.loginForm}>
-                        <Field label="CPF">
-                            <TextInput
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                                inputMode="numeric"
-                                maxLength={14}
-                                onChangeText={(value) => setUser(formatCpf(value))}
-                                placeholder="000.000.000-00"
-                                placeholderTextColor="#7b8b85"
-                                style={styles.textInput}
-                                value={user}
-                            />
-                        </Field>
+                            <View style={styles.loginTrustCard}>
+                                <Text style={styles.loginFeatureLabel}>Privacidade e seguranca</Text>
+                                <Text style={styles.loginFeatureValue}>Sua senha nao fica salva. Ela e usada apenas para autenticar no eCampus.</Text>
+                            </View>
+                        </LinearGradient>
 
-                        <Field label="Senha">
-                            <View style={styles.passwordWrapper}>
+                        <View style={[styles.loginForm, layout.isTablet ? styles.loginFormWide : null]}>
+                            <View style={styles.loginFormHeader}>
+                                <Text style={styles.loginFormTitle}>Entrar</Text>
+                                <Text style={styles.loginFormText}>Use sua conta institucional para acessar o painel.</Text>
+                            </View>
+
+                            <Field label="CPF">
                                 <TextInput
                                     autoCapitalize="none"
                                     autoCorrect={false}
-                                    onChangeText={setPassword}
-                                    placeholder="Sua senha"
-                                    placeholderTextColor="#7b8b85"
-                                    secureTextEntry={!showPassword}
-                                    style={[styles.textInput, styles.passwordInput]}
-                                    value={password}
+                                    inputMode="numeric"
+                                    maxLength={14}
+                                    onChangeText={(value) => setUser(formatCpf(value))}
+                                    placeholder="000.000.000-00"
+                                    placeholderTextColor={colors.textSubtle}
+                                    style={styles.textInput}
+                                    value={user}
                                 />
-                                <Pressable onPress={() => setShowPassword((current) => !current)} style={styles.passwordToggle}>
-                                    {showPassword ? <EyeOff color="#5e726b" size={18} /> : <Eye color="#5e726b" size={18} />}
-                                </Pressable>
-                            </View>
-                        </Field>
+                            </Field>
 
-                        {workspace.error ? (
-                            <View style={styles.errorBanner}>
-                                <Text style={styles.errorText}>{workspace.error}</Text>
-                            </View>
-                        ) : null}
+                            <Field label="Senha">
+                                <View style={styles.passwordWrapper}>
+                                    <TextInput
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                        onChangeText={setPassword}
+                                        placeholder="Sua senha"
+                                        placeholderTextColor={colors.textSubtle}
+                                        secureTextEntry={!showPassword}
+                                        style={[styles.textInput, styles.passwordInput]}
+                                        value={password}
+                                    />
+                                    <Pressable onPress={() => setShowPassword((current) => !current)} style={styles.passwordToggle}>
+                                        {showPassword ? <EyeOff color={colors.textMuted} size={18} /> : <Eye color={colors.textMuted} size={18} />}
+                                    </Pressable>
+                                </View>
+                            </Field>
 
-                        <Pressable
-                            disabled={workspace.isLoading}
-                            onPress={() => void workspace.login({ password, user: onlyDigits(user) })}
-                            style={styles.primaryButton}
-                        >
-                            {workspace.isLoading ? <ActivityIndicator color="#fff" /> : <ShieldCheck color="#fff" size={18} />}
-                            <Text style={styles.primaryButtonText}>{workspace.isLoading ? 'Entrando...' : 'Entrar'}</Text>
-                        </Pressable>
+                            {workspace.error ? (
+                                <View style={styles.errorBanner}>
+                                    <Text style={styles.errorText}>{workspace.error}</Text>
+                                </View>
+                            ) : null}
+
+                            <Pressable
+                                disabled={workspace.isLoading}
+                                onPress={() => void workspace.login({ password, user: onlyDigits(user) })}
+                                style={styles.primaryButton}
+                            >
+                                {workspace.isLoading ? <ActivityIndicator color={colors.inverseText} /> : <KeyRound color={colors.inverseText} size={18} />}
+                                <Text style={styles.primaryButtonText}>{workspace.isLoading ? 'Entrando...' : 'Entrar'}</Text>
+                            </Pressable>
+                        </View>
                     </View>
-                </View>
+                </ScrollView>
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
 
 function DashboardPanel({ workspace }: { workspace: Workspace }) {
+    const layout = useResponsiveLayout();
     const { grades, isLoading, lessonPlanSubjects, profile, schedule } = workspace;
     const groupedSchedule = useMemo(() => groupScheduleByDay(schedule), [schedule]);
     const weekMap = useMemo(() => buildWeekMap(groupedSchedule), [groupedSchedule]);
@@ -266,8 +344,8 @@ function DashboardPanel({ workspace }: { workspace: Workspace }) {
 
     return (
         <View style={styles.sectionStack}>
-            <LinearGradient colors={['#ffffff', '#f8fbf8']} style={styles.panel}>
-                <View style={styles.homeHeroRow}>
+            <LinearGradient colors={gradients.surface} style={styles.panel}>
+                <View style={[styles.homeHeroRow, layout.isTablet ? styles.homeHeroRowWide : null]}>
                     <View style={styles.homeHeroText}>
                         <Text style={styles.sectionKicker}>Resumo academico</Text>
                         <Text style={styles.panelTitle}>{profile?.personal.full_name || 'Carregando dados'}</Text>
@@ -280,15 +358,15 @@ function DashboardPanel({ workspace }: { workspace: Workspace }) {
                 </View>
             </LinearGradient>
 
-            <View style={styles.metricGrid}>
+            <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
                 <MetricCard label="Materias" value={String(subjectCount)} />
                 <MetricCard label="Aulas" value={String(schedule.length)} />
                 <MetricCard label="Atividades" value={String(activityCount)} />
                 <MetricCard label="Faltas" value={String(totalAbsences)} />
             </View>
 
-            <View style={styles.twoColumnGrid}>
-                <View style={styles.panel}>
+            <View style={[styles.twoColumnGrid, layout.isTablet ? styles.twoColumnGridWide : null]}>
+                <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
                     <PanelHeader loading={isLoading} onRefresh={workspace.refreshDashboard} title={nextClass?.isHappening ? 'Aula acontecendo' : 'Proxima aula'} />
                     <View style={styles.highlightCard}>
                         <Text style={styles.highlightLabel}>{nextClass?.label || 'Horario'}</Text>
@@ -300,7 +378,7 @@ function DashboardPanel({ workspace }: { workspace: Workspace }) {
                     </View>
                 </View>
 
-                <View style={styles.panel}>
+                <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
                     <PanelHeader loading={isLoading} onRefresh={workspace.loadSchedule} title="Semana" />
                     <View style={styles.weekChart}>
                         {weekMap.map((day) => (
@@ -316,8 +394,8 @@ function DashboardPanel({ workspace }: { workspace: Workspace }) {
                 </View>
             </View>
 
-            <View style={styles.twoColumnGrid}>
-                <View style={styles.panel}>
+            <View style={[styles.twoColumnGrid, layout.isTablet ? styles.twoColumnGridWide : null]}>
+                <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
                     <PanelHeader loading={isLoading} onRefresh={workspace.loadGrades} title="Notas" />
                     <View style={styles.gradeSummaryBoard}>
                         <View style={styles.gradeRing}>
@@ -332,7 +410,7 @@ function DashboardPanel({ workspace }: { workspace: Workspace }) {
                     </View>
                 </View>
 
-                <View style={styles.panel}>
+                <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
                     <PanelHeader loading={isLoading} onRefresh={workspace.loadGrades} title="Pontos de atencao" />
                     <View style={styles.listStack}>
                         {weakestGrades.length === 0 ? <EmptyInline text="Nenhuma nota carregada." /> : null}
@@ -359,6 +437,7 @@ function ProfilePanel({
     onRefresh: () => Promise<void>;
     profile: Workspace['profile'];
 }) {
+    const layout = useResponsiveLayout();
     if (loading && !profile) return <ProfileSkeleton />;
     if (!profile) return <EmptyState label="Carregar perfil" loading={loading} onRefresh={onRefresh} />;
 
@@ -377,7 +456,7 @@ function ProfilePanel({
 
     return (
         <View style={styles.sectionStack}>
-            <LinearGradient colors={['#ffffff', '#f8fbf8']} style={styles.profileHero}>
+            <LinearGradient colors={gradients.surface} style={styles.profileHero}>
                 <View style={styles.profileAvatar}>
                     <Text style={styles.profileAvatarText}>{getInitials(profile.personal.full_name)}</Text>
                 </View>
@@ -388,13 +467,13 @@ function ProfilePanel({
                 </View>
             </LinearGradient>
 
-            <View style={styles.metricGrid}>
+            <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
                 {contactRows.map((row) => {
                     const Icon = row.icon;
 
                     return (
-                        <View key={row.label} style={styles.infoTile}>
-                            <Icon color="#0d7b5d" size={18} />
+                        <View key={row.label} style={[styles.infoTile, getResponsiveCardStyle(layout, 2)]}>
+                            <Icon color={colors.brand} size={18} />
                             <Text style={styles.tileLabel}>{row.label}</Text>
                             <Text style={styles.tileValue}>{row.value || '-'}</Text>
                         </View>
@@ -404,9 +483,9 @@ function ProfilePanel({
 
             <View style={styles.panel}>
                 <PanelHeader loading={loading} onRefresh={onRefresh} title="Dados academicos" />
-                <View style={styles.detailsGrid}>
+                <View style={[styles.detailsGrid, layout.isTablet ? styles.metricGridWide : null]}>
                     {rows.map(([label, value]) => (
-                        <View key={label} style={styles.detailCard}>
+                        <View key={label} style={[styles.detailCard, getResponsiveCardStyle(layout, 3)]}>
                             <Text style={styles.tileLabel}>{label}</Text>
                             <Text style={styles.detailValue}>{value || '-'}</Text>
                         </View>
@@ -426,6 +505,7 @@ function SchedulePanel({
     onRefresh: () => Promise<void>;
     schedule: Workspace['schedule'];
 }) {
+    const layout = useResponsiveLayout();
     const groupedSchedule = useMemo(() => groupScheduleByDay(schedule), [schedule]);
     const weekMap = useMemo(() => buildWeekMap(groupedSchedule), [groupedSchedule]);
     const busiestDay = weekMap.reduce((current, day) => (day.items.length > current.items.length ? day : current), weekMap[0]!);
@@ -435,7 +515,7 @@ function SchedulePanel({
 
     return (
         <View style={styles.sectionStack}>
-            <View style={styles.metricGrid}>
+            <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
                 <MetricCard label="Aulas" value={String(schedule.length)} />
                 <MetricCard label="Dias" value={String(groupedSchedule.length)} />
                 <MetricCard label="Pico" value={busiestDay.items.length ? busiestDay.short : '-'} />
@@ -453,7 +533,7 @@ function SchedulePanel({
                         </Text>
                     </View>
                     <View style={styles.timeBadge}>
-                        <Clock3 color="#245fd9" size={18} />
+                        <Clock3 color={colors.info} size={18} />
                         <Text style={styles.timeBadgeText}>{nextClass?.item.start_time || '--:--'}</Text>
                     </View>
                 </View>
@@ -511,6 +591,7 @@ function GradesPanel({
     onChange: Workspace['setGradesInput'];
     onRefresh: () => Promise<void>;
 }) {
+    const layout = useResponsiveLayout();
     if (loading && grades.length === 0) return <GradesSkeleton />;
 
     const numericGrades = grades.map((grade) => parseGrade(grade.final_grade)).filter((grade): grade is number => grade !== null);
@@ -521,11 +602,11 @@ function GradesPanel({
 
     return (
         <View style={styles.sectionStack}>
-            <LinearGradient colors={['#ffffff', '#f8fbf8']} style={styles.panel}>
+            <LinearGradient colors={gradients.surface} style={styles.panel}>
                 <Text style={styles.sectionKicker}>Boletim do periodo</Text>
                 <Text style={styles.bigNumber}>{averageNumber === null ? '-' : averageNumber.toFixed(1)}</Text>
                 <Text style={styles.panelDescription}>Media geral</Text>
-                <View style={styles.gradeOverviewGrid}>
+                <View style={[styles.gradeOverviewGrid, layout.isTablet ? styles.metricGridWide : null]}>
                     <StatPill label="Materias" value={String(grades.length)} />
                     <StatPill label="Aprovadas" value={String(approved)} />
                     <StatPill label="Em aberto" value={String(pending)} />
@@ -535,13 +616,13 @@ function GradesPanel({
 
             <View style={styles.panel}>
                 <PanelHeader loading={loading} onRefresh={() => onRefresh()} title="Notas e frequencia" />
-                <View style={styles.inputRow}>
+                <View style={[styles.inputRow, layout.isTablet ? styles.inputRowWide : null]}>
                     <Field compact label="Ano">
                         <TextInput
                             inputMode="numeric"
                             onChangeText={(value) => onChange({ ...input, year: value })}
                             placeholder="2026"
-                            placeholderTextColor="#7b8b85"
+                            placeholderTextColor={colors.textSubtle}
                             style={styles.textInput}
                             value={input.year}
                         />
@@ -551,13 +632,13 @@ function GradesPanel({
                             inputMode="numeric"
                             onChangeText={(value) => onChange({ ...input, period: value })}
                             placeholder="1"
-                            placeholderTextColor="#7b8b85"
+                            placeholderTextColor={colors.textSubtle}
                             style={styles.textInput}
                             value={input.period}
                         />
                     </Field>
                     <Pressable onPress={() => void onRefresh()} style={styles.iconButton}>
-                        <RefreshCw color="#16352f" size={18} />
+                        <RefreshCw color={colors.text} size={18} />
                     </Pressable>
                 </View>
 
@@ -580,7 +661,7 @@ function GradesPanel({
                             {grade.evaluations.length > 0 ? (
                                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
                                     {grade.evaluations.map((evaluation, index) => (
-                                        <View key={`${grade.code}-${evaluation.label}`} style={styles.evaluationCard}>
+                                        <View key={`${grade.code}-${index}`} style={styles.evaluationCard}>
                                             <View style={styles.evaluationBadge}>
                                                 <Text style={styles.evaluationBadgeText}>{index + 1}</Text>
                                             </View>
@@ -594,7 +675,7 @@ function GradesPanel({
                                 <EmptyInline text="Sem atividades lancadas." />
                             )}
 
-                            <View style={styles.metricGrid}>
+                            <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
                                 <MiniGrade label="ME" value={grade.exercise_average || '-'} helper="Exercicios" />
                                 <MiniGrade label="PF" value={grade.final_exam || '-'} helper="Prova final" />
                                 <MiniGrade featured label="MF" value={grade.final_grade || '-'} helper="Media final" />
@@ -625,6 +706,7 @@ function LessonPlanPanel({
     selectedSubjectCode: string;
     subjects: Workspace['lessonPlanSubjects'];
 }) {
+    const layout = useResponsiveLayout();
     const selectedSubject = subjects.find((subject) => subject.code === selectedSubjectCode) || null;
     const availableSubjects = subjects.filter((subject) => subject.available).length;
 
@@ -632,7 +714,7 @@ function LessonPlanPanel({
 
     return (
         <View style={styles.sectionStack}>
-            <View style={styles.metricGrid}>
+            <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
                 <MetricCard label="Materias" value={String(subjects.length)} />
                 <MetricCard label="Com plano" value={String(availableSubjects)} />
                 <MetricCard label="Aulas" value={String(items.length)} />
@@ -661,7 +743,7 @@ function LessonPlanPanel({
                     </ScrollView>
 
                     <Pressable onPress={() => void onRefresh()} style={styles.secondaryButton}>
-                        <RefreshCw color="#0d7b5d" size={16} />
+                        <RefreshCw color={colors.brand} size={16} />
                         <Text style={styles.secondaryButtonText}>Buscar plano</Text>
                     </Pressable>
 
@@ -699,9 +781,9 @@ function LessonPlanPanel({
 function PanelHeader({ loading, onRefresh, title }: { loading: boolean; onRefresh: () => Promise<void>; title: string }) {
     return (
         <View style={styles.panelHeader}>
-            <Text style={styles.panelTitle}>{title}</Text>
+            <Text numberOfLines={2} style={styles.panelTitle}>{title}</Text>
             <Pressable onPress={() => void onRefresh()} style={styles.iconButton}>
-                {loading ? <ActivityIndicator color="#16352f" size="small" /> : <RefreshCw color="#16352f" size={18} />}
+                {loading ? <ActivityIndicator color={colors.text} size="small" /> : <RefreshCw color={colors.text} size={18} />}
             </Pressable>
         </View>
     );
@@ -725,10 +807,12 @@ function Field({
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {
+    const layout = useResponsiveLayout();
+
     return (
-        <View style={styles.metricCard}>
-            <Text style={styles.tileLabel}>{label}</Text>
-            <Text style={styles.metricValue}>{value}</Text>
+        <View style={[styles.metricCard, getResponsiveCardStyle(layout, 4)]}>
+            <Text numberOfLines={1} style={styles.tileLabel}>{label}</Text>
+            <Text numberOfLines={1} style={styles.metricValue}>{value}</Text>
         </View>
     );
 }
@@ -744,8 +828,10 @@ function MiniGrade({
     label: string;
     value: string;
 }) {
+    const layout = useResponsiveLayout();
+
     return (
-        <View style={[styles.miniGradeCard, featured ? styles.miniGradeCardFeatured : null]}>
+        <View style={[styles.miniGradeCard, getResponsiveCardStyle(layout, 4), featured ? styles.miniGradeCardFeatured : null]}>
             <Text style={styles.smallCaps}>{label}</Text>
             <Text style={[styles.miniGradeValue, featured ? styles.miniGradeValueFeatured : null]}>{value}</Text>
             <Text style={styles.panelDescription}>{helper}</Text>
@@ -754,10 +840,21 @@ function MiniGrade({
 }
 
 function StatPill({ label, value }: { label: string; value: string }) {
+    const layout = useResponsiveLayout();
+
     return (
-        <View style={styles.statPill}>
+        <View style={[styles.statPill, getResponsiveCardStyle(layout, 4)]}>
             <Text style={styles.tileLabel}>{label}</Text>
             <Text style={styles.statPillValue}>{value}</Text>
+        </View>
+    );
+}
+
+function HeroMetaCard({ label, value }: { label: string; value: string }) {
+    return (
+        <View style={styles.heroMetaCard}>
+            <Text style={styles.heroMetaLabel}>{label}</Text>
+            <Text numberOfLines={2} style={styles.heroMetaValue}>{value}</Text>
         </View>
     );
 }
@@ -766,7 +863,7 @@ function EmptyState({ label, loading, onRefresh }: { label: string; loading: boo
     return (
         <View style={styles.panel}>
             <Pressable disabled={loading} onPress={() => void onRefresh()} style={styles.primaryButton}>
-                {loading ? <ActivityIndicator color="#fff" /> : <RefreshCw color="#fff" size={18} />}
+                {loading ? <ActivityIndicator color={colors.inverseText} /> : <RefreshCw color={colors.inverseText} size={18} />}
                 <Text style={styles.primaryButtonText}>{loading ? 'Carregando...' : label}</Text>
             </Pressable>
         </View>
@@ -1003,6 +1100,54 @@ function formatWorkload(workload: string | number): string {
     return workload.endsWith('h') ? workload : `${workload}h`;
 }
 
+function useResponsiveLayout() {
+    const { width } = useWindowDimensions();
+    return getResponsiveLayout(width);
+}
+
+function getResponsiveLayout(width: number) {
+    const safeWidth = Number.isFinite(width) ? width : 390;
+    const isTablet = safeWidth >= 768;
+    const isDesktop = Platform.OS === 'web' && safeWidth >= 1180;
+    const isCompactPhone = safeWidth < 380;
+    const pagePadding = isDesktop ? 24 : isCompactPhone ? 12 : 18;
+
+    return {
+        width: safeWidth,
+        isTablet,
+        isDesktop,
+        isCompactPhone,
+        pagePadding,
+        showBottomNav: !isTablet,
+        contentMaxWidth: isDesktop ? 1180 : isTablet ? 960 : 640,
+        loginMaxWidth: isDesktop ? 1040 : isTablet ? 920 : 460
+    };
+}
+
+function getResponsiveCardStyle(layout: ResponsiveLayout, columns: number) {
+    if (!layout.isTablet) {
+        return {
+            flexBasis: columns >= 4 ? '47%' : '100%'
+        } as const;
+    }
+
+    if (columns === 2) {
+        return {
+            flexBasis: '48%'
+        } as const;
+    }
+
+    if (columns === 3) {
+        return {
+            flexBasis: layout.isDesktop ? '31.5%' : '48%'
+        } as const;
+    }
+
+    return {
+        flexBasis: layout.isDesktop ? '23.4%' : '31.5%'
+    } as const;
+}
+
 function eventTone(index: number) {
     const tones = [styles.eventToneGreen, styles.eventToneBlue, styles.eventToneAmber, styles.eventToneCoral];
     return tones[index % tones.length];
@@ -1019,28 +1164,36 @@ const styles = StyleSheet.create({
     screen: {
         flex: 1
     },
+    appShell: {
+        flex: 1
+    },
+    appShellDesktop: {
+        paddingHorizontal: 24
+    },
     bootScreen: {
         alignItems: 'center',
-        backgroundColor: '#eef6f1',
+        backgroundColor: colors.canvas,
         flex: 1,
         justifyContent: 'center',
-        padding: 24
+        padding: spacing[6]
     },
     bootCard: {
         alignItems: 'center',
-        borderRadius: 28,
-        gap: 12,
-        paddingHorizontal: 28,
-        paddingVertical: 32,
+        borderRadius: radii.md,
+        gap: spacing[3],
+        paddingHorizontal: spacing[7],
+        paddingVertical: spacing[8],
         width: '100%'
     },
     bootTitle: {
-        color: '#ffffff',
+        color: colors.inverseText,
+        fontFamily: fonts.medium,
         fontSize: 24,
         fontWeight: '700'
     },
     bootText: {
-        color: '#d6f4e9',
+        color: colors.brandMuted,
+        fontFamily: fonts.sans,
         fontSize: 15,
         textAlign: 'center'
     },
@@ -1048,77 +1201,132 @@ const styles = StyleSheet.create({
         flex: 1
     },
     loginContainer: {
+        flex: 1
+    },
+    loginScrollContent: {
         alignItems: 'center',
-        flex: 1,
+        flexGrow: 1,
         justifyContent: 'center',
-        padding: 20
+        width: '100%'
     },
     loginCard: {
-        backgroundColor: '#ffffff',
-        borderColor: '#d7e3dd',
-        borderRadius: 28,
+        ...shadows.surface,
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.md,
         borderWidth: 1,
         overflow: 'hidden',
         width: '100%'
     },
-    loginHeader: {
-        flexDirection: 'row',
-        gap: 16,
-        padding: 24
+    loginCardWide: {
+        flexDirection: 'row'
+    },
+    loginShowcase: {
+        gap: spacing[6],
+        padding: spacing[7]
+    },
+    loginShowcaseWide: {
+        justifyContent: 'space-between',
+        maxWidth: 420,
+        minHeight: 520,
+        width: '46%'
     },
     loginMark: {
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        borderRadius: 18,
-        height: 56,
+        backgroundColor: colors.overlayOnBrand,
+        borderRadius: radii.md,
+        height: 64,
         justifyContent: 'center',
-        width: 56
+        width: 64
     },
     loginHeaderText: {
-        flex: 1,
-        gap: 6
+        gap: spacing[2]
     },
     eyebrow: {
-        color: '#9bd9c6',
-        fontSize: 12,
-        fontWeight: '700',
-        letterSpacing: 1.2,
+        ...typography.eyebrow,
+        color: colors.brandMuted,
         textTransform: 'uppercase'
     },
     loginTitle: {
-        color: '#ffffff',
+        color: colors.inverseText,
+        fontFamily: fonts.medium,
         fontSize: 30,
         fontWeight: '700'
     },
     loginSubtitle: {
-        color: '#d6f4e9',
-        fontSize: 14
+        color: colors.brandMuted,
+        fontFamily: fonts.sans,
+        fontSize: 15,
+        lineHeight: 22
     },
     loginForm: {
-        gap: 18,
-        padding: 20
+        gap: spacing[5],
+        padding: spacing[6]
+    },
+    loginFormWide: {
+        flex: 1,
+        justifyContent: 'center',
+        paddingHorizontal: spacing[8],
+        paddingVertical: spacing[7]
+    },
+    loginFormHeader: {
+        gap: spacing[2]
+    },
+    loginFormTitle: {
+        color: colors.text,
+        fontFamily: fonts.medium,
+        fontSize: 28,
+        fontWeight: '700'
+    },
+    loginFormText: {
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
+        fontSize: 14,
+        lineHeight: 20
+    },
+    loginTrustCard: {
+        backgroundColor: colors.overlayOnBrand,
+        borderColor: colors.overlayBorderOnBrand,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        gap: spacing[3],
+        padding: spacing[4]
+    },
+    loginFeatureLabel: {
+        ...typography.label,
+        color: colors.brandMuted,
+        textTransform: 'uppercase'
+    },
+    loginFeatureValue: {
+        color: colors.inverseText,
+        fontFamily: fonts.sans,
+        fontSize: 14,
+        lineHeight: 20
     },
     field: {
-        gap: 8
+        gap: spacing[2]
     },
     fieldCompact: {
-        flex: 1
+        flex: 1,
+        minWidth: 0
     },
     fieldLabel: {
-        color: '#5c6d67',
+        color: colors.textMuted,
+        fontFamily: fonts.medium,
         fontSize: 13,
         fontWeight: '700'
     },
     textInput: {
-        backgroundColor: '#f6faf7',
-        borderColor: '#d4e1db',
-        borderRadius: 18,
+        backgroundColor: colors.surfaceSubtle,
+        borderColor: colors.border,
+        borderRadius: radii.md,
         borderWidth: 1,
-        color: '#18322d',
+        color: colors.text,
+        fontFamily: fonts.sans,
         fontSize: 16,
         minHeight: 52,
-        paddingHorizontal: 16,
-        paddingVertical: 12
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[3]
     },
     passwordWrapper: {
         position: 'relative'
@@ -1137,43 +1345,51 @@ const styles = StyleSheet.create({
     },
     primaryButton: {
         alignItems: 'center',
-        backgroundColor: '#0d7b5d',
-        borderRadius: 18,
+        backgroundColor: colors.brand,
+        borderRadius: radii.md,
         flexDirection: 'row',
-        gap: 10,
+        gap: spacing[2],
         justifyContent: 'center',
         minHeight: 54,
-        paddingHorizontal: 18
+        paddingHorizontal: spacing[5]
     },
     primaryButtonText: {
-        color: '#ffffff',
+        color: colors.inverseText,
+        fontFamily: fonts.medium,
         fontSize: 16,
         fontWeight: '700'
+    },
+    headerShell: {
+        alignSelf: 'center',
+        gap: spacing[3],
+        paddingHorizontal: spacing[5],
+        paddingTop: spacing[3],
+        width: '100%'
     },
     header: {
         alignItems: 'center',
         flexDirection: 'row',
         justifyContent: 'space-between',
-        paddingHorizontal: 18,
-        paddingTop: 6,
-        paddingBottom: 8
+        paddingBottom: 4
     },
     headerIdentity: {
         alignItems: 'center',
         flexDirection: 'row',
         flex: 1,
-        gap: 12
+        gap: spacing[3],
+        minWidth: 0
     },
     avatarBadge: {
         alignItems: 'center',
-        backgroundColor: '#e0f2ea',
-        borderRadius: 18,
+        backgroundColor: colors.brandMuted,
+        borderRadius: radii.md,
         height: 48,
         justifyContent: 'center',
         width: 48
     },
     avatarBadgeText: {
-        color: '#0d7b5d',
+        color: colors.brand,
+        fontFamily: fonts.medium,
         fontSize: 18,
         fontWeight: '700'
     },
@@ -1182,523 +1398,648 @@ const styles = StyleSheet.create({
         gap: 2
     },
     headerTitle: {
-        color: '#18322d',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 18,
         fontWeight: '700'
     },
     headerSubtitle: {
-        color: '#5d7069',
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
         fontSize: 13
     },
     iconButton: {
         alignItems: 'center',
-        backgroundColor: '#eef4f1',
-        borderRadius: 16,
+        backgroundColor: colors.surface,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        borderColor: colors.border,
         height: 42,
         justifyContent: 'center',
         width: 42
     },
+    desktopNav: {
+        alignSelf: 'stretch',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        flexDirection: 'row',
+        flexWrap: 'nowrap',
+        gap: spacing[2],
+        padding: spacing[2]
+    },
+    desktopNavItem: {
+        alignItems: 'center',
+        borderRadius: radii.sm,
+        flex: 1,
+        flexDirection: 'row',
+        gap: spacing[2],
+        justifyContent: 'center',
+        minHeight: 46,
+        paddingHorizontal: spacing[3]
+    },
+    desktopNavItemActive: {
+        backgroundColor: colors.brandDark
+    },
+    desktopNavText: {
+        color: colors.textMuted,
+        fontFamily: fonts.medium,
+        fontSize: 14,
+        fontWeight: '700'
+    },
+    desktopNavTextActive: {
+        color: colors.inverseText
+    },
     content: {
-        gap: 16,
-        paddingBottom: 120,
-        paddingHorizontal: 18,
-        paddingTop: 8
+        gap: spacing[4],
+        paddingHorizontal: spacing[5],
+        paddingTop: spacing[3]
+    },
+    contentShell: {
+        alignSelf: 'center',
+        gap: spacing[4],
+        width: '100%'
     },
     heroCard: {
-        borderRadius: 28,
-        gap: 12,
-        padding: 20
+        borderRadius: radii.md,
+        gap: spacing[5],
+        overflow: 'hidden',
+        padding: spacing[6]
+    },
+    heroCardWide: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'space-between'
+    },
+    heroContent: {
+        flex: 1,
+        gap: spacing[3]
     },
     heroTopRow: {
         alignItems: 'center',
         flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing[3],
         justifyContent: 'space-between'
     },
     heroLabel: {
         alignItems: 'center',
         flexDirection: 'row',
-        gap: 8
+        gap: spacing[2]
     },
     heroLabelText: {
-        color: '#b7ead9',
+        color: colors.brandMuted,
+        fontFamily: fonts.medium,
         fontSize: 13,
         fontWeight: '700'
     },
     heroRefresh: {
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        borderRadius: 16,
+        backgroundColor: colors.overlayOnBrand,
+        borderRadius: radii.md,
         flexDirection: 'row',
-        gap: 8,
-        paddingHorizontal: 14,
-        paddingVertical: 10
+        gap: spacing[2],
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2]
     },
     heroRefreshText: {
-        color: '#ffffff',
+        color: colors.inverseText,
+        fontFamily: fonts.medium,
         fontSize: 13,
         fontWeight: '700'
     },
     heroTitle: {
-        color: '#ffffff',
+        color: colors.inverseText,
+        fontFamily: fonts.medium,
         fontSize: 26,
-        fontWeight: '700'
+        fontWeight: '700',
+        lineHeight: 32
     },
     heroSubtitle: {
-        color: '#d6f4e9',
-        fontSize: 14
+        color: colors.brandMuted,
+        fontFamily: fonts.sans,
+        fontSize: 14,
+        lineHeight: 21
+    },
+    heroMetaGrid: {
+        gap: spacing[2]
+    },
+    heroMetaGridWide: {
+        marginLeft: 20,
+        width: 280
+    },
+    heroMetaCard: {
+        backgroundColor: colors.overlayOnBrand,
+        borderColor: colors.overlayBorderOnBrand,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        gap: spacing[2],
+        padding: spacing[3]
+    },
+    heroMetaLabel: {
+        ...typography.label,
+        color: colors.brandMuted,
+        textTransform: 'uppercase'
+    },
+    heroMetaValue: {
+        color: colors.inverseText,
+        fontFamily: fonts.medium,
+        fontSize: 14,
+        fontWeight: '600',
+        lineHeight: 20
     },
     errorBanner: {
-        backgroundColor: '#fff1ef',
-        borderColor: '#ffcfc7',
-        borderRadius: 18,
+        backgroundColor: colors.dangerSubtle,
+        borderColor: colors.dangerBorder,
+        borderRadius: radii.md,
         borderWidth: 1,
-        paddingHorizontal: 14,
-        paddingVertical: 12
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[3]
     },
     errorText: {
-        color: '#a43c2a',
+        color: colors.danger,
+        fontFamily: fonts.medium,
         fontSize: 14,
         fontWeight: '600'
     },
     sectionStack: {
-        gap: 16
+        gap: spacing[4]
     },
     panel: {
-        backgroundColor: '#ffffff',
-        borderColor: '#d7e3dd',
-        borderRadius: 26,
+        ...shadows.surface,
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.md,
         borderWidth: 1,
-        gap: 16,
-        padding: 18
+        gap: spacing[4],
+        padding: spacing[5]
     },
     panelHeader: {
         alignItems: 'center',
         flexDirection: 'row',
+        gap: spacing[3],
         justifyContent: 'space-between'
     },
     panelTitle: {
-        color: '#15302b',
-        fontSize: 20,
-        fontWeight: '700'
+        ...typography.title,
+        color: colors.text,
+        flexShrink: 1,
     },
     panelDescription: {
-        color: '#62756d',
-        fontSize: 14,
-        lineHeight: 20
+        ...typography.body,
+        color: colors.textMuted
     },
     sectionKicker: {
-        color: '#0d7b5d',
-        fontSize: 12,
-        fontWeight: '700',
-        letterSpacing: 1.1,
+        ...typography.eyebrow,
+        color: colors.brand,
         textTransform: 'uppercase'
     },
     homeHeroRow: {
-        gap: 14
+        gap: spacing[4]
+    },
+    homeHeroRowWide: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'space-between'
     },
     homeHeroText: {
-        gap: 8
+        flex: 1,
+        gap: spacing[2]
     },
     homeScoreCard: {
         alignItems: 'flex-start',
-        backgroundColor: '#f2f8f4',
-        borderRadius: 22,
-        gap: 4,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
+        backgroundColor: colors.brandSubtle,
+        borderRadius: radii.md,
+        gap: spacing[1],
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[3],
         width: 140
     },
     homeScoreLabel: {
-        color: '#4d615a',
-        fontSize: 12,
-        fontWeight: '700',
-        letterSpacing: 1,
+        ...typography.label,
+        color: colors.textMuted,
         textTransform: 'uppercase'
     },
     homeScoreValue: {
-        color: '#12352e',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 34,
         fontWeight: '700'
     },
     metricGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 12
+        gap: spacing[3]
+    },
+    metricGridWide: {
+        justifyContent: 'space-between'
     },
     metricCard: {
-        backgroundColor: '#ffffff',
-        borderColor: '#d7e3dd',
-        borderRadius: 22,
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.md,
         borderWidth: 1,
         flexBasis: '47%',
         flexGrow: 1,
-        gap: 8,
+        gap: spacing[2],
         minHeight: 90,
-        padding: 14
+        padding: spacing[4]
     },
     tileLabel: {
-        color: '#62756d',
-        fontSize: 12,
-        fontWeight: '700',
-        letterSpacing: 0.7,
+        ...typography.label,
+        color: colors.textMuted,
         textTransform: 'uppercase'
     },
     tileValue: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 15,
         fontWeight: '600'
     },
     metricValue: {
-        color: '#12352e',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 30,
         fontWeight: '700'
     },
     twoColumnGrid: {
-        gap: 16
+        gap: spacing[4]
+    },
+    twoColumnGridWide: {
+        flexDirection: 'row',
+        flexWrap: 'wrap'
+    },
+    gridPanel: {
+        flex: 1,
+        minWidth: 0
     },
     highlightCard: {
-        backgroundColor: '#eef7f3',
-        borderRadius: 22,
-        gap: 8,
-        padding: 16
+        backgroundColor: colors.brandSubtle,
+        borderRadius: radii.md,
+        gap: spacing[2],
+        padding: spacing[4]
     },
     highlightLabel: {
-        color: '#557068',
-        fontSize: 12,
-        fontWeight: '700',
-        letterSpacing: 0.7,
+        ...typography.label,
+        color: colors.textMuted,
         textTransform: 'uppercase'
     },
     highlightTitle: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 18,
         fontWeight: '700'
     },
     highlightText: {
-        color: '#62756d',
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
         fontSize: 14
     },
     highlightTime: {
-        color: '#0d7b5d',
+        color: colors.brand,
+        fontFamily: fonts.medium,
         fontSize: 30,
         fontWeight: '700',
-        marginTop: 8
+        marginTop: spacing[2]
     },
     weekChart: {
         alignItems: 'flex-end',
         flexDirection: 'row',
-        gap: 10,
+        gap: spacing[2],
         justifyContent: 'space-between',
         minHeight: 140
     },
     weekBarItem: {
         alignItems: 'center',
         flex: 1,
-        gap: 8
+        gap: spacing[2]
     },
     weekBarTrack: {
         alignItems: 'center',
-        backgroundColor: '#f1f5f2',
-        borderRadius: 16,
+        backgroundColor: colors.surfaceMuted,
+        borderRadius: radii.md,
         flex: 1,
         justifyContent: 'flex-end',
         minHeight: 100,
         overflow: 'hidden',
-        padding: 6,
+        padding: spacing[1],
         width: '100%'
     },
     weekBarFill: {
-        backgroundColor: '#0d7b5d',
-        borderRadius: 12,
+        backgroundColor: colors.brand,
+        borderRadius: radii.sm,
         width: '100%'
     },
     weekBarLabel: {
-        color: '#62756d',
+        color: colors.textMuted,
+        fontFamily: fonts.medium,
         fontSize: 12,
         fontWeight: '700'
     },
     weekBarValue: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 13,
         fontWeight: '700'
     },
     gradeSummaryBoard: {
-        gap: 18
+        gap: spacing[5]
     },
     gradeRing: {
         alignItems: 'center',
         alignSelf: 'center',
-        backgroundColor: '#eff8f4',
-        borderColor: '#cfe3db',
-        borderRadius: 999,
+        backgroundColor: colors.brandSubtle,
+        borderColor: colors.brandMuted,
+        borderRadius: radii.pill,
         borderWidth: 12,
         height: 150,
         justifyContent: 'center',
         width: 150
     },
     gradeRingValue: {
-        color: '#12352e',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 34,
         fontWeight: '700'
     },
     gradeRingLabel: {
-        color: '#62756d',
-        fontSize: 12,
-        fontWeight: '700',
-        letterSpacing: 0.7,
+        ...typography.label,
+        color: colors.textMuted,
         textTransform: 'uppercase'
     },
     gradeStatStack: {
-        gap: 10
+        gap: spacing[2]
     },
     statPill: {
-        backgroundColor: '#f3f7f5',
-        borderRadius: 18,
-        gap: 4,
-        paddingHorizontal: 14,
-        paddingVertical: 12
+        backgroundColor: colors.surfaceMuted,
+        borderRadius: radii.md,
+        gap: spacing[1],
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[3]
     },
     statPillValue: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 20,
         fontWeight: '700'
     },
     listStack: {
-        gap: 12
+        gap: spacing[3]
     },
     attentionCard: {
-        backgroundColor: '#f7faf8',
-        borderRadius: 20,
-        gap: 4,
-        padding: 14
+        backgroundColor: colors.surfaceSubtle,
+        borderRadius: radii.md,
+        gap: spacing[1],
+        padding: spacing[3]
     },
     attentionTitle: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 16,
         fontWeight: '700'
     },
     attentionText: {
-        color: '#0d7b5d',
+        color: colors.brand,
+        fontFamily: fonts.medium,
         fontSize: 13,
         fontWeight: '600'
     },
     profileHero: {
         alignItems: 'center',
         flexDirection: 'row',
-        gap: 16,
-        padding: 18
+        gap: spacing[4],
+        padding: spacing[5]
     },
     profileAvatar: {
         alignItems: 'center',
-        backgroundColor: '#e0f2ea',
-        borderRadius: 22,
+        backgroundColor: colors.brandMuted,
+        borderRadius: radii.md,
         height: 68,
         justifyContent: 'center',
         width: 68
     },
     profileAvatarText: {
-        color: '#0d7b5d',
+        color: colors.brand,
+        fontFamily: fonts.medium,
         fontSize: 24,
         fontWeight: '700'
     },
     profileHeroText: {
         flex: 1,
-        gap: 6
+        gap: spacing[2],
+        minWidth: 0
     },
     infoTile: {
-        backgroundColor: '#ffffff',
-        borderColor: '#d7e3dd',
-        borderRadius: 22,
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.md,
         borderWidth: 1,
         flexBasis: '47%',
         flexGrow: 1,
-        gap: 8,
+        gap: spacing[2],
         minHeight: 90,
-        padding: 14
+        padding: spacing[4]
     },
     detailsGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 12
+        gap: spacing[3]
     },
     detailCard: {
-        backgroundColor: '#f6faf7',
-        borderRadius: 20,
+        backgroundColor: colors.surfaceSubtle,
+        borderRadius: radii.md,
         flexBasis: '47%',
         flexGrow: 1,
-        gap: 8,
+        gap: spacing[2],
         minHeight: 90,
-        padding: 14
+        padding: spacing[4]
     },
     detailValue: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 15,
         fontWeight: '600'
     },
     scheduleHero: {
-        gap: 14
+        gap: spacing[4]
     },
     scheduleHeroText: {
-        gap: 8
+        gap: spacing[2]
     },
     timeBadge: {
         alignItems: 'center',
         alignSelf: 'flex-start',
-        backgroundColor: '#ebf3ff',
-        borderRadius: 18,
+        backgroundColor: colors.infoSubtle,
+        borderRadius: radii.md,
         flexDirection: 'row',
-        gap: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10
+        gap: spacing[2],
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[2]
     },
     timeBadgeText: {
-        color: '#245fd9',
+        color: colors.info,
+        fontFamily: fonts.medium,
         fontSize: 18,
         fontWeight: '700'
     },
     chipsRow: {
-        marginBottom: 8
+        marginBottom: spacing[2]
     },
     weekChip: {
         alignItems: 'center',
-        backgroundColor: '#f3f7f5',
-        borderRadius: 999,
+        backgroundColor: colors.surfaceMuted,
+        borderRadius: radii.pill,
         flexDirection: 'row',
-        gap: 8,
-        marginRight: 10,
-        paddingHorizontal: 14,
-        paddingVertical: 10
+        gap: spacing[2],
+        marginRight: spacing[2],
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[2]
     },
     weekChipActive: {
-        backgroundColor: '#dff3eb'
+        backgroundColor: colors.brandMuted
     },
     weekChipText: {
-        color: '#62756d',
+        color: colors.textMuted,
+        fontFamily: fonts.medium,
         fontSize: 12,
         fontWeight: '700'
     },
     weekChipTextActive: {
-        color: '#0d7b5d'
+        color: colors.brand
     },
     weekChipNumber: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 13,
         fontWeight: '700'
     },
     laneCard: {
-        backgroundColor: '#f8fbf9',
-        borderRadius: 22,
-        gap: 12,
-        padding: 14
+        backgroundColor: colors.surfaceSubtle,
+        borderRadius: radii.md,
+        gap: spacing[3],
+        padding: spacing[4]
     },
     laneHeader: {
         alignItems: 'center',
         flexDirection: 'row',
+        gap: spacing[3],
         justifyContent: 'space-between'
     },
     scheduleEvent: {
-        borderRadius: 20,
+        borderRadius: radii.md,
         flexDirection: 'row',
-        gap: 12,
-        padding: 12
+        gap: spacing[3],
+        padding: spacing[3]
     },
     eventToneGreen: {
-        backgroundColor: '#f0f8f4'
+        backgroundColor: colors.successSubtle
     },
     eventToneBlue: {
-        backgroundColor: '#eef3ff'
+        backgroundColor: colors.infoSubtle
     },
     eventToneAmber: {
-        backgroundColor: '#fff7e8'
+        backgroundColor: colors.warningSubtle
     },
     eventToneCoral: {
-        backgroundColor: '#fff0ed'
+        backgroundColor: colors.dangerSubtle
     },
     eventTimeBox: {
         alignItems: 'center',
-        backgroundColor: '#ffffff',
-        borderRadius: 18,
+        backgroundColor: colors.surface,
+        borderRadius: radii.md,
         justifyContent: 'center',
         minHeight: 64,
-        paddingHorizontal: 12,
+        paddingHorizontal: spacing[3],
         width: 88
     },
     eventTimePrimary: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 18,
         fontWeight: '700'
     },
     eventTimeSecondary: {
-        color: '#62756d',
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
         fontSize: 12
     },
     eventBody: {
         flex: 1,
-        gap: 4
+        gap: spacing[1],
+        minWidth: 0
     },
     smallCaps: {
-        color: '#607670',
-        fontSize: 12,
-        fontWeight: '700',
-        letterSpacing: 0.7,
+        ...typography.label,
+        color: colors.textMuted,
         textTransform: 'uppercase'
     },
     eventTitle: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 16,
-        fontWeight: '700'
+        fontWeight: '700',
+        lineHeight: 21
     },
     eventSubtitle: {
-        color: '#62756d',
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
         fontSize: 13
     },
     bigNumber: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 48,
         fontWeight: '700'
     },
     gradeOverviewGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 10
+        gap: spacing[2]
     },
     inputRow: {
         alignItems: 'flex-end',
         flexDirection: 'row',
-        gap: 10
+        gap: spacing[2]
+    },
+    inputRowWide: {
+        alignItems: 'stretch'
     },
     gradeCard: {
-        backgroundColor: '#f8fbf9',
-        borderRadius: 22,
-        gap: 14,
-        padding: 14
+        backgroundColor: colors.surfaceSubtle,
+        borderRadius: radii.md,
+        gap: spacing[4],
+        padding: spacing[4]
     },
     gradeHeader: {
         alignItems: 'flex-start',
         flexDirection: 'row',
-        gap: 12,
+        gap: spacing[3],
         justifyContent: 'space-between'
     },
     gradeHeaderText: {
         flex: 1,
-        gap: 4
+        gap: spacing[1],
+        minWidth: 0
     },
     statusPill: {
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 8
+        borderRadius: radii.pill,
+        flexShrink: 1,
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[2]
     },
     statusOk: {
-        backgroundColor: '#def3e7'
+        backgroundColor: colors.successSubtle
     },
     statusWarn: {
-        backgroundColor: '#fff1d4'
+        backgroundColor: colors.warningSubtle
     },
     statusDanger: {
-        backgroundColor: '#ffe3de'
+        backgroundColor: colors.dangerSubtle
     },
     statusPillText: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 12,
         fontWeight: '700'
     },
@@ -1706,122 +2047,127 @@ const styles = StyleSheet.create({
         marginHorizontal: -2
     },
     evaluationCard: {
-        backgroundColor: '#ffffff',
-        borderRadius: 20,
-        gap: 8,
-        marginRight: 10,
-        padding: 14,
+        backgroundColor: colors.surface,
+        borderRadius: radii.md,
+        gap: spacing[2],
+        marginRight: spacing[2],
+        padding: spacing[4],
         width: 138
     },
     evaluationBadge: {
         alignItems: 'center',
-        backgroundColor: '#e1f3ec',
-        borderRadius: 14,
+        backgroundColor: colors.brandMuted,
+        borderRadius: radii.sm,
         height: 28,
         justifyContent: 'center',
         width: 28
     },
     evaluationBadgeText: {
-        color: '#0d7b5d',
+        color: colors.brand,
+        fontFamily: fonts.medium,
         fontSize: 13,
         fontWeight: '700'
     },
     evaluationScore: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 26,
         fontWeight: '700'
     },
     miniGradeCard: {
-        backgroundColor: '#ffffff',
-        borderRadius: 20,
+        backgroundColor: colors.surface,
+        borderRadius: radii.md,
         flexBasis: '47%',
         flexGrow: 1,
-        gap: 6,
-        padding: 14
+        gap: spacing[2],
+        padding: spacing[4]
     },
     miniGradeCardFeatured: {
-        backgroundColor: '#e4f5ef'
+        backgroundColor: colors.brandMuted
     },
     miniGradeValue: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 24,
         fontWeight: '700'
     },
     miniGradeValueFeatured: {
-        color: '#0d7b5d'
+        color: colors.brand
     },
     subjectChip: {
-        backgroundColor: '#f3f7f5',
-        borderRadius: 18,
-        gap: 4,
-        marginRight: 10,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
+        backgroundColor: colors.surfaceMuted,
+        borderRadius: radii.md,
+        gap: spacing[1],
+        marginRight: spacing[2],
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[3],
         width: 176
     },
     subjectChipActive: {
-        backgroundColor: '#113b33'
+        backgroundColor: colors.brandDark
     },
     subjectChipCode: {
-        color: '#607670',
-        fontSize: 12,
-        fontWeight: '700',
-        letterSpacing: 0.7,
+        ...typography.label,
+        color: colors.textMuted,
         textTransform: 'uppercase'
     },
     subjectChipCodeActive: {
-        color: '#aee8d7'
+        color: colors.brandMuted
     },
     subjectChipText: {
-        color: '#15302b',
+        color: colors.text,
+        fontFamily: fonts.medium,
         fontSize: 14,
         fontWeight: '600'
     },
     subjectChipTextActive: {
-        color: '#ffffff'
+        color: colors.inverseText
     },
     secondaryButton: {
         alignItems: 'center',
-        borderColor: '#b9d7cd',
-        borderRadius: 18,
+        borderColor: colors.borderStrong,
+        borderRadius: radii.md,
         borderWidth: 1,
         flexDirection: 'row',
-        gap: 8,
+        gap: spacing[2],
         justifyContent: 'center',
         minHeight: 48,
-        paddingHorizontal: 16
+        paddingHorizontal: spacing[4]
     },
     secondaryButtonText: {
-        color: '#0d7b5d',
+        color: colors.brand,
+        fontFamily: fonts.medium,
         fontSize: 15,
         fontWeight: '700'
     },
     selectedSubjectCard: {
-        backgroundColor: '#eef7f3',
-        borderRadius: 22,
-        gap: 8,
-        padding: 14
+        backgroundColor: colors.brandSubtle,
+        borderRadius: radii.md,
+        gap: spacing[2],
+        padding: spacing[4]
     },
     lessonCard: {
-        backgroundColor: '#f8fbf9',
-        borderRadius: 22,
-        gap: 12,
-        padding: 14
+        backgroundColor: colors.surfaceSubtle,
+        borderRadius: radii.md,
+        gap: spacing[3],
+        padding: spacing[4]
     },
     lessonDateBox: {
         alignItems: 'flex-start',
-        backgroundColor: '#edf3ff',
-        borderRadius: 18,
-        gap: 4,
-        padding: 12
+        backgroundColor: colors.infoSubtle,
+        borderRadius: radii.md,
+        gap: spacing[1],
+        padding: spacing[3]
     },
     lessonDate: {
-        color: '#245fd9',
+        color: colors.info,
+        fontFamily: fonts.medium,
         fontSize: 14,
         fontWeight: '700'
     },
     lessonWorkload: {
-        color: '#5f76b8',
+        color: colors.info,
+        fontFamily: fonts.medium,
         fontSize: 12,
         fontWeight: '700'
     },
@@ -1829,46 +2175,57 @@ const styles = StyleSheet.create({
         gap: 4
     },
     emptyInline: {
-        backgroundColor: '#f5f8f6',
-        borderRadius: 18,
-        paddingHorizontal: 14,
-        paddingVertical: 16
+        backgroundColor: colors.surfaceMuted,
+        borderRadius: radii.md,
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[4]
     },
     emptyInlineText: {
-        color: '#62756d',
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
         fontSize: 14,
         textAlign: 'center'
     },
     bottomNav: {
-        backgroundColor: 'rgba(255,255,255,0.96)',
-        borderTopColor: '#d7e3dd',
-        borderTopWidth: 1,
+        ...shadows.surface,
+        alignSelf: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.md,
+        borderWidth: 1,
         flexDirection: 'row',
         justifyContent: 'space-between',
-        paddingBottom: Platform.OS === 'ios' ? 24 : 16,
-        paddingHorizontal: 10,
-        paddingTop: 10
+        maxWidth: 560,
+        paddingBottom: Platform.OS === 'ios' ? 18 : 14,
+        paddingHorizontal: spacing[2],
+        paddingTop: spacing[2],
+        width: '100%'
+    },
+    bottomNavShell: {
+        position: 'absolute',
+        zIndex: 10
     },
     navItem: {
         alignItems: 'center',
-        borderRadius: 18,
+        borderRadius: radii.sm,
         flex: 1,
-        gap: 6,
-        paddingVertical: 10
+        gap: spacing[1],
+        paddingVertical: spacing[2]
     },
     navItemActive: {
-        backgroundColor: '#e2f4ed'
+        backgroundColor: colors.brandMuted
     },
     navText: {
-        color: '#607670',
+        color: colors.textMuted,
+        fontFamily: fonts.medium,
         fontSize: 11,
         fontWeight: '700'
     },
     navTextActive: {
-        color: '#0d7b5d'
+        color: colors.brand
     },
     skeletonBlock: {
-        backgroundColor: '#e7efeb',
-        borderRadius: 24
+        backgroundColor: colors.border,
+        borderRadius: radii.md
     }
 });

@@ -4,10 +4,12 @@
   "main": "index.ts",
   "private": true,
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
+    "start": "cross-env EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 expo start",
+    "start:clear": "cross-env EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 expo start --clear",
+    "start:online": "expo start",
+    "android": "cross-env EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 expo start --android",
+    "ios": "cross-env EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 expo start --ios",
+    "web": "cross-env EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 expo start --web",
     "build:web": "expo export --platform web --output-dir web-build",
     "typecheck": "tsc --noEmit"
   },
@@ -20,20 +22,22 @@
   "description": "",
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
-    "expo": "~56.0.12",
-    "expo-linear-gradient": "~56.0.4",
-    "expo-status-bar": "~56.0.4",
+    "expo": "~54.0.35",
+    "expo-linear-gradient": "~15.0.8",
+    "expo-status-bar": "~3.0.9",
     "lucide-react-native": "^0.553.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-native": "0.85.3",
-    "react-native-safe-area-context": "~5.7.0",
-    "react-native-svg": "15.15.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-native": "^0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
-    "@types/react": "~19.2.2",
+    "@types/react": "~19.1.10",
     "babel-plugin-module-resolver": "^5.0.2",
-    "typescript": "~6.0.3"
+    "babel-preset-expo": "~54.0.11",
+    "cross-env": "^7.0.3",
+    "typescript": "~5.9.2"
   }
 }

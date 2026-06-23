@@ -6,10 +6,25 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "ufamacademics",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#10372f"
+    },
+    "web": {
+      "favicon": "./assets/images/favicon.png"
+    },
     "android": {
-      "edgeToEdgeEnabled": true
+      "package": "br.edu.ufam.academics",
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#10372f"
+      }
     },
     "ios": {
+      "bundleIdentifier": "br.edu.ufam.academics",
       "supportsTablet": true
     }
   }
