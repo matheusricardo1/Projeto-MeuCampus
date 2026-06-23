@@ -36,9 +36,7 @@ export class EcampusHttpRepository implements EcampusRepository {
 
             const profileData: StudentProfile = {
                 academic: {
-                    admission_type: this.getInputValue(tree, "tipoIngresso"),
                     admission_term: this.getInputValue(tree, "anoIngresso"),
-                    admission_date: this.getInputValue(tree, "dataIngresso"),
                     course: this.getInputValue(tree, "nomeCurso"),
                     shift: this.getInputValue(tree, "turno"),
                     enrollment_number: this.getInputValue(tree, "matricula"),
@@ -46,25 +44,12 @@ export class EcampusHttpRepository implements EcampusRepository {
                 personal: {
                     full_name: this.getInputValue(tree, "nomePessoa"),
                     birth_date: this.getInputValue(tree, "aluno.dtNascimento"),
-                    gender: this.getRadioValue(tree, "aluno.sexo"),
-                    marital_status: this.getSelectText(tree, "aluno.estadoCivilItem"),
-                    nationality: this.getSelectText(tree, "aluno.nacionalidadeItem"),
-                    ethnicity: this.getSelectText(tree, "aluno.etniaItem"),
-                    father_name: this.getInputValue(tree, "aluno.nomePai"),
                     mother_name: this.getInputValue(tree, "aluno.nomeMae"),
                 },
                 contact: {
                     email: this.getInputValue(tree, "endereco.descrMail"),
                     cellphone: this.getInputValue(tree, "endereco.foneCelular"),
                     home_phone: this.getInputValue(tree, "endereco.foneResidencial"),
-                },
-                address: {
-                    zip_code: this.getInputValue(tree, "endereco.descrCep"),
-                    street: this.getInputValue(tree, "endereco.descrRua"),
-                    number: this.getInputValue(tree, "endereco.descrNumero"),
-                    neighborhood: this.getInputValue(tree, "endereco.descrBairro"),
-                    state: this.getSelectText(tree, "endereco.uf.id"),
-                    city: this.getSelectText(tree, "endereco.cidade.id"),
                 }
             };
 
@@ -123,8 +108,7 @@ export class EcampusHttpRepository implements EcampusRepository {
                     final_exam: columns[22]?.textContent.trim() || '',
                     final_grade: columns[23]!.textContent.trim(),
                     absences: columns[24]!.textContent.trim(),
-                    status: columns[25]!.textContent.trim(),
-                    history_effective: columns[26]?.textContent.trim() || ''
+                    status: columns[25]!.textContent.trim()
                 });
             }
 
@@ -146,7 +130,6 @@ export class EcampusHttpRepository implements EcampusRepository {
             }
 
             evaluations.push({
-                label: `E${evaluationNumber}`,
                 weight,
                 score
             });
@@ -345,8 +328,6 @@ export class EcampusHttpRepository implements EcampusRepository {
                 code,
                 subject: columns[2]!.textContent.trim(),
                 classIdentifier: columns[3]!.textContent.trim(),
-                credits: columns[4]!.textContent.trim(),
-                workload: columns[5]!.textContent.trim(),
                 professor: columns[6]!.textContent.trim(),
                 available: Boolean(planId)
             });
@@ -437,13 +418,4 @@ export class EcampusHttpRepository implements EcampusRepository {
         return node?.getAttribute('value')?.trim() || "";
     }
 
-    private getSelectText(tree: HTMLElement, elementId: string): string {
-        const node = tree.querySelector(`select[id="${elementId}"] option[selected="selected"]`);
-        return node?.textContent?.trim() || "";
-    }
-
-    private getRadioValue(tree: HTMLElement, elementName: string): string {
-        const node = tree.querySelector(`input[type="radio"][name="${elementName}"][checked="checked"]`);
-        return node?.getAttribute('value')?.trim() || "";
-    }
 }

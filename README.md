@@ -8,7 +8,6 @@ Copie `.env.example` para `.env` em desenvolvimento ou configure essas variaveis
 
 - `PORT`: porta HTTP. Padrao: `3001`.
 - `FRONTEND_ORIGIN`: origem permitida no CORS. Use virgula para multiplas origens.
-- `ECAMPUS_MASTER_KEY`: chave usada para criptografar a senha do eCampus.
 - `ECAMPUS_JWT_SECRET`: chave usada para assinar o Bearer token do app.
 - `ECAMPUS_JWT_EXPIRES_IN`: expiracao do JWT. Padrao: `2h`.
 

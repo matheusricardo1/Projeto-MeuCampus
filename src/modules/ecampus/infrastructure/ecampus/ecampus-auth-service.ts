@@ -1,4 +1,3 @@
-import type { CredentialVault } from '@ecampus/application/ports/credential-vault';
 import type { EcampusAuthenticator } from '@ecampus/application/ports/ecampus-authenticator';
 import type { SessionStore } from '@ecampus/application/ports/session-store';
 import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
@@ -7,13 +6,12 @@ import { EcampusClient } from '@ecampus/infrastructure/ecampus/ecampus-client';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 
 export class EcampusAuthService implements EcampusAuthenticator {
-    constructor(
-        private readonly sessionStore: SessionStore,
-        private readonly credentialVault: CredentialVault
-    ) {}
+    constructor(private readonly sessionStore: SessionStore) {}
 
-    async authenticate(credentials: EcampusCredentials): Promise<void> {
-        await this.getAuthenticatedClient(credentials);
+    async authenticate(credentials: EcampusCredentials, password: string): Promise<void> {
+        const client = new EcampusClient();
+        await client.login(credentials.cpf, password);
+        await this.sessionStore.saveSession(credentials.cpf, client.exportCookies());
     }
 
     async logout(credentials: EcampusCredentials): Promise<void> {
@@ -51,17 +49,7 @@ export class EcampusAuthService implements EcampusAuthenticator {
             client = new EcampusClient();
         }
 
-        logger.info(`Session expired for ${credentials.cpf}. Initiating silent recovery...`);
-
-        if (!credentials.encryptedPassword) {
-            throw new AuthenticationError("No encrypted password provided for silent recovery.");
-        }
-
-        let realPassword = this.credentialVault.decryptPassword(credentials.encryptedPassword);
-        await client.login(credentials.cpf, realPassword);
-        realPassword = "CLEARED";
-
-        await this.sessionStore.saveSession(credentials.cpf, client.exportCookies());
-        return client;
+        logger.info(`Session expired for ${credentials.cpf}. User must authenticate again.`);
+        throw new AuthenticationError("eCampus session expired. Please sign in again.");
     }
 }

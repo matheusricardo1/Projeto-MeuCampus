@@ -1,5 +1,4 @@
 export interface GradeEvaluation {
-    label: string;
     weight: string;
     score: string;
 }
@@ -14,5 +13,4 @@ export interface Grade {
     final_grade: string;
     absences: string;
     status: string;
-    history_effective: string;
 }

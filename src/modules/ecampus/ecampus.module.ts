@@ -8,7 +8,6 @@ import { LoginEcampusUseCase } from '@ecampus/application/use-cases/login-ecampu
 import { LogoutEcampusUseCase } from '@ecampus/application/use-cases/logout-ecampus.usecase';
 import { EcampusAuthService } from '@ecampus/infrastructure/ecampus/ecampus-auth-service';
 import { EcampusHttpRepository } from '@ecampus/infrastructure/ecampus/ecampus-http.repository';
-import { CryptoCredentialVault } from '@ecampus/infrastructure/security/crypto-credential-vault';
 import { JwtAccessTokenService } from '@ecampus/infrastructure/security/jwt-access-token-service';
 import { FileSessionStore } from '@ecampus/infrastructure/storage/file-session-store';
 import { EcampusController } from '@ecampus/presentation/http/ecampus.controller';
@@ -17,16 +16,15 @@ import { EcampusJwtGuard } from '@ecampus/presentation/http/guards/ecampus-jwt.g
 @Module({
     controllers: [EcampusController],
     providers: [
-        CryptoCredentialVault,
         JwtAccessTokenService,
         FileSessionStore,
         EcampusJwtGuard,
         {
             provide: EcampusAuthService,
-            useFactory: (sessionStore: FileSessionStore, credentialVault: CryptoCredentialVault) => {
-                return new EcampusAuthService(sessionStore, credentialVault);
+            useFactory: (sessionStore: FileSessionStore) => {
+                return new EcampusAuthService(sessionStore);
             },
-            inject: [FileSessionStore, CryptoCredentialVault]
+            inject: [FileSessionStore]
         },
         {
             provide: EcampusHttpRepository,
@@ -73,13 +71,12 @@ import { EcampusJwtGuard } from '@ecampus/presentation/http/guards/ecampus-jwt.g
         {
             provide: LoginEcampusUseCase,
             useFactory: (
-                credentialVault: CryptoCredentialVault,
                 ecampusAuthenticator: EcampusAuthService,
                 accessTokenService: JwtAccessTokenService
             ) => {
-                return new LoginEcampusUseCase(credentialVault, ecampusAuthenticator, accessTokenService);
+                return new LoginEcampusUseCase(ecampusAuthenticator, accessTokenService);
             },
-            inject: [CryptoCredentialVault, EcampusAuthService, JwtAccessTokenService]
+            inject: [EcampusAuthService, JwtAccessTokenService]
         },
         {
             provide: LogoutEcampusUseCase,
