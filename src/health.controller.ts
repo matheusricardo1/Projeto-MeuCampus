@@ -6,7 +6,7 @@ export class HealthController {
     health() {
         return {
             status: 'ok',
-            service: 'ufam-academics-api'
+            service: 'meu-campus-api'
         };
     }
 }

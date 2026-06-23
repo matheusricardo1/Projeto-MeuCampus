@@ -18,7 +18,7 @@ export class EcampusAuthService implements EcampusAuthenticator {
         const savedCookies = await this.sessionStore.getSession(credentials.cpf);
 
         if (!savedCookies) {
-            logger.info(`No saved eCampus session found for ${credentials.cpf}.`);
+            logger.info("No saved eCampus session found.");
             return;
         }
 
@@ -49,7 +49,7 @@ export class EcampusAuthService implements EcampusAuthenticator {
             client = new EcampusClient();
         }
 
-        logger.info(`Session expired for ${credentials.cpf}. User must authenticate again.`);
+        logger.info("Session expired. User must authenticate again.");
         throw new AuthenticationError("eCampus session expired. Please sign in again.");
     }
 }

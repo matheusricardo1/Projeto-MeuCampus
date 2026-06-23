@@ -11,6 +11,7 @@ export class EcampusClient {
     private authenticated = false;
 
     constructor() {
+        this.assertHttpsBaseUrl();
         this.jar = new CookieJar();
 
         const client = axios.create({
@@ -24,6 +25,13 @@ export class EcampusClient {
 
         this.session = wrapper(client);
         this.session.defaults.jar = this.jar;
+    }
+
+    private assertHttpsBaseUrl(): void {
+        const url = new URL(this.baseUrl);
+        if (url.protocol !== 'https:') {
+            throw new Error("eCampus integration must use HTTPS.");
+        }
     }
 
     get isAuthenticated(): boolean {
@@ -69,7 +77,7 @@ export class EcampusClient {
         params.append('senha', password);
         params.append('enviar', 'Entrar');
 
-        logger.info(`Attempting authentication for user: ${cpf}`);
+        logger.info("Attempting eCampus authentication.");
 
         try {
             const response = await this.session.post('/home/loginValida', params, {

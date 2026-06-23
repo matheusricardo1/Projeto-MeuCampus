@@ -18,7 +18,7 @@ export class EcampusHttpRepository implements EcampusRepository {
 
     async logout(credentials: EcampusCredentials): Promise<void> {
         return this.runExclusive(credentials.cpf, async () => {
-            logger.info(`Logging out from eCampus for ${credentials.cpf}...`);
+            logger.info("Logging out from eCampus.");
             await this.authService.logout(credentials);
         });
     }

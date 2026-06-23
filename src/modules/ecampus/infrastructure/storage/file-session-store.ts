@@ -16,7 +16,7 @@ export class FileSessionStore implements SessionStore {
         data[userCpf] = cookies;
 
         await fs.writeFile(this.storageFile, JSON.stringify(data, null, 4), 'utf8');
-        logger.info(`Session saved to storage for user ${userCpf}.`);
+        logger.info("Session saved to storage.");
     }
 
     async getSession(userCpf: string): Promise<object | null> {
@@ -33,7 +33,7 @@ export class FileSessionStore implements SessionStore {
 
         delete data[userCpf];
         await fs.writeFile(this.storageFile, JSON.stringify(data, null, 4), 'utf8');
-        logger.warning(`Invalid saved session removed for user ${userCpf}.`);
+        logger.warning("Invalid saved session removed.");
     }
 
     private async loadAll(): Promise<Record<string, object>> {

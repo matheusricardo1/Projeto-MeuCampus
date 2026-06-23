@@ -15,9 +15,18 @@ register({
 const { AppModule } = require('@/app.module') as typeof import('./app.module');
 const { HttpErrorFilter } = require('@/shared/http/http-error.filter') as typeof import('./shared/http/http-error.filter');
 const { accessLogMiddleware } = require('@/shared/http/access-log.middleware') as typeof import('./shared/http/access-log.middleware');
+const { securityHeadersMiddleware } = require('@/shared/http/security-headers.middleware') as typeof import('./shared/http/security-headers.middleware');
+const { httpsEnforcementMiddleware } = require('@/shared/http/https-enforcement.middleware') as typeof import('./shared/http/https-enforcement.middleware');
+const { createRequestHardeningMiddleware } = require('@/shared/http/request-hardening.middleware') as typeof import('./shared/http/request-hardening.middleware');
+const { rateLimitMiddleware } = require('@/shared/http/rate-limit.middleware') as typeof import('./shared/http/rate-limit.middleware');
 
 export async function createNestApp(): Promise<INestApplication> {
     const app = await NestFactory.create(AppModule);
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+    app.use(securityHeadersMiddleware);
+    app.use(httpsEnforcementMiddleware);
+    app.use(createRequestHardeningMiddleware(isAllowedOrigin));
+    app.use(rateLimitMiddleware);
     app.use(accessLogMiddleware);
     app.useGlobalFilters(new HttpErrorFilter());
     app.enableShutdownHooks();
@@ -47,7 +56,7 @@ function isAllowedOrigin(origin: string): boolean {
 
 function matchesOrigin(origin: string, allowedOrigin: string): boolean {
     if (allowedOrigin === '*') {
-        return true;
+        return process.env.NODE_ENV !== 'production';
     }
 
     if (!allowedOrigin.includes('*')) {
