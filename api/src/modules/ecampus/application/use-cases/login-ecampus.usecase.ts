@@ -22,10 +22,13 @@ export class LoginEcampusUseCase {
             cpf: input.user
         };
 
-        await this.ecampusAuthenticator.authenticate(credentials, input.password);
+        const session = await this.ecampusAuthenticator.authenticate(credentials, input.password);
 
         return {
-            accessToken: this.accessTokenService.sign(credentials),
+            accessToken: this.accessTokenService.sign({
+                ...credentials,
+                session
+            }),
             tokenType: 'Bearer'
         };
     }

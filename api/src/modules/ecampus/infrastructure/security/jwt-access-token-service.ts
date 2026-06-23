@@ -1,15 +1,18 @@
 import { JwtService } from '@nestjs/jwt';
 import type { StringValue } from 'ms';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 import type { AccessTokenService } from '@ecampus/application/ports/access-token-service';
 import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
 
 interface EcampusJwtPayload {
     sub: string;
-    version: 2;
+    session: string;
+    version: 3;
 }
 
 export class JwtAccessTokenService implements AccessTokenService {
     private readonly jwtService: JwtService;
+    private readonly encryptionKey: Buffer;
 
     constructor(
         secret: string | undefined = process.env.ECAMPUS_JWT_SECRET || process.env.JWT_SECRET
@@ -18,6 +21,7 @@ export class JwtAccessTokenService implements AccessTokenService {
             throw new Error("CRITICAL: ECAMPUS_JWT_SECRET or JWT_SECRET must be defined.");
         }
 
+        this.encryptionKey = createHash('sha256').update(secret).digest();
         this.jwtService = new JwtService({
             secret,
             signOptions: {
@@ -27,22 +31,65 @@ export class JwtAccessTokenService implements AccessTokenService {
     }
 
     sign(credentials: EcampusCredentials): string {
+        if (!credentials.session) {
+            throw new Error("Session payload is required to sign the eCampus token.");
+        }
+
         return this.jwtService.sign({
             sub: credentials.cpf,
-            version: 2
+            session: this.encryptSession(credentials.session),
+            version: 3
         } satisfies EcampusJwtPayload);
     }
 
     verify(token: string): EcampusCredentials {
         const payload = this.jwtService.verify<EcampusJwtPayload>(token);
-        const legacyPasswordClaim = ['encrypted', 'Password'].join('');
 
-        if (!payload.sub || payload.version !== 2 || legacyPasswordClaim in payload) {
+        if (!payload.sub || payload.version !== 3 || !payload.session) {
             throw new Error("Invalid eCampus token payload.");
         }
 
         return {
-            cpf: payload.sub
+            cpf: payload.sub,
+            session: this.decryptSession(payload.session)
         };
+    }
+
+    private encryptSession(session: Record<string, unknown>): string {
+        const iv = randomBytes(12);
+        const cipher = createCipheriv('aes-256-gcm', this.encryptionKey, iv);
+        const serialized = JSON.stringify(session);
+        const encrypted = Buffer.concat([cipher.update(serialized, 'utf8'), cipher.final()]);
+        const authTag = cipher.getAuthTag();
+
+        return [iv.toString('base64url'), authTag.toString('base64url'), encrypted.toString('base64url')].join('.');
+    }
+
+    private decryptSession(value: string): Record<string, unknown> {
+        const [ivPart, authTagPart, encryptedPart] = value.split('.');
+
+        if (!ivPart || !authTagPart || !encryptedPart) {
+            throw new Error("Invalid encrypted eCampus session payload.");
+        }
+
+        const decipher = createDecipheriv(
+            'aes-256-gcm',
+            this.encryptionKey,
+            Buffer.from(ivPart, 'base64url')
+        );
+
+        decipher.setAuthTag(Buffer.from(authTagPart, 'base64url'));
+
+        const decrypted = Buffer.concat([
+            decipher.update(Buffer.from(encryptedPart, 'base64url')),
+            decipher.final()
+        ]).toString('utf8');
+
+        const parsed = JSON.parse(decrypted);
+        if (!parsed || typeof parsed !== 'object') {
+            throw new Error("Invalid decrypted eCampus session payload.");
+        }
+
+        return parsed as Record<string, unknown>;
     }
 }

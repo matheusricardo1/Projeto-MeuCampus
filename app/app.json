@@ -18,6 +18,7 @@
     "android": {
       "package": "br.edu.ufam.meucampus",
       "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#10372f"

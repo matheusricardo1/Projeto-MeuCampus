@@ -74,20 +74,33 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
                     ) : null}
                 </View>
 
-                <ScrollView
-                    contentContainerStyle={[styles.content, { paddingBottom: layout.showBottomNav ? 112 + insets.bottom : 40, paddingHorizontal: layout.pagePadding }]}
-                    refreshControl={<RefreshControl refreshing={workspace.isLoading} onRefresh={() => void activeTab.action()} tintColor={colors.brand} />}
-                    showsVerticalScrollIndicator={false}
-                >
-                    <View style={[styles.contentShell, { maxWidth: layout.contentMaxWidth }]}>
-                        {workspace.error ? <View style={styles.errorBanner}><Text style={styles.errorText}>{workspace.error}</Text></View> : null}
-                        {workspace.activeTab === 'home' ? <DashboardPage workspace={workspace} /> : null}
-                        {workspace.activeTab === 'profile' ? <ProfilePage profile={workspace.profile} onRefresh={workspace.loadProfile} loading={workspace.isLoading} /> : null}
-                        {workspace.activeTab === 'schedule' ? <SchedulePage schedule={workspace.schedule} onRefresh={workspace.loadSchedule} loading={workspace.isLoading} /> : null}
-                        {workspace.activeTab === 'grades' ? <GradesPage grades={workspace.grades} input={workspace.gradesInput} loading={workspace.isLoading} onChange={workspace.setGradesInput} onRefresh={workspace.loadGrades} /> : null}
-                        {workspace.activeTab === 'lessonPlan' ? <LessonPlanPage items={workspace.lessonPlan} loading={workspace.isLoading} onChangeSubjectCode={workspace.changeLessonPlanSubject} onRefresh={workspace.loadLessonPlan} onRefreshSubjects={workspace.loadLessonPlanSubjects} selectedSubjectCode={workspace.selectedLessonPlanSubjectCode} subjects={workspace.lessonPlanSubjects} /> : null}
+                {layout.isTablet ? (
+                    <ScrollView
+                        contentContainerStyle={[styles.content, { paddingBottom: 40, paddingHorizontal: layout.pagePadding }]}
+                        refreshControl={<RefreshControl refreshing={workspace.isLoading} onRefresh={() => void activeTab.action()} tintColor={colors.brand} />}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        <View style={[styles.contentShell, { maxWidth: layout.contentMaxWidth }]}>
+                            {workspace.error ? <View style={styles.errorBanner}><Text style={styles.errorText}>{workspace.error}</Text></View> : null}
+                            {workspace.activeTab === 'home' ? <DashboardPage workspace={workspace} /> : null}
+                            {workspace.activeTab === 'profile' ? <ProfilePage profile={workspace.profile} onRefresh={workspace.loadProfile} loading={workspace.isLoading} /> : null}
+                            {workspace.activeTab === 'schedule' ? <SchedulePage schedule={workspace.schedule} onRefresh={workspace.loadSchedule} loading={workspace.isLoading} /> : null}
+                            {workspace.activeTab === 'grades' ? <GradesPage grades={workspace.grades} input={workspace.gradesInput} loading={workspace.isLoading} onChange={workspace.setGradesInput} onRefresh={workspace.loadGrades} /> : null}
+                            {workspace.activeTab === 'lessonPlan' ? <LessonPlanPage items={workspace.lessonPlan} loading={workspace.isLoading} onChangeSubjectCode={workspace.changeLessonPlanSubject} onRefresh={workspace.loadLessonPlan} onRefreshSubjects={workspace.loadLessonPlanSubjects} selectedSubjectCode={workspace.selectedLessonPlanSubjectCode} subjects={workspace.lessonPlanSubjects} /> : null}
+                        </View>
+                    </ScrollView>
+                ) : (
+                    <View style={[styles.content, { paddingBottom: 112 + insets.bottom, paddingHorizontal: layout.pagePadding }]}>
+                        <View style={[styles.contentShell, { maxWidth: layout.contentMaxWidth }]}>
+                            {workspace.error ? <View style={styles.errorBanner}><Text style={styles.errorText}>{workspace.error}</Text></View> : null}
+                            {workspace.activeTab === 'home' ? <DashboardPage workspace={workspace} /> : null}
+                            {workspace.activeTab === 'profile' ? <ProfilePage profile={workspace.profile} onRefresh={workspace.loadProfile} loading={workspace.isLoading} /> : null}
+                            {workspace.activeTab === 'schedule' ? <SchedulePage schedule={workspace.schedule} onRefresh={workspace.loadSchedule} loading={workspace.isLoading} /> : null}
+                            {workspace.activeTab === 'grades' ? <GradesPage grades={workspace.grades} input={workspace.gradesInput} loading={workspace.isLoading} onChange={workspace.setGradesInput} onRefresh={workspace.loadGrades} /> : null}
+                            {workspace.activeTab === 'lessonPlan' ? <LessonPlanPage items={workspace.lessonPlan} loading={workspace.isLoading} onChangeSubjectCode={workspace.changeLessonPlanSubject} onRefresh={workspace.loadLessonPlan} onRefreshSubjects={workspace.loadLessonPlanSubjects} selectedSubjectCode={workspace.selectedLessonPlanSubjectCode} subjects={workspace.lessonPlanSubjects} /> : null}
+                        </View>
                     </View>
-                </ScrollView>
+                )}
 
                 {layout.showBottomNav ? (
                     <View style={[styles.bottomNavShell, { bottom: 12 + insets.bottom, left: layout.pagePadding, right: layout.pagePadding }]}>

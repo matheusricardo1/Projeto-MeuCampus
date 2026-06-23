@@ -12,6 +12,7 @@ export const styles = StyleSheet.create({
     loginScreen: { flex: 1 },
     loginContainer: { flex: 1 },
     loginScrollContent: { alignItems: 'center', flexGrow: 1, justifyContent: 'center', width: '100%' },
+    loginScrollContentMobile: { justifyContent: 'flex-start' },
     loginCard: { ...shadows.surface, backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, overflow: 'hidden', width: '100%' },
     loginCardWide: { flexDirection: 'row' },
     loginShowcase: { gap: spacing[6], padding: spacing[7] },

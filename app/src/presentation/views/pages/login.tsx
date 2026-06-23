@@ -19,18 +19,21 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
     return (
         <SafeAreaView style={styles.loginScreen}>
             <LinearGradient colors={gradients.app} style={StyleSheet.absoluteFill} />
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.loginContainer}>
-                <ScrollView
-                    contentContainerStyle={[
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={insets.top + 12}
+                style={styles.loginContainer}
+            >
+                <View
+                    style={[
                         styles.loginScrollContent,
+                        !layout.isTablet ? styles.loginScrollContentMobile : null,
                         {
-                            paddingBottom: Math.max(20, insets.bottom + 20),
+                            paddingBottom: Math.max(12, insets.bottom + 12),
                             paddingHorizontal: layout.pagePadding,
-                            paddingTop: Math.max(20, insets.top + 20)
+                            paddingTop: Math.max(12, insets.top + 12)
                         }
                     ]}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
                 >
                     <View style={[styles.loginCard, layout.isTablet ? styles.loginCardWide : null, { maxWidth: layout.loginMaxWidth }]}>
                         <LinearGradient colors={gradients.brand} style={[styles.loginShowcase, layout.isTablet ? styles.loginShowcaseWide : null]}>
@@ -103,7 +106,7 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                             </Pressable>
                         </View>
                     </View>
-                </ScrollView>
+                </View>
             </KeyboardAvoidingView>
         </SafeAreaView>
     );

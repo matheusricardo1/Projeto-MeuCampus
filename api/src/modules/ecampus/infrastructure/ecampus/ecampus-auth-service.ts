@@ -1,52 +1,42 @@
 import type { EcampusAuthenticator } from '@ecampus/application/ports/ecampus-authenticator';
-import type { SessionStore } from '@ecampus/application/ports/session-store';
 import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
 import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
 import { EcampusClient } from '@ecampus/infrastructure/ecampus/ecampus-client';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 
 export class EcampusAuthService implements EcampusAuthenticator {
-    constructor(private readonly sessionStore: SessionStore) {}
+    authenticate(credentials: EcampusCredentials, password: string): Promise<Record<string, unknown>> {
+        return this.loginAndExportSession(credentials.cpf, password);
+    }
 
-    async authenticate(credentials: EcampusCredentials, password: string): Promise<void> {
+    private async loginAndExportSession(cpf: string, password: string): Promise<Record<string, unknown>> {
         const client = new EcampusClient();
-        await client.login(credentials.cpf, password);
-        await this.sessionStore.saveSession(credentials.cpf, client.exportCookies());
+        await client.login(cpf, password);
+        return client.exportCookies();
     }
 
     async logout(credentials: EcampusCredentials): Promise<void> {
-        const savedCookies = await this.sessionStore.getSession(credentials.cpf);
-
-        if (!savedCookies) {
-            logger.info("No saved eCampus session found.");
+        if (!credentials.session) {
+            logger.info("No eCampus session found in token payload.");
             return;
         }
 
         const client = new EcampusClient();
-        client.importCookies(savedCookies);
+        client.importCookies(credentials.session);
 
-        try {
-            await client.logout();
-        } finally {
-            await this.sessionStore.deleteSession(credentials.cpf);
-        }
+        await client.logout();
     }
 
     async getAuthenticatedClient(credentials: EcampusCredentials): Promise<EcampusClient> {
-        let client = new EcampusClient();
-        const savedCookies = await this.sessionStore.getSession(credentials.cpf);
-
-        if (savedCookies) {
-            client.importCookies(savedCookies);
+        if (!credentials.session) {
+            throw new AuthenticationError("eCampus session missing from token payload.");
         }
+
+        let client = new EcampusClient();
+        client.importCookies(credentials.session);
 
         if (await client.isSessionAlive()) {
             return client;
-        }
-
-        if (savedCookies) {
-            await this.sessionStore.deleteSession(credentials.cpf);
-            client = new EcampusClient();
         }
 
         logger.info("Session expired. User must authenticate again.");

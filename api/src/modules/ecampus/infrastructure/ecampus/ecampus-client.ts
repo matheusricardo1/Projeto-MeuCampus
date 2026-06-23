@@ -38,11 +38,11 @@ export class EcampusClient {
         return this.authenticated;
     }
 
-    exportCookies(): object {
+    exportCookies(): Record<string, unknown> {
         return this.jar.toJSON() ?? {};
     }
 
-    importCookies(cookieDict: object): void {
+    importCookies(cookieDict: Record<string, unknown>): void {
         this.jar = CookieJar.fromJSON(cookieDict as any) || new CookieJar();
         this.session.defaults.jar = this.jar;
         logger.info("Cookies loaded into the session.");
