@@ -1,8 +1,8 @@
 import { Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, gradients } from '@/presentation/design-system';
+import { gradients } from '@/presentation/design-system';
 import type { Workspace } from '@/presentation/views/workspace.types';
-import { EmptyInline, MetricCard, PanelHeader, SkeletonBlock, StatPill } from '@/presentation/views/components';
+import { EmptyInline, MetricCard, PanelHeader, SkeletonBlock } from '@/presentation/views/components';
 import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, isApprovedStatus, parseAbsences, parseGrade, useResponsiveLayout } from '@/presentation/views/workspace.utils';
 import { styles } from '@/presentation/views/workspace.styles';
 
@@ -16,9 +16,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
     const averageNumber = numericGrades.length ? numericGrades.reduce((sum, grade) => sum + grade, 0) / numericGrades.length : null;
     const approved = grades.filter((grade) => isApprovedStatus(grade.status)).length;
     const totalAbsences = grades.reduce((sum, grade) => sum + parseAbsences(grade.absences), 0);
-    const activityCount = grades.reduce((sum, grade) => sum + grade.evaluations.length, 0);
     const subjectCount = Math.max(lessonPlanSubjects.length, grades.length, new Set(schedule.map((item) => item.code)).size);
-    const chartMax = Math.max(...weekMap.map((day) => day.items.length), 1);
     const weakestGrades = grades
         .map((grade) => ({ grade, parsedFinal: parseGrade(grade.final_grade) }))
         .filter((entry): entry is { grade: Workspace['grades'][number]; parsedFinal: number } => entry.parsedFinal !== null)
@@ -45,9 +43,8 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
 
             <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
                 <MetricCard label="Materias" value={String(subjectCount)} />
-                <MetricCard label="Aulas" value={String(schedule.length)} />
-                <MetricCard label="Atividades" value={String(activityCount)} />
-                <MetricCard label="Faltas" value={String(totalAbsences)} />
+                <MetricCard label="Aulas semanais" value={String(schedule.length)} />
+                <MetricCard label="Media geral" value={averageNumber === null ? '-' : averageNumber.toFixed(1)} />
             </View>
 
             <View style={[styles.twoColumnGrid, layout.isTablet ? styles.twoColumnGridWide : null]}>
@@ -62,33 +59,19 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                 </View>
 
                 <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
-                    <PanelHeader loading={isLoading} onRefresh={workspace.loadSchedule} title="Semana" />
-                    <View style={styles.weekChart}>
-                        {weekMap.map((day) => (
-                            <View key={day.weekday} style={styles.weekBarItem}>
-                                <View style={styles.weekBarTrack}>
-                                    <View style={[styles.weekBarFill, { height: Math.max(10, (day.items.length / chartMax) * 88) }]} />
-                                </View>
-                                <Text style={styles.weekBarLabel}>{day.short}</Text>
-                                <Text style={styles.weekBarValue}>{day.items.length}</Text>
-                            </View>
-                        ))}
-                    </View>
-                </View>
-            </View>
-
-            <View style={[styles.twoColumnGrid, layout.isTablet ? styles.twoColumnGridWide : null]}>
-                <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
-                    <PanelHeader loading={isLoading} onRefresh={workspace.loadGrades} title="Notas" />
-                    <View style={styles.gradeSummaryBoard}>
-                        <View style={styles.gradeRing}>
-                            <Text style={styles.gradeRingValue}>{averageNumber === null ? '-' : averageNumber.toFixed(1)}</Text>
-                            <Text style={styles.gradeRingLabel}>geral</Text>
+                    <PanelHeader loading={isLoading} onRefresh={workspace.loadGrades} title="Situacao academica" />
+                    <View style={styles.summaryRows}>
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Disciplinas aprovadas</Text>
+                            <Text style={styles.summaryValue}>{grades.length ? `${approved}/${grades.length}` : '-'}</Text>
                         </View>
-                        <View style={styles.gradeStatStack}>
-                            <StatPill label="Aprovadas" value={String(approved)} />
-                            <StatPill label="Em atencao" value={String(grades.length - approved)} />
-                            <StatPill label="Lancadas" value={String(grades.length)} />
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Faltas registradas</Text>
+                            <Text style={styles.summaryValue}>{totalAbsences}</Text>
+                        </View>
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Dias com aula</Text>
+                            <Text style={styles.summaryValue}>{weekMap.filter((day) => day.items.length > 0).length}</Text>
                         </View>
                     </View>
                 </View>

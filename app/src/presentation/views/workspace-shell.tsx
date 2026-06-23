@@ -30,6 +30,20 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
     ];
     const activeTab = tabs.find((tab) => tab.id === workspace.activeTab) || tabs[0]!;
     const displayName = workspace.profile?.personal.full_name || 'Meu Campus';
+    const desktopNav = (
+        <View style={[styles.desktopNav, layout.isDesktop ? styles.desktopFloatingNav : null, layout.isDesktop ? { maxWidth: layout.contentMaxWidth } : null]}>
+            {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const active = workspace.activeTab === tab.id;
+                return (
+                    <Pressable key={tab.id} onPress={() => workspace.openTab(tab.id)} style={[styles.desktopNavItem, active ? styles.desktopNavItemActive : null]}>
+                        <Icon color={active ? colors.inverseText : colors.textMuted} size={18} />
+                        <Text numberOfLines={1} style={[styles.desktopNavText, active ? styles.desktopNavTextActive : null]}>{tab.label}</Text>
+                    </Pressable>
+                );
+            })}
+        </View>
+    );
 
     return (
         <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -58,25 +72,12 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
                         </View>
                     </View>
 
-                    {layout.isTablet ? (
-                        <View style={styles.desktopNav}>
-                            {tabs.map((tab) => {
-                                const Icon = tab.icon;
-                                const active = workspace.activeTab === tab.id;
-                                return (
-                                    <Pressable key={tab.id} onPress={() => workspace.openTab(tab.id)} style={[styles.desktopNavItem, active ? styles.desktopNavItemActive : null]}>
-                                        <Icon color={active ? colors.inverseText : colors.textMuted} size={18} />
-                                        <Text numberOfLines={1} style={[styles.desktopNavText, active ? styles.desktopNavTextActive : null]}>{tab.label}</Text>
-                                    </Pressable>
-                                );
-                            })}
-                        </View>
-                    ) : null}
+                    {layout.isTablet && !layout.isDesktop ? desktopNav : null}
                 </View>
 
                 {layout.isTablet ? (
                     <ScrollView
-                        contentContainerStyle={[styles.content, { paddingBottom: 40, paddingHorizontal: layout.pagePadding }]}
+                        contentContainerStyle={[styles.content, { paddingBottom: layout.isDesktop ? 104 + insets.bottom : 40, paddingHorizontal: layout.pagePadding }]}
                         refreshControl={<RefreshControl refreshing={workspace.isLoading} onRefresh={() => void activeTab.action()} tintColor={colors.brand} />}
                         showsVerticalScrollIndicator={false}
                     >
@@ -101,6 +102,12 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
                         </View>
                     </View>
                 )}
+
+                {layout.isDesktop ? (
+                    <View style={[styles.desktopBottomNavShell, { bottom: 20 + insets.bottom, left: layout.pagePadding, right: layout.pagePadding }]}>
+                        {desktopNav}
+                    </View>
+                ) : null}
 
                 {layout.showBottomNav ? (
                     <View style={[styles.bottomNavShell, { bottom: 12 + insets.bottom, left: layout.pagePadding, right: layout.pagePadding }]}>

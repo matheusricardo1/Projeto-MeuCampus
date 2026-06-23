@@ -103,8 +103,8 @@ export const shadows = {
     surface: {
         elevation: 2,
         shadowColor: '#101828',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 12
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8
     }
 } as const;

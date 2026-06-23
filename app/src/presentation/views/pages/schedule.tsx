@@ -2,8 +2,8 @@ import { ScrollView, Text, View } from 'react-native';
 import { Clock3 } from 'lucide-react-native';
 import { colors } from '@/presentation/design-system';
 import type { Workspace } from '@/presentation/views/workspace.types';
-import { EmptyInline, MetricCard, PanelHeader, SkeletonBlock } from '@/presentation/views/components';
-import { buildWeekMap, eventTone, getNextScheduleClass, groupScheduleByDay, useResponsiveLayout } from '@/presentation/views/workspace.utils';
+import { EmptyInline, PanelHeader, SkeletonBlock } from '@/presentation/views/components';
+import { buildWeekMap, eventTone, getNextScheduleClass, groupScheduleByDay } from '@/presentation/views/workspace.utils';
 import { styles } from '@/presentation/views/workspace.styles';
 
 export function SchedulePage({
@@ -15,22 +15,14 @@ export function SchedulePage({
     onRefresh: () => Promise<void>;
     schedule: Workspace['schedule'];
 }) {
-    const layout = useResponsiveLayout();
     const groupedSchedule = groupScheduleByDay(schedule);
     const weekMap = buildWeekMap(groupedSchedule);
-    const busiestDay = weekMap.reduce((current, day) => (day.items.length > current.items.length ? day : current), weekMap[0]!);
     const nextClass = getNextScheduleClass(schedule);
 
     if (loading && schedule.length === 0) return <ScheduleSkeleton />;
 
     return (
         <View style={styles.sectionStack}>
-            <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
-                <MetricCard label="Aulas" value={String(schedule.length)} />
-                <MetricCard label="Dias" value={String(groupedSchedule.length)} />
-                <MetricCard label="Pico" value={busiestDay.items.length ? busiestDay.short : '-'} />
-            </View>
-
             <View style={styles.panel}>
                 <PanelHeader loading={loading} onRefresh={onRefresh} title={nextClass?.isHappening ? 'Aula agora' : 'Proxima aula'} />
                 <View style={styles.scheduleHero}>
@@ -74,7 +66,6 @@ export function SchedulePage({
 function ScheduleSkeleton() {
     return (
         <View style={styles.sectionStack}>
-            <View style={styles.metricGrid}><SkeletonBlock height={92} /><SkeletonBlock height={92} /><SkeletonBlock height={92} /></View>
             <SkeletonBlock height={140} />
             <SkeletonBlock height={320} />
         </View>

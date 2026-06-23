@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Mail, Phone } from 'lucide-react-native';
+import { GraduationCap, Mail } from 'lucide-react-native';
 import { colors, gradients } from '@/presentation/design-system';
 import type { Workspace } from '@/presentation/views/workspace.types';
 import { EmptyState, PanelHeader, SkeletonBlock } from '@/presentation/views/components';
@@ -21,16 +21,13 @@ export function ProfilePage({
     if (!profile) return <EmptyState label="Carregar perfil" loading={loading} onRefresh={onRefresh} />;
 
     const contactRows = [
-        { icon: Mail, label: 'Email', value: profile.contact.email },
-        { icon: Phone, label: 'Telefone', value: profile.contact.cellphone || profile.contact.home_phone }
+        { icon: GraduationCap, label: 'Matricula', value: profile.academic.enrollment_number },
+        { icon: Mail, label: 'Email', value: profile.contact.email }
     ];
     const rows = [
-        ['Matricula', profile.academic.enrollment_number],
         ['Curso', profile.academic.course],
         ['Turno', profile.academic.shift],
-        ['Ingresso', profile.academic.admission_term],
-        ['Nascimento', profile.personal.birth_date],
-        ['Mae', profile.personal.mother_name]
+        ['Ingresso', profile.academic.admission_term]
     ];
 
     return (

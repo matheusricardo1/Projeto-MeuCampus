@@ -1,25 +1,17 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { RefreshCw } from 'lucide-react-native';
 import type { Workspace } from '@/presentation/views/workspace.types';
-import { EmptyInline, MetricCard, PanelHeader, SkeletonBlock } from '@/presentation/views/components';
-import { formatWorkload, useResponsiveLayout } from '@/presentation/views/workspace.utils';
+import { EmptyInline, PanelHeader, SkeletonBlock } from '@/presentation/views/components';
+import { formatWorkload } from '@/presentation/views/workspace.utils';
 import { styles } from '@/presentation/views/workspace.styles';
 
 export function LessonPlanPage({ items, loading, onChangeSubjectCode, onRefresh, onRefreshSubjects, selectedSubjectCode, subjects }: { items: Workspace['lessonPlan']; loading: boolean; onChangeSubjectCode: (value: string) => void; onRefresh: () => Promise<void>; onRefreshSubjects: () => Promise<void>; selectedSubjectCode: string; subjects: Workspace['lessonPlanSubjects']; }) {
-    const layout = useResponsiveLayout();
     const selectedSubject = subjects.find((subject) => subject.code === selectedSubjectCode) || null;
-    const availableSubjects = subjects.filter((subject) => subject.available).length;
 
     if (loading && subjects.length === 0 && items.length === 0) return <LessonPlanSkeleton />;
 
     return (
         <View style={styles.sectionStack}>
-            <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
-                <MetricCard label="Materias" value={String(subjects.length)} />
-                <MetricCard label="Com plano" value={String(availableSubjects)} />
-                <MetricCard label="Aulas" value={String(items.length)} />
-            </View>
-
             <View style={styles.panel}>
                 <PanelHeader loading={loading} onRefresh={onRefreshSubjects} title="Plano de ensino" />
                 <View style={styles.listStack}>
@@ -43,7 +35,7 @@ export function LessonPlanPage({ items, loading, onChangeSubjectCode, onRefresh,
                     {items.map((item, index) => (
                         <View key={`${item.date}-${item.content}-${index}`} style={styles.lessonCard}>
                             <View style={styles.lessonDateBox}><Text style={styles.lessonDate}>{item.date || '-'}</Text><Text style={styles.lessonWorkload}>{formatWorkload(item.workload)}</Text></View>
-                            <View style={styles.lessonBody}><Text style={styles.smallCaps}>{item.type || 'Aula'}</Text><Text style={styles.eventTitle}>{item.content || '-'}</Text><Text style={styles.panelDescription}>{item.professor || '-'}</Text></View>
+                            <View style={styles.lessonBody}><Text style={styles.smallCaps}>{item.type || 'Aula'}</Text><Text style={styles.eventTitle}>{item.content || '-'}</Text></View>
                         </View>
                     ))}
                 </View>
@@ -53,5 +45,5 @@ export function LessonPlanPage({ items, loading, onChangeSubjectCode, onRefresh,
 }
 
 function LessonPlanSkeleton() {
-    return <View style={styles.sectionStack}><View style={styles.metricGrid}><SkeletonBlock height={92} /><SkeletonBlock height={92} /><SkeletonBlock height={92} /></View><SkeletonBlock height={360} /></View>;
+    return <View style={styles.sectionStack}><SkeletonBlock height={360} /></View>;
 }
