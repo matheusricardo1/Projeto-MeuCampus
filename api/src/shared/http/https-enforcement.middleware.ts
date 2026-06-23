@@ -23,10 +23,9 @@ export function httpsEnforcementMiddleware(request: Request, response: Response,
 
     response.status(403).json({
         statusCode: 403,
-        message: 'HTTPS is required.',
-        error: 'Forbidden',
+        message: 'A comunicacao precisa usar HTTPS.',
+        error: 'Acesso negado',
         path: request.originalUrl,
         timestamp: new Date().toISOString()
     });
 }
-

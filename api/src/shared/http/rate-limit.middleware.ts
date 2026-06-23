@@ -19,7 +19,7 @@ const defaultRule: RateLimitRule = {
 };
 
 const loginRule: RateLimitRule = {
-    limit: Number(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || 5),
+    limit: Number(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || 10),
     windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || 60_000)
 };
 
@@ -56,8 +56,8 @@ export function rateLimitMiddleware(request: Request, response: Response, next: 
 
     response.status(429).json({
         statusCode: 429,
-        message: 'Too many requests. Try again later.',
-        error: 'TooManyRequests',
+        message: 'Muitas tentativas. Aguarde um minuto e tente novamente.',
+        error: 'Muitas tentativas',
         path: request.originalUrl,
         timestamp: new Date().toISOString()
     });
@@ -86,4 +86,3 @@ function cleanupExpiredBuckets(now: number): void {
         }
     }
 }
-

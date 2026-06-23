@@ -90,7 +90,7 @@ export class EcampusClient {
             if (typeof html === 'string' && (html.includes('Acesso ecampus') || requestPath?.includes('loginValida'))) {
                 this.authenticated = false;
                 logger.error("Authentication failed: Invalid credentials.");
-                throw new AuthenticationError("Invalid CPF or password.");
+                throw new AuthenticationError('CPF ou senha invalidos.');
             }
 
             this.authenticated = true;
@@ -151,7 +151,7 @@ export class EcampusClient {
 
     private ensureAuthenticated(): void {
         if (!this.authenticated) {
-            throw new AuthenticationError("Attempted to access protected route without auth.");
+            throw new AuthenticationError('Sua sessao expirou. Entre novamente.');
         }
     }
 

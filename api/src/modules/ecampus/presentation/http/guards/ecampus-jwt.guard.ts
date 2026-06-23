@@ -21,18 +21,18 @@ export class EcampusJwtGuard implements CanActivate {
             request.ecampusCredentials = this.accessTokenService.verify(token);
             return true;
         } catch (error) {
-            throw new UnauthorizedException("Invalid or expired bearer token.");
+            throw new UnauthorizedException('Sua sessao expirou. Entre novamente.');
         }
     }
 
     private extractBearerToken(authorization?: string): string {
         if (!authorization) {
-            throw new UnauthorizedException("Missing bearer token.");
+            throw new UnauthorizedException('Sua sessao nao foi encontrada. Entre novamente.');
         }
 
         const [scheme, token] = authorization.split(' ');
         if (scheme !== 'Bearer' || !token) {
-            throw new UnauthorizedException("Authorization header must use Bearer token.");
+            throw new UnauthorizedException('Sua sessao esta invalida. Entre novamente.');
         }
 
         return token;

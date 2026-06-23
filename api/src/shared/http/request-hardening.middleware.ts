@@ -23,8 +23,8 @@ export function createRequestHardeningMiddleware(isAllowedOrigin: OriginMatcher)
 
             response.status(403).json({
                 statusCode: 403,
-                message: 'Origin is not allowed.',
-                error: 'Forbidden',
+                message: 'Origem nao permitida.',
+                error: 'Acesso negado',
                 path: request.originalUrl,
                 timestamp: new Date().toISOString()
             });
@@ -34,8 +34,8 @@ export function createRequestHardeningMiddleware(isAllowedOrigin: OriginMatcher)
         if (request.method !== 'GET' && !request.is('application/json') && hasRequestBody(request)) {
             response.status(415).json({
                 statusCode: 415,
-                message: 'Content-Type must be application/json.',
-                error: 'UnsupportedMediaType',
+                message: 'A requisicao precisa usar JSON.',
+                error: 'Formato invalido',
                 path: request.originalUrl,
                 timestamp: new Date().toISOString()
             });

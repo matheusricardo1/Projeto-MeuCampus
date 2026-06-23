@@ -29,7 +29,7 @@ export class EcampusAuthService implements EcampusAuthenticator {
 
     async getAuthenticatedClient(credentials: EcampusCredentials): Promise<EcampusClient> {
         if (!credentials.session) {
-            throw new AuthenticationError("eCampus session missing from token payload.");
+            throw new AuthenticationError('Sua sessao nao foi encontrada. Entre novamente.');
         }
 
         let client = new EcampusClient();
@@ -40,6 +40,6 @@ export class EcampusAuthService implements EcampusAuthenticator {
         }
 
         logger.info("Session expired. User must authenticate again.");
-        throw new AuthenticationError("eCampus session expired. Please sign in again.");
+        throw new AuthenticationError('Sua sessao expirou. Entre novamente.');
     }
 }

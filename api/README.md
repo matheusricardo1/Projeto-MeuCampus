@@ -79,7 +79,7 @@ ECAMPUS_JWT_SECRET=replace-with-another-long-random-secret
 ECAMPUS_JWT_EXPIRES_IN=2h
 RATE_LIMIT_MAX_REQUESTS=120
 RATE_LIMIT_WINDOW_MS=60000
-LOGIN_RATE_LIMIT_MAX_REQUESTS=5
+LOGIN_RATE_LIMIT_MAX_REQUESTS=10
 LOGIN_RATE_LIMIT_WINDOW_MS=60000
 ```
 
@@ -91,7 +91,7 @@ Descricoes:
 - `ECAMPUS_JWT_EXPIRES_IN`: tempo de validade do JWT. Padrao: `2h`.
 - `RATE_LIMIT_MAX_REQUESTS`: limite geral de requisicoes por IP.
 - `RATE_LIMIT_WINDOW_MS`: janela do rate limit geral em milissegundos.
-- `LOGIN_RATE_LIMIT_MAX_REQUESTS`: limite de tentativas de login por IP.
+- `LOGIN_RATE_LIMIT_MAX_REQUESTS`: limite de tentativas de login por IP. Padrao: `10`.
 - `LOGIN_RATE_LIMIT_WINDOW_MS`: janela do rate limit de login em milissegundos.
 
 Em producao, configure `FRONTEND_ORIGIN` somente com origens HTTPS especificas. A API rejeita wildcard (`*`) em producao e exige HTTPS via proxy header `x-forwarded-proto`.

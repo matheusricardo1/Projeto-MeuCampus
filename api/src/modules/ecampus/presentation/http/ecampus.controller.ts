@@ -44,7 +44,7 @@ export class EcampusController {
             });
         } catch (error) {
             if (error instanceof AuthenticationError) {
-                throw new UnauthorizedException("Invalid eCampus credentials.");
+                throw new UnauthorizedException('CPF ou senha invalidos.');
             }
 
             throw error;
@@ -104,16 +104,34 @@ export class EcampusController {
 
     private parseCpf(value?: string): string {
         const digits = value?.replace(/\D/g, '') || '';
-        if (!/^\d{11}$/.test(digits)) {
-            throw new BadRequestException("Field 'user' must be a valid CPF with 11 digits.");
+        if (!this.isValidCpf(digits)) {
+            throw new BadRequestException('Informe um CPF valido.');
         }
 
         return digits;
     }
 
+    private isValidCpf(digits: string): boolean {
+        if (!/^\d{11}$/.test(digits) || /^(\d)\1{10}$/.test(digits)) {
+            return false;
+        }
+
+        const calculateDigit = (size: number) => {
+            let sum = 0;
+            for (let index = 0; index < size; index += 1) {
+                sum += Number(digits[index]) * (size + 1 - index);
+            }
+
+            const remainder = (sum * 10) % 11;
+            return remainder === 10 ? 0 : remainder;
+        };
+
+        return calculateDigit(9) === Number(digits[9]) && calculateDigit(10) === Number(digits[10]);
+    }
+
     private parsePassword(value?: string): string {
         if (typeof value !== 'string' || value.length < 1 || value.length > 128 || /[\u0000-\u001F\u007F]/.test(value)) {
-            throw new BadRequestException("Field 'password' is invalid.");
+            throw new BadRequestException('Informe uma senha valida.');
         }
 
         return value;
@@ -122,13 +140,13 @@ export class EcampusController {
     private parseYear(value?: string): string {
         const year = value?.trim() || '';
         if (!/^\d{4}$/.test(year)) {
-            throw new BadRequestException("Query param 'year' must have 4 digits.");
+            throw new BadRequestException('Informe um ano com 4 digitos.');
         }
 
         const numericYear = Number(year);
         const nextYear = new Date().getFullYear() + 1;
         if (numericYear < 2000 || numericYear > nextYear) {
-            throw new BadRequestException("Query param 'year' is outside the accepted range.");
+            throw new BadRequestException('Informe um ano dentro do periodo aceito.');
         }
 
         return year;
@@ -139,7 +157,7 @@ export class EcampusController {
         const acceptedPeriods = new Set(['1', '1o', '201', '2', '2o', '202', 'ferias1', 'ferias-1', '203', 'ferias2', 'ferias-2', '204', 'especial', '5', '401']);
 
         if (!acceptedPeriods.has(period)) {
-            throw new BadRequestException("Query param 'period' is invalid.");
+            throw new BadRequestException('Informe um periodo valido.');
         }
 
         return period;
@@ -148,7 +166,7 @@ export class EcampusController {
     private parsePlanId(value: string): string {
         const planId = value.trim();
         if (!/^\d{1,20}$/.test(planId)) {
-            throw new BadRequestException("Route param 'planId' is invalid.");
+            throw new BadRequestException('Plano de ensino invalido.');
         }
 
         return planId;
