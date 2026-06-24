@@ -1,9 +1,9 @@
-import { Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { gradients } from '@/presentation/design-system';
+import { Pressable, Text, View } from 'react-native';
+import { BookOpen, CalendarDays, CheckCircle2, ClipboardList, FileText, GraduationCap, Star, TrendingUp } from 'lucide-react-native';
+import { colors } from '@/presentation/design-system';
 import type { Workspace } from '@/presentation/views/workspace.types';
-import { EmptyInline, MetricCard, PanelHeader, SkeletonBlock } from '@/presentation/views/components';
-import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, isApprovedStatus, parseAbsences, parseGrade, useResponsiveLayout } from '@/presentation/views/workspace.utils';
+import { SkeletonBlock } from '@/presentation/views/components';
+import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, isApprovedStatus, parseAbsences, parseGrade, toTitleName, useResponsiveLayout } from '@/presentation/views/workspace.utils';
 import { styles } from '@/presentation/views/workspace.styles';
 
 export function DashboardPage({ workspace }: { workspace: Workspace }) {
@@ -17,69 +17,135 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
     const approved = grades.filter((grade) => isApprovedStatus(grade.status)).length;
     const totalAbsences = grades.reduce((sum, grade) => sum + parseAbsences(grade.absences), 0);
     const subjectCount = Math.max(lessonPlanSubjects.length, grades.length, new Set(schedule.map((item) => item.code)).size);
+    const firstName = profile?.personal.full_name ? toTitleName(profile.personal.full_name).split(/\s+/)[0] : 'Aluno';
+    const courseProgress = lessonPlanSubjects.length > 0 && grades.length > 0 ? Math.min(99, Math.round((approved / lessonPlanSubjects.length) * 100)) : null;
+    const pendingSubjects = lessonPlanSubjects.length > 0 ? Math.max(lessonPlanSubjects.length - approved, 0) : null;
+    const computedFrequencies = grades
+        .map((grade) => grade.attendance?.presence_percent)
+        .filter((frequency): frequency is number => typeof frequency === 'number');
+    const frequency = computedFrequencies.length ? Math.round(computedFrequencies.reduce((sum, value) => sum + value, 0) / computedFrequencies.length) : null;
     const weakestGrades = grades
         .map((grade) => ({ grade, parsedFinal: parseGrade(grade.final_grade) }))
         .filter((entry): entry is { grade: Workspace['grades'][number]; parsedFinal: number } => entry.parsedFinal !== null)
         .sort((a, b) => a.parsedFinal - b.parsedFinal)
         .slice(0, 3);
+    const shortcuts = [
+        { label: 'Notas', icon: Star, action: () => workspace.openTab('grades'), tone: styles.homeShortcutTonePrimary },
+        { label: 'Horario', icon: CalendarDays, action: () => workspace.openTab('schedule'), tone: styles.homeShortcutToneSecondary },
+        { label: 'Plano', icon: ClipboardList, action: () => workspace.openTab('lessonPlan'), tone: styles.homeShortcutToneNeutral },
+        { label: 'Perfil', icon: FileText, action: () => workspace.openTab('profile'), tone: styles.homeShortcutToneNeutral }
+    ];
 
     if (isLoading && !profile && schedule.length === 0 && grades.length === 0) return <DashboardSkeleton />;
 
     return (
-        <View style={styles.sectionStack}>
-            <LinearGradient colors={gradients.surface} style={styles.panel}>
-                <View style={[styles.homeHeroRow, layout.isTablet ? styles.homeHeroRowWide : null]}>
-                    <View style={styles.homeHeroText}>
-                        <Text style={styles.sectionKicker}>Resumo academico</Text>
-                        <Text style={styles.panelTitle}>{profile?.personal.full_name || 'Carregando dados'}</Text>
-                        <Text style={styles.panelDescription}>{profile?.academic.course || 'Seu painel aparece aqui assim que os dados chegarem.'}</Text>
-                    </View>
-                    <View style={styles.homeScoreCard}>
-                        <Text style={styles.homeScoreLabel}>Media</Text>
-                        <Text style={styles.homeScoreValue}>{averageNumber === null ? '-' : averageNumber.toFixed(1)}</Text>
-                    </View>
-                </View>
-            </LinearGradient>
-
-            <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
-                <MetricCard label="Materias" value={String(subjectCount)} />
-                <MetricCard label="Aulas semanais" value={String(schedule.length)} />
-                <MetricCard label="Media geral" value={averageNumber === null ? '-' : averageNumber.toFixed(1)} />
+        <View style={styles.homeScreenStack}>
+            <View style={styles.homeGreeting}>
+                <Text style={styles.homeGreetingTitle}>Ola, {firstName}!</Text>
+                <Text style={styles.homeGreetingText}>{profile?.academic.course || 'Seja bem-vindo ao seu portal academico.'}</Text>
             </View>
 
-            <View style={[styles.twoColumnGrid, layout.isTablet ? styles.twoColumnGridWide : null]}>
-                <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
-                    <PanelHeader loading={isLoading} onRefresh={workspace.refreshDashboard} title={nextClass?.isHappening ? 'Aula acontecendo' : 'Proxima aula'} />
-                    <View style={styles.highlightCard}>
-                        <Text style={styles.highlightLabel}>{nextClass?.label || 'Horario'}</Text>
-                        <Text style={styles.highlightTitle}>{nextClass?.item.subject || 'Nenhuma aula carregada'}</Text>
-                        <Text style={styles.highlightText}>{nextClass ? `${nextClass.item.start_time} ate ${nextClass.item.end_time}` : 'Atualize para buscar seu horario semanal.'}</Text>
-                        <Text style={styles.highlightTime}>{nextClass?.item.start_time || '--:--'}</Text>
+            <View style={styles.homeSection}>
+                <View style={styles.homeSectionHeader}>
+                    <Text style={styles.homeSectionTitle}>{nextClass?.isHappening ? 'Aula acontecendo' : 'Proxima aula'}</Text>
+                    <Pressable onPress={() => workspace.openTab('schedule')}>
+                        <Text style={styles.homeSectionAction}>VER TODOS</Text>
+                    </Pressable>
+                </View>
+                <View style={styles.homeNextClassCard}>
+                    <BookOpen color="rgba(255,255,255,0.12)" size={118} style={styles.homeNextClassWatermark} />
+                    <View style={styles.homeNextClassTop}>
+                        <View style={styles.homeNextClassBody}>
+                            <Text numberOfLines={1} style={styles.homeNextClassCode}>{nextClass?.item.code || 'HORARIO'}</Text>
+                            <Text numberOfLines={2} style={styles.homeNextClassTitle}>{nextClass?.item.subject || 'Nenhuma aula carregada'}</Text>
+                            <Text style={styles.homeNextClassText}>{nextClass ? `${nextClass.label} - Turma ${nextClass.item.class_identifier || '-'}` : 'Atualize para buscar seu horario semanal.'}</Text>
+                        </View>
+                        <View style={styles.homeTimePill}>
+                            <Text style={styles.homeTimePillText}>{nextClass ? `${nextClass.item.start_time} - ${nextClass.item.end_time}` : '--:--'}</Text>
+                        </View>
+                    </View>
+                    <View style={styles.homeTeacherRow}>
+                        <View style={styles.homeTeacherAvatar}>
+                            <GraduationCap color={colors.brandMuted} size={20} />
+                        </View>
+                        <View style={styles.homeTeacherText}>
+                            <Text numberOfLines={1} style={styles.homeTeacherName}>{profile?.academic.course || 'Curso nao informado'}</Text>
+                            <Text numberOfLines={1} style={styles.homeTeacherMeta}>{profile?.academic.enrollment_number || 'Matricula nao informada'}</Text>
+                        </View>
                     </View>
                 </View>
+            </View>
 
+            <View style={styles.homeSection}>
+                <Text style={styles.homeSectionTitle}>Resumo do semestre</Text>
+                <View style={[styles.homeBentoGrid, layout.isTablet ? styles.homeBentoGridWide : null]}>
+                    <View style={[styles.homeBentoCard, styles.homeBentoHalf]}>
+                        <View style={styles.homeBentoLabelRow}>
+                            <Star color={colors.brand} fill={colors.brand} size={17} />
+                            <Text style={styles.homeBentoLabel}>CRA geral</Text>
+                        </View>
+                        <Text style={styles.homeBentoValue}>{averageNumber === null ? '-' : averageNumber.toFixed(2)}</Text>
+                        <Text style={styles.homeBentoHint}>{subjectCount} disciplinas</Text>
+                    </View>
+
+                    <View style={[styles.homeBentoCard, styles.homeBentoHalf]}>
+                        <View style={styles.homeBentoLabelRow}>
+                            <CheckCircle2 color={colors.warning} fill={colors.warning} size={17} />
+                            <Text style={styles.homeBentoLabel}>Frequencia</Text>
+                        </View>
+                        <Text style={styles.homeBentoValue}>{frequency === null ? '-' : `${frequency}%`}</Text>
+                        <View style={styles.homeProgressTrack}>
+                            <View style={[styles.homeProgressFillSecondary, { width: `${frequency ?? 0}%` }]} />
+                        </View>
+                    </View>
+
+                    <View style={styles.homeBentoWide}>
+                        <View style={styles.homeProgressHeader}>
+                            <Text style={styles.homeBentoLabel}>Progresso do curso</Text>
+                            <Text style={styles.homeProgressValue}>{courseProgress === null ? '-' : `${courseProgress}%`}</Text>
+                        </View>
+                        <View style={styles.homeProgressTrack}>
+                            <View style={[styles.homeProgressFillPrimary, { width: `${courseProgress ?? 0}%` }]} />
+                        </View>
+                        <Text style={styles.homeBentoHint}>{pendingSubjects === null ? 'Plano de curso ainda nao carregado.' : `Faltam ${pendingSubjects} disciplinas para a conclusao.`}</Text>
+                    </View>
+                </View>
+            </View>
+
+            <View style={styles.homeSection}>
+                <Text style={styles.homeSectionTitle}>Acesso rapido</Text>
+                <View style={styles.homeShortcutRow}>
+                    {shortcuts.map((shortcut) => {
+                        const Icon = shortcut.icon;
+                        return (
+                            <Pressable key={shortcut.label} onPress={shortcut.action} style={styles.homeShortcutCard}>
+                                <View style={[styles.homeShortcutIcon, shortcut.tone]}>
+                                    <Icon color={shortcut.tone === styles.homeShortcutToneSecondary ? colors.warning : shortcut.tone === styles.homeShortcutTonePrimary ? colors.brand : colors.textMuted} size={22} />
+                                </View>
+                                <Text numberOfLines={1} style={styles.homeShortcutText}>{shortcut.label}</Text>
+                            </Pressable>
+                        );
+                    })}
+                </View>
+            </View>
+
+            <View style={[styles.homeInsightGrid, layout.isTablet ? styles.twoColumnGridWide : null]}>
                 <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
-                    <PanelHeader loading={isLoading} onRefresh={workspace.loadGrades} title="Situacao academica" />
+                    <View style={styles.homeInsightHeader}>
+                        <TrendingUp color={colors.brand} size={18} />
+                        <Text style={styles.panelTitle}>Situacao academica</Text>
+                    </View>
                     <View style={styles.summaryRows}>
-                        <View style={styles.summaryRow}>
-                            <Text style={styles.summaryLabel}>Disciplinas aprovadas</Text>
-                            <Text style={styles.summaryValue}>{grades.length ? `${approved}/${grades.length}` : '-'}</Text>
-                        </View>
-                        <View style={styles.summaryRow}>
-                            <Text style={styles.summaryLabel}>Faltas registradas</Text>
-                            <Text style={styles.summaryValue}>{totalAbsences}</Text>
-                        </View>
-                        <View style={styles.summaryRow}>
-                            <Text style={styles.summaryLabel}>Dias com aula</Text>
-                            <Text style={styles.summaryValue}>{weekMap.filter((day) => day.items.length > 0).length}</Text>
-                        </View>
+                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Disciplinas aprovadas</Text><Text style={styles.summaryValue}>{grades.length ? `${approved}/${grades.length}` : '-'}</Text></View>
+                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Faltas registradas</Text><Text style={styles.summaryValue}>{totalAbsences}</Text></View>
+                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Dias com aula</Text><Text style={styles.summaryValue}>{weekMap.filter((day) => day.items.length > 0).length}</Text></View>
                     </View>
                 </View>
 
                 <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
-                    <PanelHeader loading={isLoading} onRefresh={workspace.loadGrades} title="Pontos de atencao" />
+                    <Text style={styles.panelTitle}>Pontos de atencao</Text>
                     <View style={styles.listStack}>
-                        {weakestGrades.length === 0 ? <EmptyInline text="Nenhuma nota carregada." /> : null}
+                        {weakestGrades.length === 0 ? <Text style={styles.panelDescription}>Nenhuma nota carregada.</Text> : null}
                         {weakestGrades.map(({ grade }) => (
                             <View key={`${grade.code}-${grade.subject}`} style={styles.attentionCard}>
                                 <Text style={styles.smallCaps}>{grade.code}</Text>

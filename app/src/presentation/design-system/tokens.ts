@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 export const colors = {
     canvas: '#F6F7F9',
     surface: '#FFFFFF',
@@ -55,18 +53,8 @@ export const radii = {
 } as const;
 
 export const fonts = {
-    sans: Platform.select({
-        ios: 'System',
-        android: 'sans-serif',
-        web: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        default: 'System'
-    }),
-    medium: Platform.select({
-        ios: 'System',
-        android: 'sans-serif-medium',
-        web: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        default: 'System'
-    })
+    sans: 'System',
+    medium: 'System'
 } as const;
 
 export const typography = {
@@ -101,10 +89,10 @@ export const shadows = {
         shadowOpacity: 0
     },
     surface: {
-        elevation: 2,
+        elevation: 0,
         shadowColor: '#101828',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8
+        shadowOpacity: 0,
+        shadowRadius: 0
     }
 } as const;

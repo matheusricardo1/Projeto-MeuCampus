@@ -1,14 +1,15 @@
-import { ScrollView, Text, View } from 'react-native';
-import { Clock3 } from 'lucide-react-native';
-import { colors } from '@/presentation/design-system';
+import { useMemo, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
+import { BookOpen, Calculator, Clock3, GraduationCap, Lightbulb, MapPin, Terminal, Utensils } from 'lucide-react-native';
 import type { Workspace } from '@/presentation/views/workspace.types';
-import { EmptyInline, PanelHeader, SkeletonBlock } from '@/presentation/views/components';
-import { buildWeekMap, eventTone, getNextScheduleClass, groupScheduleByDay } from '@/presentation/views/workspace.utils';
+import { EmptyInline, SkeletonBlock } from '@/presentation/views/components';
+import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, parseTimeToMinutes } from '@/presentation/views/workspace.utils';
 import { styles } from '@/presentation/views/workspace.styles';
+
+const weekdayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
 
 export function SchedulePage({
     loading,
-    onRefresh,
     schedule
 }: {
     loading: boolean;
@@ -16,58 +17,156 @@ export function SchedulePage({
     schedule: Workspace['schedule'];
 }) {
     const groupedSchedule = groupScheduleByDay(schedule);
-    const weekMap = buildWeekMap(groupedSchedule);
+    const weekMap = buildWeekMap(groupedSchedule).filter((day) => weekdayOrder.includes(day.weekday as typeof weekdayOrder[number]));
     const nextClass = getNextScheduleClass(schedule);
+    const [selectedWeekday, setSelectedWeekday] = useState(nextClass?.item.weekday || weekMap.find((day) => day.items.length > 0)?.weekday || 'Monday');
+    const weekDates = useMemo(() => buildCurrentWeekDates(), []);
+    const selectedDay = weekMap.find((day) => day.weekday === selectedWeekday) || weekMap[0];
+    const selectedItems = [...(selectedDay?.items || [])].sort((a, b) => (parseTimeToMinutes(a.start_time) || 0) - (parseTimeToMinutes(b.start_time) || 0));
+    const beforeLunch = selectedItems.filter((item) => (parseTimeToMinutes(item.start_time) || 0) < 12 * 60);
+    const afterLunch = selectedItems.filter((item) => (parseTimeToMinutes(item.start_time) || 0) >= 12 * 60);
 
     if (loading && schedule.length === 0) return <ScheduleSkeleton />;
 
     return (
-        <View style={styles.sectionStack}>
-            <View style={styles.panel}>
-                <PanelHeader loading={loading} onRefresh={onRefresh} title={nextClass?.isHappening ? 'Aula agora' : 'Proxima aula'} />
-                <View style={styles.scheduleHero}>
-                    <View style={styles.scheduleHeroText}>
-                        <Text style={styles.panelTitle}>{nextClass?.item.subject || 'Sem horario carregado'}</Text>
-                        <Text style={styles.panelDescription}>{nextClass ? `${nextClass.label} - ${nextClass.item.start_time} ate ${nextClass.item.end_time}` : 'Atualize para montar seu horario semanal.'}</Text>
-                    </View>
-                    <View style={styles.timeBadge}><Clock3 color={colors.info} size={18} /><Text style={styles.timeBadgeText}>{nextClass?.item.start_time || '--:--'}</Text></View>
-                </View>
+        <View style={styles.schedulePage}>
+            <View style={styles.scheduleDaySelector}>
+                {weekMap.map((day) => {
+                    const active = selectedWeekday === day.weekday;
+                    return (
+                        <Pressable key={day.weekday} onPress={() => setSelectedWeekday(day.weekday)} style={[styles.scheduleDayButton, active ? styles.scheduleDayButtonActive : null]}>
+                            <Text style={styles.scheduleDayLabel}>{day.short.toUpperCase()}</Text>
+                            <Text style={[styles.scheduleDayNumber, active ? styles.scheduleDayNumberActive : null]}>{weekDates[day.weekday] || '--'}</Text>
+                            {active ? <View style={styles.scheduleDayIndicator} /> : null}
+                        </Pressable>
+                    );
+                })}
             </View>
 
-            <View style={styles.panel}>
-                <PanelHeader loading={loading} onRefresh={onRefresh} title="Horario semanal" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsRow}>
-                    {weekMap.map((day) => (
-                        <View key={day.weekday} style={[styles.weekChip, day.items.length ? styles.weekChipActive : null]}>
-                            <Text style={[styles.weekChipText, day.items.length ? styles.weekChipTextActive : null]}>{day.short}</Text>
-                            <Text style={[styles.weekChipNumber, day.items.length ? styles.weekChipTextActive : null]}>{day.items.length}</Text>
+            <View style={styles.scheduleTimeline}>
+                <View style={styles.scheduleTimelineLine} />
+                {selectedItems.length === 0 ? <EmptyInline text="Nenhuma aula para este dia." /> : null}
+                {beforeLunch.map((item, index) => (
+                    <ScheduleTimelineCard
+                        active={isSameClass(item, nextClass?.item)}
+                        index={index}
+                        item={item}
+                        key={`${item.weekday}-${item.start_time}-${item.class_identifier}`}
+                    />
+                ))}
+
+                {beforeLunch.length > 0 && afterLunch.length > 0 ? <LunchBreak /> : null}
+
+                {afterLunch.map((item, index) => (
+                    <ScheduleTimelineCard
+                        active={isSameClass(item, nextClass?.item)}
+                        index={beforeLunch.length + index}
+                        item={item}
+                        key={`${item.weekday}-${item.start_time}-${item.class_identifier}`}
+                    />
+                ))}
+
+                <View style={styles.scheduleTipCard}>
+                    <View style={styles.scheduleTipContent}>
+                        <View style={styles.scheduleTipHeader}>
+                            <Lightbulb color="#6e4f00" size={20} />
+                            <Text style={styles.scheduleTipLabel}>Dica Acadêmica</Text>
                         </View>
-                    ))}
-                </ScrollView>
-                <View style={styles.listStack}>
-                    {schedule.length === 0 ? <EmptyInline text="Nenhuma aula carregada." /> : null}
-                    {weekMap.filter((day) => day.items.length > 0).map((group) => (
-                        <View key={group.weekday} style={styles.laneCard}>
-                            <View style={styles.laneHeader}><Text style={styles.panelTitle}>{group.label}</Text><Text style={styles.panelDescription}>{group.items.length} aula{group.items.length === 1 ? '' : 's'}</Text></View>
-                            {group.items.map((item, index) => (
-                                <View key={`${item.weekday}-${item.start_time}-${item.class_identifier}`} style={[styles.scheduleEvent, eventTone(index)]}>
-                                    <View style={styles.eventTimeBox}><Text style={styles.eventTimePrimary}>{item.start_time}</Text><Text style={styles.eventTimeSecondary}>{item.end_time}</Text></View>
-                                    <View style={styles.eventBody}><Text style={styles.smallCaps}>{item.code}</Text><Text style={styles.eventTitle}>{item.subject}</Text><Text style={styles.eventSubtitle}>{item.class_identifier}</Text></View>
-                                </View>
-                            ))}
-                        </View>
-                    ))}
+                        <Text style={styles.scheduleTipText}>{selectedItems[0] ? `Lembre-se de revisar os materiais de ${selectedItems[0].subject} para a aula de hoje.` : 'Organize seus materiais antes das próximas aulas.'}</Text>
+                        <Pressable style={styles.scheduleTipButton}>
+                            <Text style={styles.scheduleTipButtonText}>Ver Materiais</Text>
+                        </Pressable>
+                    </View>
+                    <GraduationCap color="rgba(38,25,0,0.12)" size={120} style={styles.scheduleTipIcon} />
                 </View>
             </View>
         </View>
     );
 }
 
+function ScheduleTimelineCard({ active, index, item }: { active: boolean; index: number; item: Workspace['schedule'][number] }) {
+    const Icon = index % 3 === 0 ? BookOpen : index % 3 === 1 ? Calculator : Terminal;
+
+    return (
+        <View style={styles.scheduleTimelineItem}>
+            <View style={styles.scheduleTimelineMarkerColumn}>
+                <View style={[styles.scheduleTimelineMarker, active ? styles.scheduleTimelineMarkerActive : null]}>
+                    <Icon color={active ? '#ffffff' : '#003215'} size={18} />
+                </View>
+            </View>
+
+            <View style={styles.scheduleClassCard}>
+                <View style={styles.scheduleClassHeader}>
+                    <View style={styles.scheduleClassTitleBlock}>
+                        <View style={styles.scheduleClassCodeBadge}>
+                            <Text style={styles.scheduleClassCodeText}>{item.code}</Text>
+                        </View>
+                        <Text style={styles.scheduleClassTitle}>{item.subject}</Text>
+                    </View>
+                    {active ? (
+                        <View style={styles.scheduleActiveBadge}>
+                            <Text style={styles.scheduleActiveBadgeText}>ATIVO</Text>
+                        </View>
+                    ) : null}
+                </View>
+
+                <View style={styles.scheduleClassMeta}>
+                    <View style={styles.scheduleMetaRow}>
+                        <Clock3 color="#404941" size={16} />
+                        <Text style={styles.scheduleMetaText}>{item.start_time} - {item.end_time}</Text>
+                    </View>
+                    <View style={styles.scheduleMetaRow}>
+                        <MapPin color="#404941" size={16} />
+                        <Text style={styles.scheduleMetaText}>{item.class_identifier || 'Sala não informada'}</Text>
+                    </View>
+                </View>
+            </View>
+        </View>
+    );
+}
+
+function LunchBreak() {
+    return (
+        <View style={styles.scheduleTimelineItem}>
+            <View style={[styles.scheduleTimelineMarkerColumn, styles.scheduleLunchMarkerColumn]}>
+                <View style={styles.scheduleLunchMarker}>
+                    <Utensils color="#404941" size={18} />
+                </View>
+            </View>
+            <View style={styles.scheduleLunchContent}>
+                <View style={styles.scheduleLunchLine} />
+                <Text style={styles.scheduleLunchText}>Intervalo Almoço (12:00 - 14:00)</Text>
+                <View style={styles.scheduleLunchLine} />
+            </View>
+        </View>
+    );
+}
+
+function buildCurrentWeekDates() {
+    const now = new Date();
+    const monday = new Date(now);
+    const day = monday.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    monday.setDate(now.getDate() + diff);
+
+    return weekdayOrder.reduce<Record<string, string>>((map, weekday, index) => {
+        const date = new Date(monday);
+        date.setDate(monday.getDate() + index);
+        map[weekday] = String(date.getDate()).padStart(2, '0');
+        return map;
+    }, {});
+}
+
+function isSameClass(a: Workspace['schedule'][number] | undefined, b: Workspace['schedule'][number] | undefined) {
+    if (!a || !b) return false;
+    return a.weekday === b.weekday && a.start_time === b.start_time && a.code === b.code && a.class_identifier === b.class_identifier;
+}
+
 function ScheduleSkeleton() {
     return (
         <View style={styles.sectionStack}>
-            <SkeletonBlock height={140} />
-            <SkeletonBlock height={320} />
+            <SkeletonBlock height={88} />
+            <SkeletonBlock height={360} />
         </View>
     );
 }

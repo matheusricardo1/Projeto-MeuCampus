@@ -36,8 +36,17 @@ const DEFAULT_REQUEST_OPTIONS: Required<Pick<RequestOptions, 'reportError' | 'sh
     showGlobalLoading: true
 };
 
+function getCurrentGradesInput(): GradesInput {
+    const now = new Date();
+    return {
+        year: now.getFullYear().toString(),
+        period: now.getMonth() >= 6 ? '2' : '1'
+    };
+}
+
 export function useEcampusWorkspace() {
     const useCases = useMemo(() => createEcampusUseCases(), []);
+    const currentGradesInput = useMemo(() => getCurrentGradesInput(), []);
     const sessionGeneration = useRef(0);
     const inFlightRequests = useRef(new Map<ResourceKey, Promise<unknown>>());
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -51,10 +60,7 @@ export function useEcampusWorkspace() {
     const [lessonPlan, setLessonPlan] = useState<LessonPlanItem[]>([]);
     const [lessonPlanSubjects, setLessonPlanSubjects] = useState<LessonPlanSubject[]>([]);
     const [selectedLessonPlanSubjectCode, setSelectedLessonPlanSubjectCode] = useState('');
-    const [gradesInput, setGradesInput] = useState<GradesInput>({
-        year: new Date().getFullYear().toString(),
-        period: '1'
-    });
+    const [gradesInput, setGradesInput] = useState<GradesInput>(currentGradesInput);
 
     const isLoading = loadingRequests > 0;
 
@@ -164,6 +170,22 @@ export function useEcampusWorkspace() {
             ...options,
             sessionGeneration: generation
         }));
+
+        if (data && generation === sessionGeneration.current) {
+            setGrades(data);
+        }
+    };
+
+    const changeGradesInputAndLoad = async (input: GradesInput) => {
+        setGradesInput(input);
+        setGrades([]);
+
+        const generation = sessionGeneration.current;
+        const data = await run(() => useCases.getGrades.execute(input.year, input.period), {
+            reportError: true,
+            showGlobalLoading: true,
+            sessionGeneration: generation
+        });
 
         if (data && generation === sessionGeneration.current) {
             setGrades(data);
@@ -350,12 +372,15 @@ export function useEcampusWorkspace() {
         if (tab === 'profile' && !profile) void loadProfile({ reportError: false, showGlobalLoading: true });
         if (tab === 'schedule' && schedule.length === 0) void loadSchedule({ reportError: false, showGlobalLoading: true });
         if (tab === 'grades' && grades.length === 0) void loadGrades({ reportError: false, showGlobalLoading: true });
+        if (tab === 'lessonPlan' && grades.length === 0) void loadGrades({ reportError: false, showGlobalLoading: true });
         if (tab === 'lessonPlan' && lessonPlanSubjects.length === 0) void loadLessonPlanSubjects({ reportError: false, showGlobalLoading: true });
     };
 
     return {
         activeTab,
         changeLessonPlanSubject,
+        changeGradesInputAndLoad,
+        currentGradesInput,
         error,
         grades,
         gradesInput,

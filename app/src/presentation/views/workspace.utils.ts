@@ -11,11 +11,20 @@ export type ResponsiveLayout = {
     showBottomNav: boolean;
     contentMaxWidth: number;
     loginMaxWidth: number;
+    isMobileWeb: boolean;
 };
 
 export function getInitials(name: string): string {
     const words = name.trim().split(/\s+/).filter(Boolean);
     return `${words[0]?.[0] || 'U'}${words[1]?.[0] || 'A'}`.toUpperCase();
+}
+
+export function toTitleName(value: string): string {
+    return value
+        .toLocaleLowerCase('pt-BR')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/(^|[\s'-])([\p{L}])/gu, (_, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase('pt-BR')}`);
 }
 
 export function onlyDigits(value: string): string {
@@ -136,11 +145,12 @@ export function useResponsiveLayout(): ResponsiveLayout {
 
 export function getResponsiveLayout(width: number): ResponsiveLayout {
     const safeWidth = Number.isFinite(width) ? width : 390;
-    const isTablet = safeWidth >= 768;
-    const isDesktop = Platform.OS === 'web' && safeWidth >= 1180;
+    const isTablet = false;
+    const isDesktop = false;
     const isCompactPhone = safeWidth < 380;
-    const pagePadding = isDesktop ? 24 : isCompactPhone ? 12 : 18;
-    return { width: safeWidth, isTablet, isDesktop, isCompactPhone, pagePadding, showBottomNav: !isTablet, contentMaxWidth: isDesktop ? 1180 : isTablet ? 960 : 640, loginMaxWidth: isDesktop ? 1040 : isTablet ? 920 : 460 };
+    const pagePadding = isCompactPhone ? 12 : 18;
+    const isMobileWeb = Platform.OS === 'web' && safeWidth <= 768;
+    return { width: safeWidth, isTablet, isDesktop, isCompactPhone, pagePadding, showBottomNav: true, contentMaxWidth: 640, loginMaxWidth: 460, isMobileWeb };
 }
 
 export function getResponsiveCardStyle(layout: ResponsiveLayout, columns: number) {

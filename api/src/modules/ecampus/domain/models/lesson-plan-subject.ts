@@ -4,5 +4,6 @@ export interface LessonPlanSubject {
     subject: string;
     classIdentifier: string;
     professor: string;
+    workloadHours: number | null;
     available: boolean;
 }

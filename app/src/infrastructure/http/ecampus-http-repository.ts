@@ -35,10 +35,19 @@ export class EcampusHttpRepository implements EcampusRepository {
         });
     }
 
-    getProfile(accessToken: string): Promise<StudentProfile> {
-        return this.request<StudentProfile>('/ecampus/profile', {
+    async getProfile(accessToken: string): Promise<StudentProfile> {
+        const profile = await this.request<StudentProfile>('/ecampus/profile', {
             headers: this.authHeaders(accessToken)
         });
+
+        return {
+            ...profile,
+            personal: {
+                ...profile.personal,
+                full_name: toTitleName(profile.personal.full_name),
+                mother_name: toTitleName(profile.personal.mother_name)
+            }
+        };
     }
 
     getGrades(accessToken: string, year: string, period: string): Promise<Grade[]> {
@@ -115,4 +124,12 @@ export class EcampusHttpRepository implements EcampusRepository {
             throw new Error('A API precisa usar HTTPS em producao.');
         }
     }
+}
+
+function toTitleName(value: string): string {
+    return value
+        .toLocaleLowerCase('pt-BR')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/(^|[\s'-])([\p{L}])/gu, (_, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase('pt-BR')}`);
 }

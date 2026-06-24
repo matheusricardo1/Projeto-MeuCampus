@@ -79,6 +79,12 @@ export class EcampusHttpRepository implements EcampusRepository {
             const tableGrades = tables[0]!;
             const tableNames = tables[1]!;
             const subjectMap: Record<string, { subject: string; classIdentifier: string }> = {};
+            const workloadMap = await this.getLessonPlanWorkloadMap(client).catch((error) => {
+                logger.warning("Unable to fetch lesson plan workload map. Attendance summaries will omit workload-based calculations.", {
+                    error: error instanceof Error ? error.message : String(error)
+                });
+                return new Map<string, number>();
+            });
 
             for (const row of tableNames.querySelectorAll('tbody tr')) {
                 const columns = row.querySelectorAll('td');
@@ -108,6 +114,7 @@ export class EcampusHttpRepository implements EcampusRepository {
                     final_exam: columns[22]?.textContent.trim() || '',
                     final_grade: columns[23]!.textContent.trim(),
                     absences: columns[24]!.textContent.trim(),
+                    attendance: this.calculateAttendanceSummary(workloadMap.get(code) ?? null, columns[24]!.textContent.trim()),
                     status: columns[25]!.textContent.trim()
                 });
             }
@@ -136,6 +143,73 @@ export class EcampusHttpRepository implements EcampusRepository {
         }
 
         return evaluations;
+    }
+
+    private calculateAttendanceSummary(workloadHours: number | null, absences: string): Grade['attendance'] {
+        const absencesHours = this.parseHours(absences);
+
+        if (!workloadHours || workloadHours <= 0) {
+            return {
+                workload_hours: null,
+                absences_hours: absencesHours,
+                max_absences_allowed: null,
+                minimum_presence_hours: null,
+                presence_hours: null,
+                presence_percent: null,
+                is_absence_risk: null,
+                source: 'missing_workload'
+            };
+        }
+
+        const maxAbsencesAllowed = Math.floor(workloadHours * 0.25);
+        const minimumPresenceHours = workloadHours - maxAbsencesAllowed;
+        const presenceHours = Math.max(workloadHours - absencesHours, 0);
+
+        return {
+            workload_hours: workloadHours,
+            absences_hours: absencesHours,
+            max_absences_allowed: maxAbsencesAllowed,
+            minimum_presence_hours: minimumPresenceHours,
+            presence_hours: presenceHours,
+            presence_percent: Math.max(0, Math.min(100, Math.round((presenceHours / workloadHours) * 100))),
+            is_absence_risk: absencesHours > maxAbsencesAllowed,
+            source: 'computed'
+        };
+    }
+
+    private parseHours(value: string): number {
+        const match = value.match(/\d+/);
+        return match ? Number(match[0]) : 0;
+    }
+
+    private parseOptionalHours(value: string): number | null {
+        const match = value.match(/\d+/);
+        return match ? Number(match[0]) : null;
+    }
+
+    private toTitleName(value: string): string {
+        return value
+            .toLocaleLowerCase('pt-BR')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/(^|[\s'-])([\p{L}])/gu, (_, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase('pt-BR')}`);
+    }
+
+    private async getLessonPlanWorkloadMap(client: Awaited<ReturnType<EcampusAuthService['getAuthenticatedClient']>>): Promise<Map<string, number>> {
+        const response = await this.withExternalRetry(
+            'lesson plan workload map',
+            () => client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 })
+        );
+        const subjects = this.extractLessonPlanSubjects(response.data);
+        const workloadMap = new Map<string, number>();
+
+        for (const subject of subjects) {
+            if (subject.workloadHours) {
+                workloadMap.set(subject.code, subject.workloadHours);
+            }
+        }
+
+        return workloadMap;
     }
 
     private async fetchGradesHtml(client: Awaited<ReturnType<EcampusAuthService['getAuthenticatedClient']>>, params: URLSearchParams): Promise<string> {
@@ -326,9 +400,10 @@ export class EcampusHttpRepository implements EcampusRepository {
             subjects.push({
                 planId,
                 code,
-                subject: columns[2]!.textContent.trim(),
+                subject: this.toTitleName(columns[2]!.textContent.trim()),
                 classIdentifier: columns[3]!.textContent.trim(),
-                professor: columns[6]!.textContent.trim(),
+                professor: this.toTitleName(columns[6]!.textContent.trim()),
+                workloadHours: this.parseOptionalHours(columns[5]?.textContent.trim() || ''),
                 available: Boolean(planId)
             });
         }
