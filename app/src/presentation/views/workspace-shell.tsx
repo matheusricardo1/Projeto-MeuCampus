@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bell, BellOff, BookOpen, Calendar, ChartColumn, CheckCheck, ClipboardList, GraduationCap, IdCard, Info, Landmark, LayoutDashboard, Menu, User } from 'lucide-react-native';
@@ -18,6 +18,7 @@ import { styles } from '@/presentation/views/workspace.styles';
 export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
     const layout = useResponsiveLayout();
     const [showNotifications, setShowNotifications] = useState(false);
+    const pageScrollRef = useRef<ScrollView>(null);
 
     if (!workspace.isReady) return <BootPage />;
     if (!workspace.isAuthenticated) return <LoginPage workspace={workspace} />;
@@ -36,12 +37,19 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
         { id: 'profile' as const, label: 'Perfil', icon: User }
     ];
     const activeTab = tabs.find((tab) => tab.id === workspace.activeTab) || tabs[0]!;
+    const scrollToTop = useCallback(() => {
+        requestAnimationFrame(() => {
+            pageScrollRef.current?.scrollTo({ animated: false, y: 0 });
+        });
+    }, []);
     const openWorkspaceTab = (tabId: Workspace['activeTab']) => {
         setShowNotifications(false);
         workspace.openTab(tabId);
+        scrollToTop();
     };
     const openNotifications = () => {
         setShowNotifications(true);
+        scrollToTop();
     };
     const refreshPage = showNotifications ? async () => undefined : activeTab.action;
     const sidebarNav = (
@@ -72,6 +80,7 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
     );
     const pageContent = (
         <ScrollView
+            ref={pageScrollRef}
             contentContainerStyle={[styles.content, { paddingBottom: layout.isTablet ? 32 : 112, paddingHorizontal: layout.pagePadding }]}
             refreshControl={<RefreshControl refreshing={!showNotifications && workspace.isLoading} onRefresh={() => void refreshPage()} tintColor={colors.brand} />}
             showsVerticalScrollIndicator={Platform.OS === 'web' && !layout.isMobileWeb}
@@ -85,7 +94,7 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
                         {workspace.activeTab === 'profile' ? <ProfilePage profile={workspace.profile} onRefresh={workspace.loadProfile} onLogout={workspace.logout} loading={workspace.isLoading} /> : null}
                         {workspace.activeTab === 'schedule' ? <SchedulePage schedule={workspace.schedule} onRefresh={workspace.loadSchedule} loading={workspace.isLoading} /> : null}
                         {workspace.activeTab === 'grades' ? <GradesPage grades={workspace.grades} input={workspace.gradesInput} loading={workspace.isLoading} onChange={workspace.setGradesInput} onRefresh={workspace.loadGrades} /> : null}
-                        {workspace.activeTab === 'lessonPlan' ? <LessonPlanPage currentGradesInput={workspace.currentGradesInput} grades={workspace.grades} gradesInput={workspace.gradesInput} items={workspace.lessonPlan} loading={workspace.isLoading} onChangeGradesInput={workspace.changeGradesInputAndLoad} onChangeSubjectCode={workspace.changeLessonPlanSubject} onRefresh={workspace.loadLessonPlan} onRefreshSubjects={workspace.loadLessonPlanSubjects} profile={workspace.profile} schedule={workspace.schedule} selectedSubjectCode={workspace.selectedLessonPlanSubjectCode} subjects={workspace.lessonPlanSubjects} /> : null}
+                        {workspace.activeTab === 'lessonPlan' ? <LessonPlanPage currentGradesInput={workspace.currentGradesInput} grades={workspace.grades} gradesInput={workspace.gradesInput} items={workspace.lessonPlan} loading={workspace.isLoading} onChangeGradesInput={workspace.changeGradesInputAndLoad} onChangeSubjectCode={workspace.changeLessonPlanSubject} onNavigateScreen={scrollToTop} onRefresh={workspace.loadLessonPlan} onRefreshSubjects={workspace.loadLessonPlanSubjects} profile={workspace.profile} schedule={workspace.schedule} selectedSubjectCode={workspace.selectedLessonPlanSubjectCode} subjects={workspace.lessonPlanSubjects} /> : null}
                     </>
                 )}
             </View>

@@ -44,8 +44,7 @@ export class EcampusHttpRepository implements EcampusRepository {
             ...profile,
             personal: {
                 ...profile.personal,
-                full_name: toTitleName(profile.personal.full_name),
-                mother_name: toTitleName(profile.personal.mother_name)
+                full_name: toTitleName(profile.personal.full_name)
             }
         };
     }

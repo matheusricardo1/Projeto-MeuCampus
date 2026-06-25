@@ -36,6 +36,7 @@ export function LessonPlanPage({
     loading,
     onChangeGradesInput,
     onChangeSubjectCode,
+    onNavigateScreen,
     onRefresh,
     onRefreshSubjects,
     profile,
@@ -50,6 +51,7 @@ export function LessonPlanPage({
     loading: boolean;
     onChangeGradesInput: Workspace['changeGradesInputAndLoad'];
     onChangeSubjectCode: (value: string) => Promise<void>;
+    onNavigateScreen: () => void;
     onRefresh: () => Promise<void>;
     onRefreshSubjects: () => Promise<void>;
     profile: Workspace['profile'];
@@ -134,6 +136,7 @@ export function LessonPlanPage({
     const openCourse = (course: CourseCard) => {
         setSelectedCourseCode(course.code);
         setSelectedCourseView('details');
+        onNavigateScreen();
 
         if (course.code !== selectedSubjectCode) {
             void onChangeSubjectCode(course.code);
@@ -146,7 +149,10 @@ export function LessonPlanPage({
             return (
                 <CourseContentScreen
                     course={selectedCourseWithCurrentItems}
-                    onBack={() => setSelectedCourseView('details')}
+                    onBack={() => {
+                        setSelectedCourseView('details');
+                        onNavigateScreen();
+                    }}
                 />
             );
         }
@@ -155,8 +161,14 @@ export function LessonPlanPage({
             <CourseDetailsScreen
                 course={selectedCourseWithCurrentItems}
                 loading={loading && selectedCourse.code === selectedSubjectCode}
-                onBack={() => setSelectedCourseCode('')}
-                onOpenFullContent={() => setSelectedCourseView('content')}
+                onBack={() => {
+                    setSelectedCourseCode('');
+                    onNavigateScreen();
+                }}
+                onOpenFullContent={() => {
+                    setSelectedCourseView('content');
+                    onNavigateScreen();
+                }}
                 semester={`${gradesInput.year}.${gradesInput.period}`}
             />
         );
@@ -344,7 +356,7 @@ function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent, semes
                     <View style={styles.courseDetailsEvaluationList}>
                         {evaluations.length > 0 ? evaluations.map((evaluation, index) => (
                             <EvaluationRow evaluation={evaluation} index={index} key={`${evaluation.weight}-${index}`} />
-                        )) : <Text style={styles.courseDetailsEmptyText}>Avaliacoes indisponiveis para esta disciplina.</Text>}
+                        )) : <EvaluationRow evaluation={{ score: '', weight: '-' }} index={0} />}
                     </View>
                 </View>
 
@@ -534,14 +546,15 @@ function EvaluationRow({ evaluation, index }: { evaluation: { score: string; wei
     return (
         <View style={styles.courseDetailsEvaluationRow}>
             <View style={styles.courseDetailsEvaluationText}>
-                <Text style={styles.courseDetailsEvaluationName}>{evaluation.weight || `Avaliacao ${index + 1}`}</Text>
-                <Text style={styles.courseDetailsMutedText}>Peso {evaluation.weight || '-'}</Text>
+                <Text style={styles.courseDetailsEvaluationName}>{index + 1}ª nota</Text>
+                <Text style={styles.courseDetailsMutedText}>Avaliacao parcial</Text>
             </View>
             <View style={styles.courseDetailsEvaluationScoreBlock}>
                 <View style={styles.courseDetailsEvaluationTrack}>
                     <View style={[styles.courseDetailsEvaluationFill, { width: `${progress}%` }]} />
                 </View>
-                <Text style={styles.courseDetailsEvaluationScore}>{evaluation.score || '-'}</Text>
+                <Text style={styles.courseDetailsEvaluationWeight}>Peso {evaluation.weight || '-'}</Text>
+                <Text style={styles.courseDetailsEvaluationScore}>{score === null ? 'S/N' : evaluation.score}</Text>
             </View>
         </View>
     );
@@ -562,22 +575,58 @@ function InfoCard({ helper, icon, label, value }: { helper?: string; icon: React
 
 function AbsenceStatusCard({ course, frequency }: { course: CourseCard; frequency: number | null }) {
     const status = buildAbsenceStatus(course, frequency);
+    const absencesHours = course.attendance?.absences_hours ?? parseHours(course.absences);
+    const maxAbsences = course.attendance?.max_absences_allowed ?? null;
+    const progress = maxAbsences && maxAbsences > 0 ? Math.min(100, Math.round((absencesHours / maxAbsences) * 100)) : frequency === null ? 0 : Math.max(0, Math.min(100, 100 - frequency));
 
     return (
-        <View style={styles.courseDetailsInfoCard}>
-            <View style={styles.courseDetailsInfoIcon}>
-                <CalendarClock color={status.tone === 'alert' ? '#ba1a1a' : status.tone === 'warning' ? '#7b5800' : '#003215'} size={20} />
-            </View>
-            <View style={styles.courseDetailsInfoBody}>
-                <View style={styles.courseDetailsAbsenceHeader}>
-                    <Text style={styles.courseDetailsKicker}>Faltas</Text>
-                    <Text style={[styles.courseDetailsAbsenceBadge, status.tone === 'alert' ? styles.courseDetailsAbsenceBadgeAlert : status.tone === 'warning' ? styles.courseDetailsAbsenceBadgeWarning : styles.courseDetailsAbsenceBadgeOk]}>{status.label}</Text>
+        <View style={[styles.courseDetailsAbsenceCard, status.tone === 'alert' ? styles.courseDetailsAbsenceCardAlert : status.tone === 'warning' ? styles.courseDetailsAbsenceCardWarning : styles.courseDetailsAbsenceCardOk]}>
+            <View style={styles.courseDetailsAbsenceTop}>
+                <View style={[styles.courseDetailsAbsenceIcon, status.tone === 'alert' ? styles.courseDetailsAbsenceIconAlert : status.tone === 'warning' ? styles.courseDetailsAbsenceIconWarning : styles.courseDetailsAbsenceIconOk]}>
+                    <CalendarClock color={status.tone === 'alert' ? '#ba1a1a' : status.tone === 'warning' ? '#7b5800' : '#003215'} size={22} />
                 </View>
-                <Text style={styles.courseDetailsInfoValue}>{course.absences || '-'}</Text>
-                <Text style={styles.courseDetailsMutedText}>{status.description}</Text>
+                <View style={styles.courseDetailsAbsenceTitleBlock}>
+                    <Text style={styles.courseDetailsAbsenceKicker}>Controle de faltas</Text>
+                    <Text style={styles.courseDetailsAbsenceTitle}>{status.label}</Text>
+                </View>
+                <Text style={[styles.courseDetailsAbsenceBadge, status.tone === 'alert' ? styles.courseDetailsAbsenceBadgeAlert : status.tone === 'warning' ? styles.courseDetailsAbsenceBadgeWarning : styles.courseDetailsAbsenceBadgeOk]}>{status.label}</Text>
             </View>
+
+            <View style={styles.courseDetailsAbsenceNumbers}>
+                <View>
+                    <Text style={styles.courseDetailsAbsenceNumber}>{course.absences || '-'}</Text>
+                    <Text style={styles.courseDetailsAbsenceNumberLabel}>faltas registradas</Text>
+                </View>
+                <View style={styles.courseDetailsAbsenceLimitBox}>
+                    <Text style={styles.courseDetailsAbsenceLimitValue}>{maxAbsences === null ? '-' : `${maxAbsences}`}</Text>
+                    <Text style={styles.courseDetailsAbsenceNumberLabel}>limite h/aula</Text>
+                </View>
+            </View>
+
+            <View style={styles.courseDetailsAbsenceTrack}>
+                <View style={[styles.courseDetailsAbsenceFill, status.tone === 'alert' ? styles.courseDetailsAbsenceFillAlert : status.tone === 'warning' ? styles.courseDetailsAbsenceFillWarning : styles.courseDetailsAbsenceFillOk, { width: `${progress}%` }]} />
+            </View>
+            <Text style={styles.courseDetailsAbsenceDescription}>{status.description}</Text>
         </View>
     );
+}
+
+function getValidatedMee(course: CourseCard): { numericGradeCount: number; value: number | null } {
+    const numericGrades = course.evaluationItems
+        .map((evaluation) => parseGrade(evaluation.score))
+        .filter((score): score is number => score !== null);
+
+    if (numericGrades.length < 2) {
+        return {
+            numericGradeCount: numericGrades.length,
+            value: null
+        };
+    }
+
+    return {
+        numericGradeCount: numericGrades.length,
+        value: parseGrade(course.exerciseAverage)
+    };
 }
 
 function buildGradeState(course: CourseCard, frequency: number | null): {
@@ -587,7 +636,8 @@ function buildGradeState(course: CourseCard, frequency: number | null): {
     tone: 'danger' | 'neutral' | 'success' | 'warning';
     value: string;
 } {
-    const mee = parseGrade(course.exerciseAverage);
+    const meeState = getValidatedMee(course);
+    const mee = meeState.value;
     const pf = parseGrade(course.finalExam);
     const providedFinalGrade = parseGrade(course.finalGrade);
     const computedFinalGrade = mee !== null && pf !== null ? ((2 * mee) + pf) / 3 : null;
@@ -638,9 +688,9 @@ function buildGradeState(course: CourseCard, frequency: number | null): {
     return {
         color: '#404941',
         details,
-        label: 'Plano',
+        label: meeState.numericGradeCount === 0 ? 'Sem nota' : 'Aguardando notas',
         tone: 'neutral',
-        value: '-'
+        value: 'S/N'
     };
 }
 
@@ -651,14 +701,16 @@ function buildFinalExamStatus(course: CourseCard, frequency: number | null): {
     title: string;
     tone: 'danger' | 'success' | 'warning';
 } {
-    const mee = parseGrade(course.exerciseAverage);
+    const meeState = getValidatedMee(course);
+    const mee = meeState.value;
     const pf = parseGrade(course.finalExam);
     const providedFinalGrade = parseGrade(course.finalGrade);
     const computedFinalGrade = mee !== null && pf !== null ? ((2 * mee) + pf) / 3 : null;
     const finalGrade = computedFinalGrade ?? providedFinalGrade;
     const hasEnoughPresence = frequency === null || frequency >= 75;
     const metrics: Array<{ label: string; value: string }> = [
-        { label: 'MEE', value: mee === null ? '-' : mee.toFixed(1) },
+        { label: 'MEE', value: mee === null ? 'S/N' : mee.toFixed(1) },
+        { label: 'Notas', value: `${meeState.numericGradeCount}/2` },
         { label: 'Frequencia', value: frequency === null ? '-' : `${frequency}%` }
     ];
 
@@ -674,7 +726,7 @@ function buildFinalExamStatus(course: CourseCard, frequency: number | null): {
 
     if (mee === null) {
         return {
-            description: 'Ainda nao ha MEE suficiente para calcular se a PF sera necessaria.',
+            description: meeState.numericGradeCount === 0 ? 'A disciplina ainda nao possui notas registradas.' : 'E necessario ter pelo menos 2 notas para calcular a MEE e avaliar a PF.',
             iconColor: '#7b5800',
             metrics,
             title: 'PF ainda indefinida',

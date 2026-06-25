@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
-import { Badge, Cake, CalendarDays, Clock3, Fingerprint, Lock, LogOut, Mail, Phone, UserRound } from 'lucide-react-native';
+import { CalendarDays, Clock3, Fingerprint, LogOut, Mail, Phone, UserRound } from 'lucide-react-native';
 import type { Workspace } from '@/presentation/views/workspace.types';
 import { EmptyState, SkeletonBlock } from '@/presentation/views/components';
 import { getInitials, toTitleName } from '@/presentation/views/workspace.utils';
@@ -20,7 +20,6 @@ export function ProfilePage({
     if (!profile) return <EmptyState label="Carregar perfil" loading={loading} onRefresh={onRefresh} />;
 
     const studentName = toTitleName(profile.personal.full_name);
-    const motherName = toTitleName(profile.personal.mother_name);
 
     return (
         <View style={styles.profilePage}>
@@ -36,7 +35,7 @@ export function ProfilePage({
                     <Text style={styles.profileCourse}>{profile.academic.course || '-'}</Text>
                     <View style={styles.profilePillRow}>
                         <View style={styles.profileHeroPill}><Text style={styles.profileHeroPillText}>Ativo</Text></View>
-                        <View style={styles.profileHeroPill}><Text style={styles.profileHeroPillText}>Graduação</Text></View>
+                        <View style={styles.profileHeroPill}><Text style={styles.profileHeroPillText}>Graduacao</Text></View>
                     </View>
                 </View>
             </View>
@@ -47,10 +46,10 @@ export function ProfilePage({
                         <View style={styles.profileSectionIcon}>
                             <UserRound color="#001b08" size={20} />
                         </View>
-                        <Text style={styles.profileSectionTitle}>Dados Acadêmicos</Text>
+                        <Text style={styles.profileSectionTitle}>Dados Academicos</Text>
                     </View>
                     <View style={styles.profileAcademicGrid}>
-                        <ProfileInfoBlock icon={Fingerprint} label="Matrícula" value={profile.academic.enrollment_number} />
+                        <ProfileInfoBlock icon={Fingerprint} label="Matricula" value={profile.academic.enrollment_number} />
                         <ProfileInfoBlock icon={CalendarDays} label="Ingresso" value={profile.academic.admission_term} />
                         <ProfileInfoBlock icon={Clock3} label="Turno" value={profile.academic.shift} />
                     </View>
@@ -62,24 +61,11 @@ export function ProfilePage({
                             <View style={styles.profileSectionIcon}>
                                 <Mail color="#001b08" size={20} />
                             </View>
-                            <Text style={styles.profileSectionTitle}>Informações de Contato</Text>
+                            <Text style={styles.profileSectionTitle}>Informacoes de Contato</Text>
                         </View>
                     </View>
                     <ProfileListRow icon={Mail} label="E-mail Institucional" value={profile.contact.email} />
                     <ProfileListRow icon={Phone} label="Telefone" value={profile.contact.cellphone || profile.contact.home_phone} />
-                </View>
-
-                <View style={styles.profileGlassCard}>
-                    <View style={styles.profileCardHeader}>
-                        <View style={styles.profileSectionHeader}>
-                            <View style={styles.profileSectionIcon}>
-                                <UserRound color="#001b08" size={20} />
-                            </View>
-                            <Text style={styles.profileSectionTitle}>Dados Pessoais</Text>
-                        </View>
-                    </View>
-                    <ProfileListRow icon={Badge} label="Nome da mãe" trailingIcon={Lock} value={motherName} />
-                    <ProfileListRow icon={Cake} label="Data de Nascimento" value={profile.personal.birth_date} />
                 </View>
 
                 <View style={styles.profileActions}>
@@ -105,7 +91,7 @@ function ProfileInfoBlock({ icon: Icon, label, value }: { icon: typeof Fingerpri
     );
 }
 
-function ProfileListRow({ icon: Icon, label, trailingIcon: TrailingIcon, value }: { icon: typeof Mail; label: string; trailingIcon?: typeof Lock; value: string }) {
+function ProfileListRow({ icon: Icon, label, value }: { icon: typeof Mail; label: string; value: string }) {
     return (
         <View style={styles.profileListRow}>
             <View style={styles.profileListRowBody}>
@@ -117,7 +103,6 @@ function ProfileListRow({ icon: Icon, label, trailingIcon: TrailingIcon, value }
                     <Text style={styles.profileListValue}>{value || '-'}</Text>
                 </View>
             </View>
-            {TrailingIcon ? <TrailingIcon color="#8a948b" size={21} /> : null}
         </View>
     );
 }
@@ -127,7 +112,7 @@ function ProfileSkeleton() {
         <View style={styles.sectionStack}>
             <SkeletonBlock height={260} />
             <SkeletonBlock height={180} />
-            <SkeletonBlock height={220} />
+            <SkeletonBlock height={140} />
         </View>
     );
 }

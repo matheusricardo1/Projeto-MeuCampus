@@ -43,8 +43,6 @@ export class EcampusHttpRepository implements EcampusRepository {
                 },
                 personal: {
                     full_name: this.getInputValue(tree, "nomePessoa"),
-                    birth_date: this.getInputValue(tree, "aluno.dtNascimento"),
-                    mother_name: this.getInputValue(tree, "aluno.nomeMae"),
                 },
                 contact: {
                     email: this.getInputValue(tree, "endereco.descrMail"),

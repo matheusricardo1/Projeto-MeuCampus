@@ -7,8 +7,6 @@ export interface StudentProfile {
     };
     personal: {
         full_name: string;
-        birth_date: string;
-        mother_name: string;
     };
     contact: {
         email: string;
