@@ -1,6 +1,8 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ClipboardList, Clock3, Filter, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
+import { useLanguage } from '@/presentation/i18n/language-provider';
+import type { Translate } from '@/presentation/i18n/languages';
 import type { Workspace } from '@/presentation/views/workspace.types';
 import { EmptyInline, SkeletonBlock } from '@/presentation/views/components';
 import { isApprovedStatus, parseGrade } from '@/presentation/views/workspace.utils';
@@ -59,19 +61,20 @@ export function LessonPlanPage({
     selectedSubjectCode: string;
     subjects: Workspace['lessonPlanSubjects'];
 }) {
+    const { t } = useLanguage();
     const [openSelector, setOpenSelector] = useState<'year' | 'period' | null>(null);
     const [selectedCourseCode, setSelectedCourseCode] = useState('');
     const [selectedCourseView, setSelectedCourseView] = useState<'content' | 'details'>('details');
     const currentYear = Number(currentGradesInput.year);
-    const admissionYear = parseAdmissionYear(profile?.academic.admission_term, currentYear);
+    const admissionYear = parseAdmissionYear(profile?.academic?.admission_term, currentYear);
     const yearOptions = useMemo(() => {
         const start = Number.isFinite(admissionYear) ? admissionYear : currentYear;
         const end = Number.isFinite(currentYear) ? currentYear : new Date().getFullYear();
         return Array.from({ length: Math.max(end - start + 1, 1) }, (_, index) => String(end - index));
     }, [admissionYear, currentYear]);
     const periodOptions = ['1', '2'];
-    const courseName = profile?.academic.course || 'Curso nao informado';
-    const semesterLabel = `Semestre ${gradesInput.year}.${gradesInput.period} • ${courseName}`;
+    const courseName = profile?.academic?.course || t('lesson.courseUnknown');
+    const semesterLabel = t('lesson.semesterLabel', { course: courseName, period: gradesInput.period, year: gradesInput.year });
     const courses = useMemo(() => {
         const byCode = new Map<string, CourseCard>();
 
@@ -91,7 +94,7 @@ export function LessonPlanPage({
                 planItems: grade.code === selectedSubjectCode ? items : [],
                 professor: '',
                 scheduleItems: schedule.filter((item) => item.code === grade.code || item.class_identifier === grade.class_identifier),
-                status: grade.status || 'Cursando',
+                status: grade.status || t('lesson.inProgress'),
                 subject: grade.subject,
                 workloadHours: grade.attendance?.workload_hours ?? null
             });
@@ -120,14 +123,14 @@ export function LessonPlanPage({
                 planItems: subject.code === selectedSubjectCode ? items : [],
                 professor: subject.professor,
                 scheduleItems: schedule.filter((item) => item.code === subject.code || item.class_identifier === subject.classIdentifier),
-                status: current?.status || (subject.available ? 'Plano disponivel' : 'Plano indisponivel'),
+                status: current?.status || (subject.available ? t('lesson.planAvailable') : t('lesson.planUnavailable')),
                 subject: current?.subject || subject.subject,
                 workloadHours: subject.workloadHours ?? current?.workloadHours ?? null
             });
         }
 
         return Array.from(byCode.values()).sort((a, b) => a.subject.localeCompare(b.subject));
-    }, [grades, items, schedule, selectedSubjectCode, subjects]);
+    }, [grades, items, schedule, selectedSubjectCode, subjects, t]);
 
     if (loading && subjects.length === 0 && grades.length === 0) return <LessonPlanSkeleton />;
     const isChangingPeriod = loading && grades.length === 0;
@@ -153,6 +156,7 @@ export function LessonPlanPage({
                         setSelectedCourseView('details');
                         onNavigateScreen();
                     }}
+                    t={t}
                 />
             );
         }
@@ -170,6 +174,7 @@ export function LessonPlanPage({
                     onNavigateScreen();
                 }}
                 semester={`${gradesInput.year}.${gradesInput.period}`}
+                t={t}
             />
         );
     }
@@ -189,13 +194,13 @@ export function LessonPlanPage({
     return (
         <View style={styles.coursesScreenStack}>
             <View style={styles.coursesHero}>
-                <Text style={styles.coursesTitle}>Minhas Disciplinas</Text>
+                <Text style={styles.coursesTitle}>{t('lesson.title')}</Text>
                 <Text style={styles.coursesSubtitle}>{semesterLabel}</Text>
-                <Text style={styles.coursesPeriodMeta}>{profile?.academic.enrollment_number ? `Matricula ${profile.academic.enrollment_number}` : 'Dados academicos do eCampus'}</Text>
+                <Text style={styles.coursesPeriodMeta}>{profile?.academic?.enrollment_number ? t('lesson.enrollment', { enrollment: profile.academic.enrollment_number }) : t('lesson.academicData')}</Text>
 
                 <View style={styles.coursesSelectorRow}>
                     <View style={styles.coursesSelectorColumn}>
-                        <Text style={styles.coursesSelectorLabel}>Ano</Text>
+                        <Text style={styles.coursesSelectorLabel}>{t('lesson.year')}</Text>
                         <Pressable onPress={() => setOpenSelector(openSelector === 'year' ? null : 'year')} style={styles.coursesSelectorButton}>
                             <Text style={styles.coursesSelectorValue}>{gradesInput.year}</Text>
                         </Pressable>
@@ -211,15 +216,15 @@ export function LessonPlanPage({
                     </View>
 
                     <View style={styles.coursesSelectorColumn}>
-                        <Text style={styles.coursesSelectorLabel}>Semestre</Text>
+                        <Text style={styles.coursesSelectorLabel}>{t('lesson.semester')}</Text>
                         <Pressable onPress={() => setOpenSelector(openSelector === 'period' ? null : 'period')} style={styles.coursesSelectorButton}>
-                            <Text style={styles.coursesSelectorValue}>{formatPeriodOption(gradesInput.period, gradesInput.year, currentGradesInput)}</Text>
+                            <Text style={styles.coursesSelectorValue}>{formatPeriodOption(gradesInput.period, gradesInput.year, currentGradesInput, t)}</Text>
                         </Pressable>
                         {openSelector === 'period' ? (
                             <View style={styles.coursesOptionsPanel}>
                                 {periodOptions.map((period) => (
                                     <Pressable key={period} onPress={() => changePeriod(period)} style={[styles.coursesOptionItem, period === gradesInput.period ? styles.coursesOptionItemActive : null]}>
-                                        <Text style={[styles.coursesOptionText, period === gradesInput.period ? styles.coursesOptionTextActive : null]}>{formatPeriodOption(period, gradesInput.year, currentGradesInput)}</Text>
+                                        <Text style={[styles.coursesOptionText, period === gradesInput.period ? styles.coursesOptionTextActive : null]}>{formatPeriodOption(period, gradesInput.year, currentGradesInput, t)}</Text>
                                     </Pressable>
                                 ))}
                             </View>
@@ -230,23 +235,24 @@ export function LessonPlanPage({
 
             <View style={styles.coursesList}>
                 {isChangingPeriod ? <CourseCardsSkeleton /> : null}
-                {!isChangingPeriod && courses.length === 0 ? <EmptyInline text="Nenhuma disciplina carregada." /> : null}
+                {!isChangingPeriod && courses.length === 0 ? <EmptyInline text={t('lesson.empty')} /> : null}
                 {!isChangingPeriod ? courses.map((course) => (
                     <CourseSubjectCard
                         course={course}
                         key={`${course.code}-${course.classIdentifier}`}
                         onPress={() => openCourse(course)}
+                        t={t}
                     />
                 )) : null}
             </View>
 
             <View style={styles.coursesAnalyticsCard}>
                 <View style={styles.coursesAnalyticsContent}>
-                    <Text style={styles.coursesAnalyticsKicker}>Recurso Premium</Text>
-                    <Text style={styles.coursesAnalyticsTitle}>Graficos de Desempenho</Text>
-                    <Text style={styles.coursesAnalyticsText}>Visualize sua evolucao academica comparada a media do curso.</Text>
+                    <Text style={styles.coursesAnalyticsKicker}>{t('lesson.premium')}</Text>
+                    <Text style={styles.coursesAnalyticsTitle}>{t('lesson.performanceCharts')}</Text>
+                    <Text style={styles.coursesAnalyticsText}>{t('lesson.analyticsText')}</Text>
                     <Pressable onPress={() => void onRefreshSubjects()} style={styles.coursesAnalyticsButton}>
-                        <Text style={styles.coursesAnalyticsButtonText}>Ver analytics</Text>
+                        <Text style={styles.coursesAnalyticsButtonText}>{t('lesson.viewAnalytics')}</Text>
                     </Pressable>
                 </View>
                 <BarChart3 color="rgba(255,255,255,0.26)" size={126} style={styles.coursesAnalyticsIcon} />
@@ -255,11 +261,11 @@ export function LessonPlanPage({
     );
 }
 
-function CourseSubjectCard({ course, onPress }: { course: CourseCard; onPress: () => void }) {
+function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress: () => void; t: Translate }) {
     const frequency = course.attendance?.presence_percent;
     const hasFrequency = typeof frequency === 'number';
     const isAbsenceRisk = course.attendance?.is_absence_risk === true;
-    const gradeState = buildGradeState(course, frequency ?? null);
+    const gradeState = buildGradeState(course, frequency ?? null, t);
     const isRisk = isAbsenceRisk || gradeState.tone === 'danger';
     const statusColor = isAbsenceRisk ? '#ba1a1a' : gradeState.color;
 
@@ -280,7 +286,7 @@ function CourseSubjectCard({ course, onPress }: { course: CourseCard; onPress: (
 
             <View style={styles.courseFrequencyBlock}>
                 <View style={styles.courseFrequencyHeader}>
-                    <Text style={styles.courseMetaLabel}>Frequencia</Text>
+                    <Text style={styles.courseMetaLabel}>{t('lesson.frequency')}</Text>
                     <Text style={[styles.courseFrequencyValue, { color: statusColor }]}>{frequency === null || frequency === undefined ? '--' : `${frequency}%`}</Text>
                 </View>
                 <View style={[styles.courseProgressTrack, !hasFrequency ? styles.courseProgressTrackUnavailable : isAbsenceRisk ? styles.courseProgressTrackDanger : null]}>
@@ -289,11 +295,11 @@ function CourseSubjectCard({ course, onPress }: { course: CourseCard; onPress: (
                 {isAbsenceRisk ? (
                     <View style={styles.courseRiskRow}>
                         <AlertTriangle color="#ba1a1a" size={14} />
-                        <Text style={styles.courseRiskText}>Risco de reprovacao por falta. Limite: {course.attendance?.max_absences_allowed ?? '-'} h/aula</Text>
+                        <Text style={styles.courseRiskText}>{t('lesson.riskByAbsence', { limit: course.attendance?.max_absences_allowed ?? '-' })}</Text>
                     </View>
                 ) : null}
                 {!hasFrequency ? (
-                    <Text style={styles.courseFrequencyUnavailable}>Frequencia indisponivel para esta disciplina.</Text>
+                    <Text style={styles.courseFrequencyUnavailable}>{t('lesson.frequencyUnavailable')}</Text>
                 ) : null}
             </View>
 
@@ -301,15 +307,15 @@ function CourseSubjectCard({ course, onPress }: { course: CourseCard; onPress: (
     );
 }
 
-function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent, semester }: { course: CourseCard; loading: boolean; onBack: () => void; onOpenFullContent: () => void; semester: string }) {
+function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent, semester, t }: { course: CourseCard; loading: boolean; onBack: () => void; onOpenFullContent: () => void; semester: string; t: Translate }) {
     const frequency = course.attendance?.presence_percent;
-    const gradeState = buildGradeState(course, frequency ?? null);
+    const gradeState = buildGradeState(course, frequency ?? null, t);
     const isApproved = gradeState.tone === 'success';
     const planWorkload = course.planItems.reduce((total, item) => total + (typeof item.workload === 'number' ? item.workload : 0), 0);
     const workloadLabel = course.workloadHours ?? course.attendance?.workload_hours ?? (planWorkload > 0 ? planWorkload : null);
-    const evaluations = course.evaluationItems.length > 0 ? course.evaluationItems : parseEvaluationItems(course.evaluations);
+    const evaluations = course.evaluationItems.length > 0 ? course.evaluationItems : parseEvaluationItems(course.evaluations, t);
     const previewItems = getCurrentLessonPreview(course.planItems, 3);
-    const scheduleLabel = formatCourseSchedule(course.scheduleItems);
+    const scheduleLabel = formatCourseSchedule(course.scheduleItems, t);
 
     return (
         <View style={styles.courseDetailsPage}>
@@ -317,7 +323,7 @@ function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent, semes
                 <Pressable onPress={onBack} style={styles.courseDetailsIconButton}>
                     <ArrowLeft color="#003215" size={22} />
                 </Pressable>
-                <Text numberOfLines={1} style={styles.courseDetailsHeaderTitle}>Detalhes da Disciplina</Text>
+                <Text numberOfLines={1} style={styles.courseDetailsHeaderTitle}>{t('lesson.detailsTitle')}</Text>
                 <View style={styles.courseDetailsIconButton}>
                     <MoreVertical color="#003215" size={22} />
                 </View>
@@ -331,13 +337,13 @@ function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent, semes
                 <Text style={styles.courseDetailsTitle}>{course.subject}</Text>
                 <View style={styles.courseDetailsTeacherRow}>
                     <School color="rgba(255,255,255,0.82)" size={18} />
-                    <Text style={styles.courseDetailsTeacher}>{course.professor || 'Docente nao informado'}</Text>
+                    <Text style={styles.courseDetailsTeacher}>{course.professor || t('lesson.teacherUnknown')}</Text>
                 </View>
             </View>
 
             <View style={styles.courseDetailsGrid}>
                 <View style={styles.courseDetailsAverageCard}>
-                    <Text style={styles.courseDetailsKicker}>Media Final</Text>
+                    <Text style={styles.courseDetailsKicker}>{t('lesson.finalAverage')}</Text>
                     <Text style={styles.courseDetailsAverageValue}>{gradeState.value}</Text>
                     <View style={[styles.courseDetailsStatusPill, isApproved ? styles.courseDetailsStatusOk : styles.courseDetailsStatusNeutral]}>
                         <CheckCircle2 color={isApproved ? '#003215' : '#404941'} size={14} />
@@ -349,36 +355,36 @@ function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent, semes
                     <View style={styles.courseDetailsSectionHeader}>
                         <View style={styles.courseDetailsSectionTitleRow}>
                             <BarChart3 color="#003215" size={20} />
-                            <Text style={styles.courseDetailsSectionTitle}>Avaliacoes</Text>
+                            <Text style={styles.courseDetailsSectionTitle}>{t('grades.evaluations')}</Text>
                         </View>
-                        <Text style={styles.courseDetailsMutedText}>{evaluations.length > 0 ? `${evaluations.length} itens` : 'Sem notas'}</Text>
+                        <Text style={styles.courseDetailsMutedText}>{evaluations.length > 0 ? t('lesson.itemsCount', { count: evaluations.length }) : t('lesson.noGrades')}</Text>
                     </View>
                     <View style={styles.courseDetailsEvaluationList}>
                         {evaluations.length > 0 ? evaluations.map((evaluation, index) => (
-                            <EvaluationRow evaluation={evaluation} index={index} key={`${evaluation.weight}-${index}`} />
-                        )) : <EvaluationRow evaluation={{ score: '', weight: '-' }} index={0} />}
+                            <EvaluationRow evaluation={evaluation} index={index} key={`${evaluation.weight}-${index}`} t={t} />
+                        )) : <EvaluationRow evaluation={{ score: '', weight: '-' }} index={0} t={t} />}
                     </View>
                 </View>
 
-                <FinalExamStatusCard course={course} frequency={frequency ?? null} />
-                <AbsenceStatusCard course={course} frequency={frequency ?? null} />
-                <InfoCard icon={<Clock3 color="#003215" size={20} />} label="Horario" value={scheduleLabel} />
-                <InfoCard icon={<Timer color="#003215" size={20} />} label="Carga horaria" value={workloadLabel === null ? '-' : `${workloadLabel} h/aula`} />
-                <InfoCard icon={<MapPin color="#7b5800" size={20} />} label="Turma" value={course.classIdentifier || '-'} />
+                <FinalExamStatusCard course={course} frequency={frequency ?? null} t={t} />
+                <AbsenceStatusCard course={course} frequency={frequency ?? null} t={t} />
+                <InfoCard icon={<Clock3 color="#003215" size={20} />} label={t('lesson.schedule')} value={scheduleLabel} />
+                <InfoCard icon={<Timer color="#003215" size={20} />} label={t('lesson.workload')} value={workloadLabel === null ? '-' : t('lesson.workloadHours', { hours: workloadLabel })} />
+                <InfoCard icon={<MapPin color="#7b5800" size={20} />} label={t('lesson.group')} value={course.classIdentifier || '-'} />
             </View>
 
             <View style={styles.courseDetailsTimelineSection}>
                 <View style={styles.courseDetailsSectionHeader}>
                     <View style={styles.courseDetailsSectionTitleRow}>
                         <ClipboardList color="#003215" size={20} />
-                        <Text style={styles.courseDetailsSectionTitle}>Conteudo Programatico</Text>
+                        <Text style={styles.courseDetailsSectionTitle}>{t('lesson.syllabus')}</Text>
                     </View>
                     {course.planItems.length > 3 ? (
                         <Pressable onPress={onOpenFullContent} style={styles.courseDetailsSeeAllButton}>
-                            <Text style={styles.courseDetailsSeeAllText}>Ver completo</Text>
+                            <Text style={styles.courseDetailsSeeAllText}>{t('lesson.seeFull')}</Text>
                             <ArrowRight color="#003215" size={15} />
                         </Pressable>
-                    ) : loading ? <Text style={styles.courseDetailsMutedText}>Carregando...</Text> : null}
+                    ) : loading ? <Text style={styles.courseDetailsMutedText}>{t('common.loading')}</Text> : null}
                 </View>
 
                 <View style={styles.courseDetailsTimeline}>
@@ -389,22 +395,22 @@ function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent, semes
                             </View>
                             <View style={styles.courseDetailsLessonCard}>
                                 <View style={styles.courseDetailsLessonHeader}>
-                                    <Text style={styles.courseDetailsLessonDate}>{item.date || 'Data nao informada'}</Text>
-                                    <Text style={styles.courseDetailsLessonBadge}>{typeof item.workload === 'number' ? `${item.workload}h` : 'Aula'}</Text>
+                                    <Text style={styles.courseDetailsLessonDate}>{item.date || t('lesson.dateUnknown')}</Text>
+                                    <Text style={styles.courseDetailsLessonBadge}>{typeof item.workload === 'number' ? `${item.workload}h` : t('lesson.classFallback')}</Text>
                                 </View>
-                                <Text style={styles.courseDetailsLessonTitle}>{item.content || 'Conteudo da aula'}</Text>
+                                <Text style={styles.courseDetailsLessonTitle}>{item.content || t('lesson.lessonContentFallback')}</Text>
                                 {item.type || item.professor ? <Text style={styles.courseDetailsLessonText}>{[item.type, item.professor].filter(Boolean).join(' - ')}</Text> : null}
                             </View>
                         </View>
-                    )) : <EmptyInline text={loading ? 'Carregando conteudo programatico.' : 'Conteudo programatico indisponivel.'} />}
+                    )) : <EmptyInline text={loading ? t('lesson.syllabusLoading') : t('lesson.syllabusUnavailable')} />}
                 </View>
             </View>
         </View>
     );
 }
 
-function FinalExamStatusCard({ course, frequency }: { course: CourseCard; frequency: number | null }) {
-    const state = buildFinalExamStatus(course, frequency);
+function FinalExamStatusCard({ course, frequency, t }: { course: CourseCard; frequency: number | null; t: Translate }) {
+    const state = buildFinalExamStatus(course, frequency, t);
     const Icon = state.tone === 'success' ? CheckCircle2 : AlertTriangle;
 
     return (
@@ -414,7 +420,7 @@ function FinalExamStatusCard({ course, frequency }: { course: CourseCard; freque
                     <Icon color={state.iconColor} size={20} />
                 </View>
                 <View style={styles.courseDetailsPfText}>
-                    <Text style={styles.courseDetailsPfKicker}>Situacao da PF</Text>
+                    <Text style={styles.courseDetailsPfKicker}>{t('lesson.situationPf')}</Text>
                     <Text style={styles.courseDetailsPfTitle}>{state.title}</Text>
                 </View>
             </View>
@@ -431,7 +437,7 @@ function FinalExamStatusCard({ course, frequency }: { course: CourseCard; freque
     );
 }
 
-function CourseContentScreen({ course, onBack }: { course: CourseCard; onBack: () => void }) {
+function CourseContentScreen({ course, onBack, t }: { course: CourseCard; onBack: () => void; t: Translate }) {
     const [filter, setFilter] = useState<'all' | 'practical' | 'theoretical'>('all');
     const filteredItems = useMemo(() => filterLessonItems(course.planItems, filter), [course.planItems, filter]);
     const progress = buildContentProgress(course.planItems);
@@ -443,56 +449,58 @@ function CourseContentScreen({ course, onBack }: { course: CourseCard; onBack: (
                 <Pressable onPress={onBack} style={styles.courseDetailsIconButton}>
                     <ArrowLeft color="#003215" size={22} />
                 </Pressable>
-                <Text numberOfLines={1} style={styles.courseDetailsHeaderTitle}>Conteudo Programatico</Text>
+                <Text numberOfLines={1} style={styles.courseDetailsHeaderTitle}>{t('lesson.contentTitle')}</Text>
                 <View style={styles.courseDetailsIconButton}>
                     <Filter color="#003215" size={21} />
                 </View>
             </View>
 
             <View style={styles.courseContentHero}>
-                <Text style={styles.courseContentCode}>Codigo {course.classIdentifier || course.code}</Text>
+                <Text style={styles.courseContentCode}>{t('lesson.code', { code: course.classIdentifier || course.code })}</Text>
                 <Text style={styles.courseContentTitle}>{course.subject}</Text>
                 <View style={styles.courseContentProgressBlock}>
                     <View style={styles.courseContentProgressHeader}>
-                        <Text style={styles.courseContentProgressLabel}>Progresso do Conteudo</Text>
+                        <Text style={styles.courseContentProgressLabel}>{t('lesson.contentProgress')}</Text>
                         <Text style={styles.courseContentProgressValue}>{progress.percent}%</Text>
                     </View>
                     <View style={styles.courseContentProgressTrack}>
                         <View style={[styles.courseContentProgressFill, { width: `${progress.percent}%` }]} />
                     </View>
-                    <Text style={styles.courseContentProgressHint}>{progress.doneHours} de {progress.totalHours} horas ministradas</Text>
+                    <Text style={styles.courseContentProgressHint}>{t('lesson.contentProgressHint', { done: progress.doneHours, total: progress.totalHours })}</Text>
                 </View>
             </View>
 
             <View style={styles.courseContentTabs}>
                 <Pressable onPress={() => setFilter('all')}>
-                    <Text style={[styles.courseContentTab, filter === 'all' ? styles.courseContentTabActive : null]}>Todas as Aulas</Text>
+                    <Text style={[styles.courseContentTab, filter === 'all' ? styles.courseContentTabActive : null]}>{t('lesson.allClasses')}</Text>
                 </Pressable>
                 <Pressable onPress={() => setFilter('theoretical')}>
-                    <Text style={[styles.courseContentTab, filter === 'theoretical' ? styles.courseContentTabActive : null]}>Apenas Teoricas</Text>
+                    <Text style={[styles.courseContentTab, filter === 'theoretical' ? styles.courseContentTabActive : null]}>{t('lesson.theoreticalOnly')}</Text>
                 </Pressable>
                 <Pressable onPress={() => setFilter('practical')}>
-                    <Text style={[styles.courseContentTab, filter === 'practical' ? styles.courseContentTabActive : null]}>Apenas Praticas</Text>
+                    <Text style={[styles.courseContentTab, filter === 'practical' ? styles.courseContentTabActive : null]}>{t('lesson.practicalOnly')}</Text>
                 </Pressable>
             </View>
 
             <LessonGroup
-                emptyText="Nao ha proximas aulas registradas."
+                emptyText={t('lesson.noUpcomingClasses')}
                 items={grouped.upcoming}
                 status="upcoming"
-                title="Proximas Aulas"
+                title={t('lesson.upcomingClasses')}
+                t={t}
             />
             <LessonGroup
-                emptyText="Nao ha aulas ministradas registradas."
+                emptyText={t('lesson.noTaughtClasses')}
                 items={grouped.taught}
                 status="taught"
-                title="Aulas Ministradas"
+                title={t('lesson.taughtClasses')}
+                t={t}
             />
         </View>
     );
 }
 
-function LessonGroup({ emptyText, items, status, title }: { emptyText: string; items: Workspace['lessonPlan']; status: 'taught' | 'upcoming'; title: string }) {
+function LessonGroup({ emptyText, items, status, title, t }: { emptyText: string; items: Workspace['lessonPlan']; status: 'taught' | 'upcoming'; title: string; t: Translate }) {
     return (
         <View style={styles.courseContentSection}>
             <View style={styles.courseDetailsSectionTitleRow}>
@@ -508,7 +516,7 @@ function LessonGroup({ emptyText, items, status, title }: { emptyText: string; i
                                 <Check color="#ffffff" size={14} />
                             </View>
                         ) : null}
-                        <LessonContentCard item={item} status={status} />
+                        <LessonContentCard item={item} status={status} t={t} />
                     </View>
                 )) : <EmptyInline text={emptyText} />}
             </View>
@@ -516,44 +524,44 @@ function LessonGroup({ emptyText, items, status, title }: { emptyText: string; i
     );
 }
 
-function LessonContentCard({ item, status }: { item: Workspace['lessonPlan'][number]; status: 'taught' | 'upcoming' }) {
+function LessonContentCard({ item, status, t }: { item: Workspace['lessonPlan'][number]; status: 'taught' | 'upcoming'; t: Translate }) {
     return (
         <View style={[styles.courseContentCardInner, status === 'upcoming' ? styles.courseContentCardUpcoming : null]}>
             <View style={styles.courseContentLessonHeader}>
                 <View style={styles.courseContentLessonHeading}>
-                    <Text style={styles.courseContentLessonDate}>{formatLessonDateLabel(item.date, status)}</Text>
-                    <Text style={styles.courseContentLessonTitle}>{item.content || 'Conteudo da aula'}</Text>
+                    <Text style={styles.courseContentLessonDate}>{formatLessonDateLabel(item.date, status, t)}</Text>
+                    <Text style={styles.courseContentLessonTitle}>{item.content || t('lesson.lessonContentFallback')}</Text>
                 </View>
                 <Text style={[styles.courseContentTypeBadge, isPracticalLesson(item) ? styles.courseContentTypePractical : styles.courseContentTypeTheoretical]}>
-                    {item.type || 'Aula'}
+                    {item.type || t('lesson.classFallback')}
                 </Text>
             </View>
             {item.professor ? <Text style={styles.courseContentLessonText}>{item.professor}</Text> : null}
             <View style={styles.courseContentLessonFooter}>
                 <View style={styles.courseContentFooterMeta}>
                     <Clock3 color="#414941" size={15} />
-                    <Text style={styles.courseContentFooterText}>{formatWorkloadLabel(item.workload)}</Text>
+                    <Text style={styles.courseContentFooterText}>{formatWorkloadLabel(item.workload, t)}</Text>
                 </View>
             </View>
         </View>
     );
 }
 
-function EvaluationRow({ evaluation, index }: { evaluation: { score: string; weight: string }; index: number }) {
+function EvaluationRow({ evaluation, index, t }: { evaluation: { score: string; weight: string }; index: number; t: Translate }) {
     const score = parseGrade(evaluation.score);
     const progress = score === null ? 0 : Math.max(0, Math.min(100, score * 10));
 
     return (
         <View style={styles.courseDetailsEvaluationRow}>
             <View style={styles.courseDetailsEvaluationText}>
-                <Text style={styles.courseDetailsEvaluationName}>{index + 1}ª nota</Text>
-                <Text style={styles.courseDetailsMutedText}>Avaliacao parcial</Text>
+                <Text style={styles.courseDetailsEvaluationName}>{t('lesson.evaluationFallback', { count: index + 1 })}</Text>
+                <Text style={styles.courseDetailsMutedText}>{t('lesson.partialEvaluation')}</Text>
             </View>
             <View style={styles.courseDetailsEvaluationScoreBlock}>
                 <View style={styles.courseDetailsEvaluationTrack}>
                     <View style={[styles.courseDetailsEvaluationFill, { width: `${progress}%` }]} />
                 </View>
-                <Text style={styles.courseDetailsEvaluationWeight}>Peso {evaluation.weight || '-'}</Text>
+                <Text style={styles.courseDetailsEvaluationWeight}>{t('lesson.weight', { weight: evaluation.weight || '-' })}</Text>
                 <Text style={styles.courseDetailsEvaluationScore}>{score === null ? 'S/N' : evaluation.score}</Text>
             </View>
         </View>
@@ -573,8 +581,8 @@ function InfoCard({ helper, icon, label, value }: { helper?: string; icon: React
     );
 }
 
-function AbsenceStatusCard({ course, frequency }: { course: CourseCard; frequency: number | null }) {
-    const status = buildAbsenceStatus(course, frequency);
+function AbsenceStatusCard({ course, frequency, t }: { course: CourseCard; frequency: number | null; t: Translate }) {
+    const status = buildAbsenceStatus(course, frequency, t);
     const absencesHours = course.attendance?.absences_hours ?? parseHours(course.absences);
     const maxAbsences = course.attendance?.max_absences_allowed ?? null;
     const progress = maxAbsences && maxAbsences > 0 ? Math.min(100, Math.round((absencesHours / maxAbsences) * 100)) : frequency === null ? 0 : Math.max(0, Math.min(100, 100 - frequency));
@@ -586,7 +594,7 @@ function AbsenceStatusCard({ course, frequency }: { course: CourseCard; frequenc
                     <CalendarClock color={status.tone === 'alert' ? '#ba1a1a' : status.tone === 'warning' ? '#7b5800' : '#003215'} size={22} />
                 </View>
                 <View style={styles.courseDetailsAbsenceTitleBlock}>
-                    <Text style={styles.courseDetailsAbsenceKicker}>Controle de faltas</Text>
+                    <Text style={styles.courseDetailsAbsenceKicker}>{t('lesson.absenceControl')}</Text>
                     <Text style={styles.courseDetailsAbsenceTitle}>{status.label}</Text>
                 </View>
                 <Text style={[styles.courseDetailsAbsenceBadge, status.tone === 'alert' ? styles.courseDetailsAbsenceBadgeAlert : status.tone === 'warning' ? styles.courseDetailsAbsenceBadgeWarning : styles.courseDetailsAbsenceBadgeOk]}>{status.label}</Text>
@@ -595,11 +603,11 @@ function AbsenceStatusCard({ course, frequency }: { course: CourseCard; frequenc
             <View style={styles.courseDetailsAbsenceNumbers}>
                 <View>
                     <Text style={styles.courseDetailsAbsenceNumber}>{course.absences || '-'}</Text>
-                    <Text style={styles.courseDetailsAbsenceNumberLabel}>faltas registradas</Text>
+                    <Text style={styles.courseDetailsAbsenceNumberLabel}>{t('lesson.registeredAbsences')}</Text>
                 </View>
                 <View style={styles.courseDetailsAbsenceLimitBox}>
                     <Text style={styles.courseDetailsAbsenceLimitValue}>{maxAbsences === null ? '-' : `${maxAbsences}`}</Text>
-                    <Text style={styles.courseDetailsAbsenceNumberLabel}>limite h/aula</Text>
+                    <Text style={styles.courseDetailsAbsenceNumberLabel}>{t('lesson.hourLimit')}</Text>
                 </View>
             </View>
 
@@ -629,7 +637,7 @@ function getValidatedMee(course: CourseCard): { numericGradeCount: number; value
     };
 }
 
-function buildGradeState(course: CourseCard, frequency: number | null): {
+function buildGradeState(course: CourseCard, frequency: number | null, t: Translate): {
     color: string;
     details: Array<{ label: string; value: string }>;
     label: string;
@@ -651,13 +659,13 @@ function buildGradeState(course: CourseCard, frequency: number | null): {
     if (mee !== null) details.push({ label: 'MEE', value: mee.toFixed(1) });
     if (pf !== null) details.push({ label: 'PF', value: pf.toFixed(1) });
     if (finalGrade !== null) details.push({ label: 'MF', value: finalGrade.toFixed(1) });
-    if (needsFinalGrade && requiredFinalExam !== null) details.push({ label: 'PF necessaria', value: requiredFinalExam > 10 ? '> 10.0' : requiredFinalExam.toFixed(1) });
+    if (needsFinalGrade && requiredFinalExam !== null) details.push({ label: t('lesson.finalGradeNeeded'), value: requiredFinalExam > 10 ? '> 10.0' : requiredFinalExam.toFixed(1) });
 
     if (mee !== null && mee >= 8 && hasEnoughPresence && pf === null) {
         return {
             color: '#003215',
             details,
-            label: 'Dispensado PF',
+            label: t('lesson.gradeStatePfWaived'),
             tone: 'success',
             value: mee.toFixed(1)
         };
@@ -668,7 +676,7 @@ function buildGradeState(course: CourseCard, frequency: number | null): {
         return {
             color: approved ? '#003215' : '#ba1a1a',
             details,
-            label: 'Media Final',
+            label: t('lesson.gradeStateFinalAverage'),
             tone: approved ? 'success' : 'danger',
             value: finalGrade.toFixed(1)
         };
@@ -679,7 +687,7 @@ function buildGradeState(course: CourseCard, frequency: number | null): {
         return {
             color: impossibleFinal ? '#ba1a1a' : '#7b5800',
             details,
-            label: needsFinalGrade ? 'Nota Parcial' : 'MEE',
+            label: needsFinalGrade ? t('lesson.gradeStatePartialGrade') : 'MEE',
             tone: impossibleFinal ? 'danger' : 'warning',
             value: mee.toFixed(1)
         };
@@ -688,13 +696,13 @@ function buildGradeState(course: CourseCard, frequency: number | null): {
     return {
         color: '#404941',
         details,
-        label: meeState.numericGradeCount === 0 ? 'Sem nota' : 'Aguardando notas',
+        label: meeState.numericGradeCount === 0 ? t('lesson.gradeStateNoGrade') : t('lesson.gradeStateWaitingGrades'),
         tone: 'neutral',
         value: 'S/N'
     };
 }
 
-function buildFinalExamStatus(course: CourseCard, frequency: number | null): {
+function buildFinalExamStatus(course: CourseCard, frequency: number | null, t: Translate): {
     description: string;
     iconColor: string;
     metrics: Array<{ label: string; value: string }>;
@@ -710,26 +718,26 @@ function buildFinalExamStatus(course: CourseCard, frequency: number | null): {
     const hasEnoughPresence = frequency === null || frequency >= 75;
     const metrics: Array<{ label: string; value: string }> = [
         { label: 'MEE', value: mee === null ? 'S/N' : mee.toFixed(1) },
-        { label: 'Notas', value: `${meeState.numericGradeCount}/2` },
-        { label: 'Frequencia', value: frequency === null ? '-' : `${frequency}%` }
+        { label: t('nav.grades'), value: `${meeState.numericGradeCount}/2` },
+        { label: t('lesson.frequency'), value: frequency === null ? '-' : `${frequency}%` }
     ];
 
     if (!hasEnoughPresence) {
         return {
-            description: 'A frequencia esta abaixo de 75%. A disciplina fica em risco por falta independentemente da nota.',
+            description: t('lesson.finalExamFreqBelow'),
             iconColor: '#ba1a1a',
-            metrics: [...metrics, { label: 'Minimo', value: '75%' }],
-            title: 'Risco por falta',
+            metrics: [...metrics, { label: t('lesson.minimum'), value: '75%' }],
+            title: t('lesson.finalExamAbsenceRiskTitle'),
             tone: 'danger'
         };
     }
 
     if (mee === null) {
         return {
-            description: meeState.numericGradeCount === 0 ? 'A disciplina ainda nao possui notas registradas.' : 'E necessario ter pelo menos 2 notas para calcular a MEE e avaliar a PF.',
+            description: meeState.numericGradeCount === 0 ? t('lesson.finalExamNoGrades') : t('lesson.finalExamNeedTwoGrades'),
             iconColor: '#7b5800',
             metrics,
-            title: 'PF ainda indefinida',
+            title: t('lesson.finalExamUndefinedTitle'),
             tone: 'warning'
         };
     }
@@ -737,20 +745,20 @@ function buildFinalExamStatus(course: CourseCard, frequency: number | null): {
     if (pf !== null || finalGrade !== null) {
         const approved = finalGrade !== null && finalGrade >= 5;
         return {
-            description: approved ? 'A media final atingiu 5.0 ou mais considerando a PF registrada.' : 'A media final ficou abaixo de 5.0 considerando a PF registrada.',
+            description: approved ? t('lesson.finalExamApprovedDescription') : t('lesson.finalExamFailedDescription'),
             iconColor: approved ? '#003215' : '#ba1a1a',
             metrics: [...metrics, { label: 'PF', value: pf === null ? '-' : pf.toFixed(1) }, { label: 'MF', value: finalGrade === null ? '-' : finalGrade.toFixed(1) }],
-            title: approved ? 'Aprovado por nota' : 'Reprovado por nota',
+            title: approved ? t('lesson.finalExamPassTitle') : t('lesson.finalExamFailTitle'),
             tone: approved ? 'success' : 'danger'
         };
     }
 
     if (mee >= 8) {
         return {
-            description: 'Com MEE igual ou maior que 8.0 e frequencia minima, o aluno fica dispensado da PF.',
+            description: t('lesson.finalExamMinFrequencyDescription'),
             iconColor: '#003215',
-            metrics: [...metrics, { label: 'PF necessaria', value: 'Dispensado' }],
-            title: 'Aprovado sem PF',
+            metrics: [...metrics, { label: t('lesson.finalGradeNeeded'), value: t('lesson.finalExamWaived') }],
+            title: t('lesson.finalExamApprovedNoPfTitle'),
             tone: 'success'
         };
     }
@@ -759,17 +767,17 @@ function buildFinalExamStatus(course: CourseCard, frequency: number | null): {
     const impossible = requiredFinalExam > 10;
 
     return {
-        description: impossible ? 'Mesmo tirando 10.0 na PF, a media final nao alcanca 5.0 pela formula padrao.' : `Pela formula MF = (2 x MEE + PF) / 3, precisa tirar pelo menos ${Math.max(requiredFinalExam, 0).toFixed(1)} na PF.`,
+        description: impossible ? t('lesson.finalExamImpossibleDescription') : t('lesson.finalExamFormulaDescription', { grade: Math.max(requiredFinalExam, 0).toFixed(1) }),
         iconColor: impossible ? '#ba1a1a' : '#7b5800',
-        metrics: [...metrics, { label: 'PF necessaria', value: impossible ? '> 10.0' : Math.max(requiredFinalExam, 0).toFixed(1) }],
-        title: impossible ? 'PF nao recupera a media' : 'Precisa fazer PF',
+        metrics: [...metrics, { label: t('lesson.finalGradeNeeded'), value: impossible ? '> 10.0' : Math.max(requiredFinalExam, 0).toFixed(1) }],
+        title: impossible ? t('lesson.finalExamImpossibleTitle') : t('lesson.finalExamNeededTitle'),
         tone: impossible ? 'danger' : 'warning'
     };
 }
 
-function buildAbsenceStatus(course: CourseCard, frequency: number | null): {
+function buildAbsenceStatus(course: CourseCard, frequency: number | null, t: Translate): {
     description: string;
-    label: 'Alerta' | 'Cuidado' | 'Tudo certo';
+    label: string;
     tone: 'alert' | 'ok' | 'warning';
 } {
     const attendance = course.attendance;
@@ -778,23 +786,23 @@ function buildAbsenceStatus(course: CourseCard, frequency: number | null): {
 
     if (attendance?.is_absence_risk === true || frequency !== null && frequency < 75 || maxAbsences !== null && absencesHours > maxAbsences) {
         return {
-            description: maxAbsences === null ? 'Frequencia abaixo do minimo de 75%.' : `Limite recomendado ultrapassado: ${absencesHours}/${maxAbsences} h/aula.`,
-            label: 'Alerta',
+            description: maxAbsences === null ? t('lesson.absenceBelowMin') : t('lesson.absenceLimitExceeded', { absences: absencesHours, max: maxAbsences }),
+            label: t('lesson.absenceAlert'),
             tone: 'alert'
         };
     }
 
     if (frequency !== null && frequency < 80 || maxAbsences !== null && absencesHours >= Math.ceil(maxAbsences * 0.75)) {
         return {
-            description: maxAbsences === null ? `${frequency ?? '-'}% de frequencia. Evite novas faltas.` : `Perto do limite: ${absencesHours}/${maxAbsences} h/aula.`,
-            label: 'Cuidado',
+            description: maxAbsences === null ? t('lesson.absenceFrequencyWarning', { frequency: frequency ?? '-' }) : t('lesson.absenceNearLimit', { absences: absencesHours, max: maxAbsences }),
+            label: t('lesson.absenceWarning'),
             tone: 'warning'
         };
     }
 
     return {
-        description: frequency === null ? 'Frequencia indisponivel para esta disciplina.' : `${frequency}% de frequencia. Dentro do minimo exigido.`,
-        label: 'Tudo certo',
+        description: frequency === null ? t('lesson.absenceUnavailable') : t('lesson.absenceOk', { frequency }),
+        label: t('lesson.absenceAllGood'),
         tone: 'ok'
     };
 }
@@ -840,13 +848,13 @@ function parseHours(value: string): number {
     return match ? Number(match[0]) : 0;
 }
 
-function parseEvaluationItems(value: string): Array<{ score: string; weight: string }> {
+function parseEvaluationItems(value: string, t: Translate): Array<{ score: string; weight: string }> {
     if (!value.trim()) return [];
 
     return value.split('|').map((part, index) => {
         const [weight, score] = part.split(':').map((item) => item.trim());
         return {
-            weight: weight || `Avaliacao ${index + 1}`,
+            weight: weight || t('lesson.evaluationFallback', { count: index + 1 }),
             score: score || ''
         };
     });
@@ -932,14 +940,14 @@ function parseWorkloadHours(value: string | number): number {
     return match ? Number(match[0]) : 0;
 }
 
-function formatWorkloadLabel(value: string | number): string {
+function formatWorkloadLabel(value: string | number, t: Translate): string {
     const hours = parseWorkloadHours(value);
-    return hours > 0 ? `${hours}h aula` : 'Carga horaria nao informada';
+    return hours > 0 ? t('lesson.workloadHours', { hours }) : t('lesson.workloadUnknown');
 }
 
-function formatLessonDateLabel(value: string, status: 'taught' | 'upcoming'): string {
-    if (!value) return status === 'upcoming' ? 'Proxima aula' : 'Aula ministrada';
-    return status === 'upcoming' ? `Proxima aula - ${value}` : value;
+function formatLessonDateLabel(value: string, status: 'taught' | 'upcoming', t: Translate): string {
+    if (!value) return status === 'upcoming' ? t('lesson.upcomingClass') : t('lesson.taughtClass');
+    return status === 'upcoming' ? t('lesson.upcomingClassWithDate', { date: value }) : value;
 }
 
 function isPracticalLesson(item: Workspace['lessonPlan'][number]): boolean {
@@ -952,13 +960,13 @@ function filterLessonItems(items: Workspace['lessonPlan'], filter: 'all' | 'prac
     return items.filter((item) => !isPracticalLesson(item));
 }
 
-function formatCourseSchedule(items: Workspace['schedule']): string {
-    if (items.length === 0) return 'Horario nao informado';
+function formatCourseSchedule(items: Workspace['schedule'], t: Translate): string {
+    if (items.length === 0) return t('lesson.scheduleUnknown');
 
     const byTime = new Map<string, string[]>();
     for (const item of items) {
         const time = `${trimTime(item.start_time)} - ${trimTime(item.end_time)}`;
-        byTime.set(time, [...(byTime.get(time) || []), formatWeekdayShort(item.weekday)]);
+        byTime.set(time, [...(byTime.get(time) || []), formatWeekdayShort(item.weekday, t)]);
     }
 
     return Array.from(byTime.entries())
@@ -966,15 +974,15 @@ function formatCourseSchedule(items: Workspace['schedule']): string {
         .join(' | ');
 }
 
-function formatWeekdayShort(value: string): string {
+function formatWeekdayShort(value: string, t: Translate): string {
     const map: Record<string, string> = {
-        Monday: 'Seg',
-        Tuesday: 'Ter',
-        Wednesday: 'Qua',
-        Thursday: 'Qui',
-        Friday: 'Sex',
-        Saturday: 'Sab',
-        Sunday: 'Dom'
+        Monday: t('weekday.mondayShort'),
+        Tuesday: t('weekday.tuesdayShort'),
+        Wednesday: t('weekday.wednesdayShort'),
+        Thursday: t('weekday.thursdayShort'),
+        Friday: t('weekday.fridayShort'),
+        Saturday: t('weekday.saturdayShort'),
+        Sunday: t('weekday.sundayShort')
     };
     return map[value] || value;
 }
@@ -988,9 +996,9 @@ function uniqueValues(values: string[]): string[] {
     return Array.from(new Set(values));
 }
 
-function formatPeriodOption(period: string, selectedYear: string, current: Workspace['currentGradesInput']): string {
-    const label = period === '1' ? '1o semestre' : '2o semestre';
-    return selectedYear === current.year && period === current.period ? `${label} (atual)` : label;
+function formatPeriodOption(period: string, selectedYear: string, current: Workspace['currentGradesInput'], t: Translate): string {
+    const label = period === '1' ? t('lesson.firstSemester') : t('lesson.secondSemester');
+    return selectedYear === current.year && period === current.period ? `${label} (${t('lesson.currentTag')})` : label;
 }
 
 function LessonPlanSkeleton() {

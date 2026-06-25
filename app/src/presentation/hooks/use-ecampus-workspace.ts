@@ -6,6 +6,8 @@ import type { ScheduleClass } from '@/domain/entities/schedule-class';
 import type { StudentProfile } from '@/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
 import { createEcampusUseCases } from '@/presentation/composition/create-ecampus-use-cases';
+import { useLanguage } from '@/presentation/i18n/language-provider';
+import type { TranslationKey, TranslationValues } from '@/presentation/i18n/languages';
 
 type WorkspaceTab = 'home' | 'profile' | 'schedule' | 'grades' | 'lessonPlan';
 type ResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects' | 'lessonPlan' | 'prefetch' | 'restore' | 'login' | 'logout';
@@ -31,6 +33,10 @@ interface PrefetchOptions extends RequestOptions {
     force?: boolean;
 }
 
+type WorkspaceError =
+    | { kind: 'raw'; message: string }
+    | { kind: 'translated'; key: TranslationKey; values?: TranslationValues };
+
 const DEFAULT_REQUEST_OPTIONS: Required<Pick<RequestOptions, 'reportError' | 'showGlobalLoading'>> = {
     reportError: true,
     showGlobalLoading: true
@@ -45,6 +51,7 @@ function getCurrentGradesInput(): GradesInput {
 }
 
 export function useEcampusWorkspace() {
+    const { t } = useLanguage();
     const useCases = useMemo(() => createEcampusUseCases(), []);
     const currentGradesInput = useMemo(() => getCurrentGradesInput(), []);
     const sessionGeneration = useRef(0);
@@ -52,7 +59,7 @@ export function useEcampusWorkspace() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [loadingRequests, setLoadingRequests] = useState(0);
-    const [error, setError] = useState<string | null>(null);
+    const [errorState, setErrorState] = useState<WorkspaceError | null>(null);
     const [activeTab, setActiveTab] = useState<WorkspaceTab>('home');
     const [profile, setProfile] = useState<StudentProfile | null>(null);
     const [schedule, setSchedule] = useState<ScheduleClass[]>([]);
@@ -63,6 +70,14 @@ export function useEcampusWorkspace() {
     const [gradesInput, setGradesInput] = useState<GradesInput>(currentGradesInput);
 
     const isLoading = loadingRequests > 0;
+    const error = errorState
+        ? errorState.kind === 'translated'
+            ? t(errorState.key, errorState.values)
+            : errorState.message
+        : null;
+    const clearError = () => setErrorState(null);
+    const setRawError = (message: string) => setErrorState({ kind: 'raw', message });
+    const setTranslatedError = (key: TranslationKey, values?: TranslationValues) => setErrorState({ kind: 'translated', key, values });
 
     const clearWorkspaceData = () => {
         setProfile(null);
@@ -80,12 +95,16 @@ export function useEcampusWorkspace() {
         return sessionGeneration.current;
     };
 
-    const expireSession = async (message = 'Sua sessao expirou. Entre novamente.') => {
+    const expireSession = async (message?: string) => {
         startNewSessionGeneration();
         setIsAuthenticated(false);
         clearWorkspaceData();
         setActiveTab('home');
-        setError(message);
+        if (message) {
+            setRawError(message);
+        } else {
+            setTranslatedError('errors.sessionExpired');
+        }
         await useCases.clearAuthSession.execute();
     };
 
@@ -113,7 +132,7 @@ export function useEcampusWorkspace() {
         }
 
         if (requestOptions.reportError) {
-            setError(null);
+            clearError();
         }
 
         try {
@@ -128,7 +147,11 @@ export function useEcampusWorkspace() {
             }
 
             if (requestOptions.reportError) {
-                setError(caught instanceof Error ? caught.message : 'Nao foi possivel completar a operacao.');
+                if (caught instanceof Error) {
+                    setRawError(caught.message);
+                } else {
+                    setTranslatedError('errors.generic');
+                }
             }
 
             return null;
@@ -232,7 +255,7 @@ export function useEcampusWorkspace() {
         const selectedSubject = pickLessonPlanSubject(lessonPlanSubjects, selectedLessonPlanSubjectCode);
 
         if (!selectedSubject) {
-            setError('Carregue suas materias antes de buscar o plano de ensino.');
+            setTranslatedError('errors.loadSubjectsFirst');
             return;
         }
 
@@ -240,7 +263,7 @@ export function useEcampusWorkspace() {
 
         if (!selectedSubject.planId) {
             setLessonPlan([]);
-            setError(`Plano de ensino ainda nao disponivel para ${selectedSubject.code} - ${selectedSubject.subject}.`);
+            setTranslatedError('errors.lessonPlanUnavailable', { code: selectedSubject.code, subject: selectedSubject.subject });
             return;
         }
 
@@ -307,7 +330,7 @@ export function useEcampusWorkspace() {
 
             startNewSessionGeneration();
             clearWorkspaceData();
-            setError(null);
+            clearError();
             setActiveTab('home');
 
             const generation = sessionGeneration.current;
@@ -342,7 +365,7 @@ export function useEcampusWorkspace() {
         clearWorkspaceData();
         setActiveTab('home');
         setIsAuthenticated(true);
-        setError(null);
+        clearError();
         void prefetchWorkspace({ force: true });
     };
 
@@ -350,11 +373,15 @@ export function useEcampusWorkspace() {
         startNewSessionGeneration();
         setIsAuthenticated(false);
         clearWorkspaceData();
-        setError(null);
+        clearError();
         setActiveTab('home');
 
         await runSingle('logout', () => useCases.logout.execute()).catch((caught) => {
-            setError(caught instanceof Error ? caught.message : 'Nao foi possivel encerrar a sessao no eCampus.');
+            if (caught instanceof Error) {
+                setRawError(caught.message);
+            } else {
+                setTranslatedError('errors.logout');
+            }
             return null;
         });
     };
@@ -365,14 +392,14 @@ export function useEcampusWorkspace() {
 
         setSelectedLessonPlanSubjectCode(code);
         setLessonPlan([]);
-        setError(null);
+        clearError();
 
         if (!selectedSubject) {
             return;
         }
 
         if (!selectedSubject.planId) {
-            setError(`Plano de ensino ainda nao disponivel para ${selectedSubject.code} - ${selectedSubject.subject}.`);
+            setTranslatedError('errors.lessonPlanUnavailable', { code: selectedSubject.code, subject: selectedSubject.subject });
             return;
         }
 

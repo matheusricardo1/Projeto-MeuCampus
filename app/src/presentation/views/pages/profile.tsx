@@ -2,6 +2,8 @@ import { Pressable, Text, View } from 'react-native';
 import { CalendarDays, Clock3, Fingerprint, LogOut, Mail, Phone, UserRound } from 'lucide-react-native';
 import type { Workspace } from '@/presentation/views/workspace.types';
 import { EmptyState, SkeletonBlock } from '@/presentation/views/components';
+import { LanguageSelector } from '@/presentation/views/components/language-selector';
+import { useLanguage } from '@/presentation/i18n/language-provider';
 import { getInitials, toTitleName } from '@/presentation/views/workspace.utils';
 import { styles } from '@/presentation/views/workspace.styles';
 
@@ -16,10 +18,12 @@ export function ProfilePage({
     onRefresh: () => Promise<void>;
     profile: Workspace['profile'];
 }) {
-    if (loading && !profile) return <ProfileSkeleton />;
-    if (!profile) return <EmptyState label="Carregar perfil" loading={loading} onRefresh={onRefresh} />;
+    const { t } = useLanguage();
 
-    const studentName = toTitleName(profile.personal.full_name);
+    if (loading && !profile) return <ProfileSkeleton />;
+    if (!profile) return <EmptyState label={t('profile.load')} loading={loading} onRefresh={onRefresh} />;
+
+    const studentName = toTitleName(profile.personal?.full_name || '');
 
     return (
         <View style={styles.profilePage}>
@@ -32,10 +36,10 @@ export function ProfilePage({
                         <View style={styles.profileStatusDot} />
                     </View>
                     <Text style={styles.profileName}>{studentName || '-'}</Text>
-                    <Text style={styles.profileCourse}>{profile.academic.course || '-'}</Text>
+                    <Text style={styles.profileCourse}>{profile.academic?.course || '-'}</Text>
                     <View style={styles.profilePillRow}>
-                        <View style={styles.profileHeroPill}><Text style={styles.profileHeroPillText}>Ativo</Text></View>
-                        <View style={styles.profileHeroPill}><Text style={styles.profileHeroPillText}>Graduacao</Text></View>
+                        <View style={styles.profileHeroPill}><Text style={styles.profileHeroPillText}>{t('profile.active')}</Text></View>
+                        <View style={styles.profileHeroPill}><Text style={styles.profileHeroPillText}>{t('profile.degree')}</Text></View>
                     </View>
                 </View>
             </View>
@@ -46,12 +50,12 @@ export function ProfilePage({
                         <View style={styles.profileSectionIcon}>
                             <UserRound color="#001b08" size={20} />
                         </View>
-                        <Text style={styles.profileSectionTitle}>Dados Academicos</Text>
+                        <Text style={styles.profileSectionTitle}>{t('profile.academicData')}</Text>
                     </View>
                     <View style={styles.profileAcademicGrid}>
-                        <ProfileInfoBlock icon={Fingerprint} label="Matricula" value={profile.academic.enrollment_number} />
-                        <ProfileInfoBlock icon={CalendarDays} label="Ingresso" value={profile.academic.admission_term} />
-                        <ProfileInfoBlock icon={Clock3} label="Turno" value={profile.academic.shift} />
+                        <ProfileInfoBlock icon={Fingerprint} label={t('profile.enrollment')} value={profile.academic?.enrollment_number || ''} />
+                        <ProfileInfoBlock icon={CalendarDays} label={t('profile.admission')} value={profile.academic?.admission_term || ''} />
+                        <ProfileInfoBlock icon={Clock3} label={t('profile.shift')} value={profile.academic?.shift || ''} />
                     </View>
                 </View>
 
@@ -61,17 +65,25 @@ export function ProfilePage({
                             <View style={styles.profileSectionIcon}>
                                 <Mail color="#001b08" size={20} />
                             </View>
-                            <Text style={styles.profileSectionTitle}>Informacoes de Contato</Text>
+                            <Text style={styles.profileSectionTitle}>{t('profile.contactInfo')}</Text>
                         </View>
                     </View>
-                    <ProfileListRow icon={Mail} label="E-mail Institucional" value={profile.contact.email} />
-                    <ProfileListRow icon={Phone} label="Telefone" value={profile.contact.cellphone || profile.contact.home_phone} />
+                    <ProfileListRow icon={Mail} label={t('profile.email')} value={profile.contact?.email || ''} />
+                    <ProfileListRow icon={Phone} label={t('profile.phone')} value={profile.contact?.cellphone || profile.contact?.home_phone || ''} />
+                </View>
+
+                <View style={styles.profileLanguageCard}>
+                    <View style={styles.profileLanguageText}>
+                        <Text style={styles.profileSectionTitle}>{t('profile.languageTitle')}</Text>
+                        <Text style={styles.profileListValue}>{t('profile.languageDescription')}</Text>
+                    </View>
+                    <LanguageSelector />
                 </View>
 
                 <View style={styles.profileActions}>
                     <Pressable onPress={() => void onLogout()} style={styles.profileDangerAction}>
                         <LogOut color="#ba1a1a" size={20} />
-                        <Text style={styles.profileDangerActionText}>Sair da Conta</Text>
+                        <Text style={styles.profileDangerActionText}>{t('profile.logout')}</Text>
                     </Pressable>
                 </View>
             </View>

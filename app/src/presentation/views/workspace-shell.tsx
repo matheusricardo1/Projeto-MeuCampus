@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Bell, BellOff, BookOpen, Calendar, ChartColumn, CheckCheck, ClipboardList, GraduationCap, IdCard, Info, Landmark, LayoutDashboard, Menu, User } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, gradients } from '@/presentation/design-system';
+import { useLanguage } from '@/presentation/i18n/language-provider';
 import type { Workspace } from '@/presentation/views/workspace.types';
 import { BootPage } from '@/presentation/views/pages/boot';
 import { DashboardPage } from '@/presentation/views/pages/home';
@@ -17,31 +18,33 @@ import { styles } from '@/presentation/views/workspace.styles';
 
 export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
     const layout = useResponsiveLayout();
+    const { t } = useLanguage();
     const [showNotifications, setShowNotifications] = useState(false);
     const pageScrollRef = useRef<ScrollView>(null);
+    const scrollToTop = useCallback(() => {
+        const scheduleFrame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (callback: FrameRequestCallback) => setTimeout(() => callback(Date.now()), 0);
+        scheduleFrame(() => {
+            pageScrollRef.current?.scrollTo({ animated: false, y: 0 });
+        });
+    }, []);
 
     if (!workspace.isReady) return <BootPage />;
     if (!workspace.isAuthenticated) return <LoginPage workspace={workspace} />;
 
     const tabs = [
-        { id: 'home' as const, label: 'Inicio', icon: Landmark, action: workspace.refreshDashboard },
-        { id: 'profile' as const, label: 'Perfil', icon: IdCard, action: workspace.loadProfile },
-        { id: 'schedule' as const, label: 'Horario', icon: Calendar, action: workspace.loadSchedule },
-        { id: 'grades' as const, label: 'Notas', icon: ChartColumn, action: workspace.loadGrades },
-        { id: 'lessonPlan' as const, label: 'Plano', icon: ClipboardList, action: workspace.loadLessonPlanSubjects }
+        { id: 'home' as const, label: t('nav.home'), icon: Landmark, action: workspace.refreshDashboard },
+        { id: 'profile' as const, label: t('nav.profile'), icon: IdCard, action: workspace.loadProfile },
+        { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar, action: workspace.loadSchedule },
+        { id: 'grades' as const, label: t('nav.grades'), icon: ChartColumn, action: workspace.loadGrades },
+        { id: 'lessonPlan' as const, label: t('nav.lessonPlan'), icon: ClipboardList, action: workspace.loadLessonPlanSubjects }
     ];
     const bottomTabs = [
-        { id: 'home' as const, label: 'Painel', icon: LayoutDashboard },
-        { id: 'lessonPlan' as const, label: 'Cursos', icon: BookOpen },
-        { id: 'schedule' as const, label: 'Horario', icon: Calendar },
-        { id: 'profile' as const, label: 'Perfil', icon: User }
+        { id: 'home' as const, label: t('nav.panel'), icon: LayoutDashboard },
+        { id: 'lessonPlan' as const, label: t('nav.subjects'), icon: BookOpen },
+        { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar },
+        { id: 'profile' as const, label: t('nav.profile'), icon: User }
     ];
     const activeTab = tabs.find((tab) => tab.id === workspace.activeTab) || tabs[0]!;
-    const scrollToTop = useCallback(() => {
-        requestAnimationFrame(() => {
-            pageScrollRef.current?.scrollTo({ animated: false, y: 0 });
-        });
-    }, []);
     const openWorkspaceTab = (tabId: Workspace['activeTab']) => {
         setShowNotifications(false);
         workspace.openTab(tabId);
@@ -60,7 +63,7 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
                 </View>
                 <View style={styles.sidebarBrandText}>
                     <Text numberOfLines={1} style={styles.sidebarTitle}>Meu Campus</Text>
-                    <Text numberOfLines={1} style={styles.sidebarSubtitle}>Area academica</Text>
+                    <Text numberOfLines={1} style={styles.sidebarSubtitle}>{t('app.brandSubtitle')}</Text>
                 </View>
             </View>
 
@@ -110,7 +113,7 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
                         {sidebarNav}
                         <View style={styles.sidebarMain}>
                             <View style={styles.sidebarHeader}>
-                                <Text numberOfLines={1} style={styles.headerTitle}>{showNotifications ? 'Notificacoes' : activeTab.label}</Text>
+                                <Text numberOfLines={1} style={styles.headerTitle}>{showNotifications ? t('notifications.title') : activeTab.label}</Text>
                                 <Pressable onPress={openNotifications} style={styles.headerNotificationButton}>
                                     <Bell color={colors.textMuted} size={22} />
                                 </Pressable>
@@ -124,7 +127,7 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
                             <View style={styles.header}>
                                 <View style={styles.headerIdentity}>
                                     <GraduationCap color={colors.brandDark} size={26} />
-                                    <Text numberOfLines={1} style={styles.headerBrandTitle}>{showNotifications ? 'Notificacoes' : 'Meu Campus'}</Text>
+                                    <Text numberOfLines={1} style={styles.headerBrandTitle}>{showNotifications ? t('notifications.title') : 'Meu Campus'}</Text>
                                 </View>
 
                                 <View style={styles.headerActions}>
@@ -161,6 +164,8 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
 }
 
 function NotificationsPage() {
+    const { t } = useLanguage();
+
     return (
         <View style={styles.notificationsPage}>
             <View style={styles.notificationsTopRow}>
@@ -168,34 +173,34 @@ function NotificationsPage() {
                     <View style={styles.notificationsMenuIcon}>
                         <Menu color="#003215" size={22} />
                     </View>
-                    <Text style={styles.notificationsTitle}>Notificacoes</Text>
+                    <Text style={styles.notificationsTitle}>{t('notifications.title')}</Text>
                 </View>
                 <Pressable style={styles.notificationsReadButton}>
                     <CheckCheck color="#003215" size={17} />
-                    <Text style={styles.notificationsReadButtonText}>Marcar lidas</Text>
+                    <Text style={styles.notificationsReadButtonText}>{t('notifications.markRead')}</Text>
                 </Pressable>
             </View>
 
             <View style={styles.notificationsSection}>
-                <Text style={styles.notificationsSectionLabel}>Hoje</Text>
+                <Text style={styles.notificationsSectionLabel}>{t('notifications.today')}</Text>
                 <View style={styles.notificationsEmptyCard}>
                     <View style={styles.notificationsEmptyIcon}>
                         <BellOff color="#414941" size={42} />
                     </View>
-                    <Text style={styles.notificationsEmptyTitle}>Nenhuma notificacao por enquanto</Text>
-                    <Text style={styles.notificationsEmptyText}>Avisos sobre notas, salas, materiais e prazos vao aparecer aqui.</Text>
+                    <Text style={styles.notificationsEmptyTitle}>{t('notifications.emptyTitle')}</Text>
+                    <Text style={styles.notificationsEmptyText}>{t('notifications.emptyText')}</Text>
                 </View>
             </View>
 
             <View style={styles.notificationsSection}>
-                <Text style={styles.notificationsSectionLabel}>Anteriores</Text>
+                <Text style={styles.notificationsSectionLabel}>{t('notifications.previous')}</Text>
                 <View style={styles.notificationsHintCard}>
                     <View style={styles.notificationsHintIcon}>
                         <Info color="#003215" size={22} />
                     </View>
                     <View style={styles.notificationsHintText}>
-                        <Text style={styles.notificationsHintTitle}>Historico vazio</Text>
-                        <Text style={styles.notificationsHintDescription}>Quando houver notificacoes antigas, elas ficarao agrupadas nesta area.</Text>
+                        <Text style={styles.notificationsHintTitle}>{t('notifications.emptyHistoryTitle')}</Text>
+                        <Text style={styles.notificationsHintDescription}>{t('notifications.emptyHistoryDescription')}</Text>
                     </View>
                 </View>
             </View>

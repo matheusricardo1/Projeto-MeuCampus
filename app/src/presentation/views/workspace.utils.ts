@@ -1,4 +1,5 @@
 import { Platform, useWindowDimensions } from 'react-native';
+import type { Translate, TranslationKey } from '@/presentation/i18n/languages';
 import type { Workspace } from '@/presentation/views/workspace.types';
 import { styles } from '@/presentation/views/workspace.styles';
 
@@ -52,20 +53,25 @@ export function groupScheduleByDay(schedule: Workspace['schedule']) {
     return Array.from(groups.entries()).map(([weekday, items]) => ({ weekday, items }));
 }
 
-export function buildWeekMap(groupedSchedule: Array<{ weekday: string; items: Workspace['schedule'] }>) {
+export function buildWeekMap(groupedSchedule: Array<{ weekday: string; items: Workspace['schedule'] }>, t?: Translate) {
     const weekdays = [
-        { weekday: 'Monday', label: 'Segunda', short: 'Seg' },
-        { weekday: 'Tuesday', label: 'Terca', short: 'Ter' },
-        { weekday: 'Wednesday', label: 'Quarta', short: 'Qua' },
-        { weekday: 'Thursday', label: 'Quinta', short: 'Qui' },
-        { weekday: 'Friday', label: 'Sexta', short: 'Sex' },
-        { weekday: 'Saturday', label: 'Sabado', short: 'Sab' },
-        { weekday: 'Sunday', label: 'Domingo', short: 'Dom' }
+        { weekday: 'Monday', labelKey: 'weekday.monday', shortKey: 'weekday.mondayShort' },
+        { weekday: 'Tuesday', labelKey: 'weekday.tuesday', shortKey: 'weekday.tuesdayShort' },
+        { weekday: 'Wednesday', labelKey: 'weekday.wednesday', shortKey: 'weekday.wednesdayShort' },
+        { weekday: 'Thursday', labelKey: 'weekday.thursday', shortKey: 'weekday.thursdayShort' },
+        { weekday: 'Friday', labelKey: 'weekday.friday', shortKey: 'weekday.fridayShort' },
+        { weekday: 'Saturday', labelKey: 'weekday.saturday', shortKey: 'weekday.saturdayShort' },
+        { weekday: 'Sunday', labelKey: 'weekday.sunday', shortKey: 'weekday.sundayShort' }
     ];
-    return weekdays.map((day) => ({ ...day, items: groupedSchedule.find((group) => group.weekday === day.weekday)?.items || [] }));
+    return weekdays.map((day) => ({
+        weekday: day.weekday,
+        label: t ? t(day.labelKey as TranslationKey) : defaultWeekdayLabel(day.weekday),
+        short: t ? t(day.shortKey as TranslationKey) : defaultWeekdayShort(day.weekday),
+        items: groupedSchedule.find((group) => group.weekday === day.weekday)?.items || []
+    }));
 }
 
-export function getNextScheduleClass(schedule: Workspace['schedule']) {
+export function getNextScheduleClass(schedule: Workspace['schedule'], t?: Translate) {
     const now = new Date();
     const currentDay = now.getDay();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -88,7 +94,7 @@ export function getNextScheduleClass(schedule: Workspace['schedule']) {
             nextDate.setDate(now.getDate() + daysUntil);
             nextDate.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
 
-            return { item, isHappening, label: translateWeekday(item.weekday), timestamp: isHappening ? now.getTime() : nextDate.getTime() };
+            return { item, isHappening, label: translateWeekday(item.weekday, t), timestamp: isHappening ? now.getTime() : nextDate.getTime() };
         })
         .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
         .sort((a, b) => a.timestamp - b.timestamp);
@@ -110,8 +116,28 @@ export function parseTimeToMinutes(value: string): number | null {
     return hours * 60 + minutes;
 }
 
-export function translateWeekday(weekday: string): string {
-    const map: Record<string, string> = { Monday: 'Segunda', Tuesday: 'Terca', Wednesday: 'Quarta', Thursday: 'Quinta', Friday: 'Sexta', Saturday: 'Sabado', Sunday: 'Domingo' };
+export function translateWeekday(weekday: string, t?: Translate): string {
+    if (!t) return defaultWeekdayLabel(weekday);
+
+    const map: Record<string, TranslationKey> = {
+        Monday: 'weekday.monday',
+        Tuesday: 'weekday.tuesday',
+        Wednesday: 'weekday.wednesday',
+        Thursday: 'weekday.thursday',
+        Friday: 'weekday.friday',
+        Saturday: 'weekday.saturday',
+        Sunday: 'weekday.sunday'
+    };
+    return map[weekday] ? t(map[weekday]) : weekday;
+}
+
+function defaultWeekdayLabel(weekday: string): string {
+    const map: Record<string, string> = { Monday: 'Segunda', Tuesday: 'Terça', Wednesday: 'Quarta', Thursday: 'Quinta', Friday: 'Sexta', Saturday: 'Sábado', Sunday: 'Domingo' };
+    return map[weekday] || weekday;
+}
+
+function defaultWeekdayShort(weekday: string): string {
+    const map: Record<string, string> = { Monday: 'Seg', Tuesday: 'Ter', Wednesday: 'Qua', Thursday: 'Qui', Friday: 'Sex', Saturday: 'Sáb', Sunday: 'Dom' };
     return map[weekday] || weekday;
 }
 

@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { RefreshCw } from 'lucide-react-native';
 import { colors } from '@/presentation/design-system';
+import { useLanguage } from '@/presentation/i18n/language-provider';
 import { styles } from '@/presentation/views/workspace.styles';
 import { getResponsiveCardStyle, useResponsiveLayout } from '@/presentation/views/workspace.utils';
 
@@ -78,11 +79,13 @@ export function StatPill({ label, value }: { label: string; value: string }) {
 }
 
 export function EmptyState({ label, loading, onRefresh }: { label: string; loading: boolean; onRefresh: () => Promise<void> }) {
+    const { t } = useLanguage();
+
     return (
         <View style={styles.panel}>
             <Pressable disabled={loading} onPress={() => void onRefresh()} style={styles.primaryButton}>
                 {loading ? <ActivityIndicator color={colors.inverseText} /> : <RefreshCw color={colors.inverseText} size={18} />}
-                <Text style={styles.primaryButtonText}>{loading ? 'Carregando...' : label}</Text>
+                <Text style={styles.primaryButtonText}>{loading ? t('common.loading') : label}</Text>
             </Pressable>
         </View>
     );
