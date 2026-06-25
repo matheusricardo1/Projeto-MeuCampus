@@ -145,12 +145,22 @@ export function useResponsiveLayout(): ResponsiveLayout {
 
 export function getResponsiveLayout(width: number): ResponsiveLayout {
     const safeWidth = Number.isFinite(width) ? width : 390;
-    const isTablet = false;
-    const isDesktop = false;
+    const isTablet = safeWidth >= 768;
+    const isDesktop = safeWidth >= 1024;
     const isCompactPhone = safeWidth < 380;
-    const pagePadding = isCompactPhone ? 12 : 18;
+    const pagePadding = isDesktop ? 32 : isTablet ? 24 : isCompactPhone ? 12 : 18;
     const isMobileWeb = Platform.OS === 'web' && safeWidth <= 768;
-    return { width: safeWidth, isTablet, isDesktop, isCompactPhone, pagePadding, showBottomNav: true, contentMaxWidth: 640, loginMaxWidth: 460, isMobileWeb };
+    return {
+        width: safeWidth,
+        isTablet,
+        isDesktop,
+        isCompactPhone,
+        pagePadding,
+        showBottomNav: !isTablet,
+        contentMaxWidth: isDesktop ? 960 : isTablet ? 760 : 640,
+        loginMaxWidth: isTablet ? 920 : 460,
+        isMobileWeb
+    };
 }
 
 export function getResponsiveCardStyle(layout: ResponsiveLayout, columns: number) {

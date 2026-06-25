@@ -3,6 +3,7 @@ export interface LessonPlanSubject {
     code: string;
     subject: string;
     classIdentifier: string;
+    credits: number | null;
     professor: string;
     workloadHours: number | null;
     available: boolean;

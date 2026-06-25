@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Keyboard, type KeyboardEvent, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Eye, EyeOff, KeyRound, LockKeyhole } from 'lucide-react-native';
@@ -13,19 +13,65 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
     const [user, setUser] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [keyboardOpen, setKeyboardOpen] = useState(false);
+    const [focusedInputOffset, setFocusedInputOffset] = useState(0);
     const layout = useResponsiveLayout();
     const insets = useSafeAreaInsets();
+    const scrollRef = useRef<ScrollView>(null);
+    const cpfFieldRef = useRef<View>(null);
+    const passwordFieldRef = useRef<View>(null);
+    const focusedFieldRef = useRef<'cpf' | 'password' | null>(null);
+    const keyboardVisibleRef = useRef(false);
+    const keyboardTopRef = useRef(0);
+    const isNativeMobile = Platform.OS !== 'web';
+    const lockFocusedInputIntoView = useCallback((field: 'cpf' | 'password' | null = focusedFieldRef.current) => {
+        if (!isNativeMobile || !keyboardVisibleRef.current || !field || keyboardTopRef.current <= 0) return;
+
+        const fieldRef = field === 'cpf' ? cpfFieldRef : passwordFieldRef;
+
+        requestAnimationFrame(() => {
+            fieldRef.current?.measureInWindow((_x, y, _width, height) => {
+                const inputBottom = y + height;
+                const overlap = inputBottom + 72 - keyboardTopRef.current;
+                setFocusedInputOffset(overlap > 0 ? -overlap : 0);
+            });
+        });
+    }, [isNativeMobile]);
+    const focusField = useCallback((field: 'cpf' | 'password') => {
+        focusedFieldRef.current = field;
+        lockFocusedInputIntoView(field);
+    }, [lockFocusedInputIntoView]);
+
+    useEffect(() => {
+        if (!isNativeMobile) return undefined;
+
+        const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const showSubscription = Keyboard.addListener(showEvent, (event: KeyboardEvent) => {
+            keyboardVisibleRef.current = true;
+            keyboardTopRef.current = event.endCoordinates.screenY;
+            setKeyboardOpen(true);
+            lockFocusedInputIntoView();
+        });
+        const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+            keyboardVisibleRef.current = false;
+            keyboardTopRef.current = 0;
+            setKeyboardOpen(false);
+            setFocusedInputOffset(0);
+        });
+
+        return () => {
+            showSubscription.remove();
+            hideSubscription.remove();
+        };
+    }, [isNativeMobile, lockFocusedInputIntoView]);
 
     return (
         <SafeAreaView style={styles.loginScreen}>
             <LinearGradient colors={gradients.app} style={StyleSheet.absoluteFill} />
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={insets.top + 12}
-                style={styles.loginContainer}
-            >
-                <View
-                    style={[
+            <View style={styles.loginContainer}>
+                <ScrollView
+                    ref={scrollRef}
+                    contentContainerStyle={[
                         styles.loginScrollContent,
                         !layout.isTablet ? styles.loginScrollContentMobile : null,
                         {
@@ -34,8 +80,12 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                             paddingTop: Math.max(12, insets.top + 12)
                         }
                     ]}
+                    keyboardShouldPersistTaps="handled"
+                    scrollEnabled={!isNativeMobile || !keyboardOpen}
+                    showsVerticalScrollIndicator={Platform.OS === 'web'}
+                    style={styles.loginScroll}
                 >
-                    <View style={[styles.loginCard, layout.isTablet ? styles.loginCardWide : null, { maxWidth: layout.loginMaxWidth }]}>
+                    <View style={[styles.loginCard, layout.isTablet ? styles.loginCardWide : null, { maxWidth: layout.loginMaxWidth, transform: [{ translateY: focusedInputOffset }] }]}>
                         <LinearGradient colors={gradients.brand} style={[styles.loginShowcase, layout.isTablet ? styles.loginShowcaseWide : null]}>
                             <View style={styles.loginMark}>
                                 <LockKeyhole color={colors.brandMuted} size={32} />
@@ -58,37 +108,43 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                                 <Text style={styles.loginFormText}>Use sua conta institucional para acessar o painel.</Text>
                             </View>
 
-                            <Field label="CPF">
-                                <TextInput
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                    inputMode="numeric"
-                                    maxLength={14}
-                                    onChangeText={(value) => setUser(formatCpf(value))}
-                                    placeholder="000.000.000-00"
-                                    placeholderTextColor={colors.textSubtle}
-                                    style={styles.textInput}
-                                    value={user}
-                                />
-                            </Field>
-
-                            <Field label="Senha">
-                                <View style={styles.passwordWrapper}>
+                            <View ref={cpfFieldRef}>
+                                <Field label="CPF">
                                     <TextInput
                                         autoCapitalize="none"
                                         autoCorrect={false}
-                                        onChangeText={setPassword}
-                                        placeholder="Sua senha"
+                                        inputMode="numeric"
+                                        maxLength={14}
+                                        onChangeText={(value) => setUser(formatCpf(value))}
+                                        onFocus={() => focusField('cpf')}
+                                        placeholder="000.000.000-00"
                                         placeholderTextColor={colors.textSubtle}
-                                        secureTextEntry={!showPassword}
-                                        style={[styles.textInput, styles.passwordInput]}
-                                        value={password}
+                                        style={styles.textInput}
+                                        value={user}
                                     />
-                                    <Pressable onPress={() => setShowPassword((current) => !current)} style={styles.passwordToggle}>
-                                        {showPassword ? <EyeOff color={colors.textMuted} size={18} /> : <Eye color={colors.textMuted} size={18} />}
-                                    </Pressable>
-                                </View>
-                            </Field>
+                                </Field>
+                            </View>
+
+                            <View ref={passwordFieldRef}>
+                                <Field label="Senha">
+                                    <View style={styles.passwordWrapper}>
+                                        <TextInput
+                                            autoCapitalize="none"
+                                            autoCorrect={false}
+                                            onChangeText={setPassword}
+                                            onFocus={() => focusField('password')}
+                                            placeholder="Sua senha"
+                                            placeholderTextColor={colors.textSubtle}
+                                            secureTextEntry={!showPassword}
+                                            style={[styles.textInput, styles.passwordInput]}
+                                            value={password}
+                                        />
+                                        <Pressable onPress={() => setShowPassword((current) => !current)} style={styles.passwordToggle}>
+                                            {showPassword ? <EyeOff color={colors.textMuted} size={18} /> : <Eye color={colors.textMuted} size={18} />}
+                                        </Pressable>
+                                    </View>
+                                </Field>
+                            </View>
 
                             {workspace.error ? (
                                 <View style={styles.errorBanner}>
@@ -106,8 +162,8 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                             </Pressable>
                         </View>
                     </View>
-                </View>
-            </KeyboardAvoidingView>
+                </ScrollView>
+            </View>
         </SafeAreaView>
     );
 }

@@ -359,10 +359,32 @@ export function useEcampusWorkspace() {
         });
     };
 
-    const changeLessonPlanSubject = (code: string) => {
+    const changeLessonPlanSubject = async (code: string) => {
+        const generation = sessionGeneration.current;
+        const selectedSubject = lessonPlanSubjects.find((subject) => subject.code === code);
+
         setSelectedLessonPlanSubjectCode(code);
         setLessonPlan([]);
         setError(null);
+
+        if (!selectedSubject) {
+            return;
+        }
+
+        if (!selectedSubject.planId) {
+            setError(`Plano de ensino ainda nao disponivel para ${selectedSubject.code} - ${selectedSubject.subject}.`);
+            return;
+        }
+
+        const data = await run(() => useCases.getLessonPlan.execute(selectedSubject.planId!), {
+            reportError: true,
+            showGlobalLoading: true,
+            sessionGeneration: generation
+        });
+
+        if (data && generation === sessionGeneration.current) {
+            setLessonPlan(data);
+        }
     };
 
     const openTab = (tab: WorkspaceTab) => {

@@ -402,6 +402,7 @@ export class EcampusHttpRepository implements EcampusRepository {
                 code,
                 subject: this.toTitleName(columns[2]!.textContent.trim()),
                 classIdentifier: columns[3]!.textContent.trim(),
+                credits: this.parseOptionalHours(columns[4]?.textContent.trim() || ''),
                 professor: this.toTitleName(columns[6]!.textContent.trim()),
                 workloadHours: this.parseOptionalHours(columns[5]?.textContent.trim() || ''),
                 available: Boolean(planId)
