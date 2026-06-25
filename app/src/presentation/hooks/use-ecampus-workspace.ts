@@ -9,7 +9,7 @@ import { createEcampusUseCases } from '@/presentation/composition/create-ecampus
 import { useLanguage } from '@/presentation/i18n/language-provider';
 import type { TranslationKey, TranslationValues } from '@/presentation/i18n/languages';
 
-type WorkspaceTab = 'home' | 'profile' | 'schedule' | 'grades' | 'lessonPlan';
+type WorkspaceTab = 'home' | 'profile' | 'schedule' | 'grades' | 'lessonPlan' | 'ai';
 type ResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects' | 'lessonPlan' | 'prefetch' | 'restore' | 'login' | 'logout';
 
 interface LoginInput {
@@ -423,6 +423,7 @@ export function useEcampusWorkspace() {
         if (tab === 'grades' && grades.length === 0) void loadGrades({ reportError: false, showGlobalLoading: true });
         if (tab === 'lessonPlan' && grades.length === 0) void loadGrades({ reportError: false, showGlobalLoading: true });
         if (tab === 'lessonPlan' && lessonPlanSubjects.length === 0) void loadLessonPlanSubjects({ reportError: false, showGlobalLoading: true });
+        // AI tab doesn't require data loading
     };
 
     return {

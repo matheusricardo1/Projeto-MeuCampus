@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState } from 'react';
-import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bell, BellOff, BookOpen, Calendar, CheckCheck, GraduationCap, Info, LayoutDashboard, Menu, User } from 'lucide-react-native';
+import { ArrowLeft, Bell, BellOff, BookOpen, Calendar, CheckCheck, GraduationCap, History, Info, LayoutDashboard, Menu, Send, User, Brain } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, gradients } from '@/presentation/design-system';
 import { useLanguage } from '@/presentation/i18n/language-provider';
@@ -13,13 +13,53 @@ import { LessonPlanPage } from '@/presentation/views/pages/lesson-plan';
 import { LoginPage } from '@/presentation/views/pages/login';
 import { ProfilePage } from '@/presentation/views/pages/profile';
 import { SchedulePage } from '@/presentation/views/pages/schedule';
+import { AIPage } from '@/presentation/views/pages/ai';
 import { useResponsiveLayout } from '@/presentation/views/workspace.utils';
 import { styles } from '@/presentation/views/workspace.styles';
+
+type ChatHistoryEntry = {
+    id: string;
+    title: string;
+    updatedAt: string;
+};
+
+const CHAT_HISTORY_STORAGE_KEY = 'ecampus.ai-chat-history';
+const DEFAULT_CHAT_TITLE = 'Desempenho em Calculo I';
+
+function readChatHistory(): ChatHistoryEntry[] {
+    if (typeof localStorage === 'undefined') return [];
+
+    try {
+        const rawValue = localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
+        if (!rawValue) return [];
+        const parsed = JSON.parse(rawValue);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
+        return [];
+    }
+}
+
+function writeChatHistory(history: ChatHistoryEntry[]): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(history));
+}
+
+function clearChatHistory(): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
+}
 
 export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
     const layout = useResponsiveLayout();
     const { t } = useLanguage();
     const [showNotifications, setShowNotifications] = useState(false);
+    const [showChatHistory, setShowChatHistory] = useState(false);
+    const [chatHistory, setChatHistory] = useState<ChatHistoryEntry[]>([]);
+    const [isAILaunching, setIsAILaunching] = useState(false);
+    const pageTransition = useRef(new Animated.Value(1)).current;
+    const aiLaunchProgress = useRef(new Animated.Value(0)).current;
+    const aiLaunchCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pageScrollRef = useRef<ScrollView>(null);
     const scrollToTop = useCallback(() => {
         const scheduleFrame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (callback: FrameRequestCallback) => setTimeout(() => callback(Date.now()), 0);
@@ -28,41 +68,213 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
         });
     }, []);
 
-    if (!workspace.isReady) return <BootPage />;
-    if (!workspace.isAuthenticated) return <LoginPage workspace={workspace} />;
-
     const tabActions = {
         grades: workspace.loadGrades,
         home: workspace.refreshDashboard,
         lessonPlan: workspace.loadLessonPlanSubjects,
         profile: workspace.loadProfile,
-        schedule: workspace.loadSchedule
-    } satisfies Record<Workspace['activeTab'], () => Promise<void>>;
+        schedule: workspace.loadSchedule,
+        ai: async () => {} // AI tab doesn't require data loading
+    } satisfies Record<Workspace['activeTab'] | 'ai', () => Promise<void>>;
     const tabLabels = {
         grades: t('nav.grades'),
         home: t('nav.panel'),
         lessonPlan: t('nav.subjects'),
         profile: t('nav.profile'),
-        schedule: t('nav.schedule')
-    } satisfies Record<Workspace['activeTab'], string>;
+        schedule: t('nav.schedule'),
+        ai: t('nav.ai')
+    } satisfies Record<Workspace['activeTab'] | 'ai', string>;
     const bottomTabs = [
         { id: 'home' as const, label: t('nav.panel'), icon: LayoutDashboard },
         { id: 'lessonPlan' as const, label: t('nav.subjects'), icon: BookOpen },
+        { id: 'ai' as const, label: t('nav.ai'), icon: Brain }, // AI tab in the center
         { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar },
         { id: 'profile' as const, label: t('nav.profile'), icon: User }
     ];
-    const activeTabLabel = tabLabels[workspace.activeTab];
-    const openWorkspaceTab = (tabId: Workspace['activeTab']) => {
+    const activeTabLabel = tabLabels[workspace.activeTab as keyof typeof tabLabels];
+    const openWorkspaceTab = (tabId: Workspace['activeTab'] | 'ai') => {
         setShowNotifications(false);
-        workspace.openTab(tabId);
+        setShowChatHistory(false);
+
+        if (tabId === 'ai' && workspace.activeTab !== 'ai') {
+            if (aiLaunchCleanupRef.current) {
+                clearTimeout(aiLaunchCleanupRef.current);
+                aiLaunchCleanupRef.current = null;
+            }
+
+            aiLaunchProgress.stopAnimation();
+            aiLaunchProgress.setValue(0);
+            setIsAILaunching(true);
+            workspace.openTab('ai' as Workspace['activeTab']);
+            scrollToTop();
+
+            Animated.timing(aiLaunchProgress, {
+                toValue: 1,
+                duration: 520,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true
+            }).start(({ finished }) => {
+                if (!finished) return;
+
+                aiLaunchCleanupRef.current = setTimeout(() => {
+                    setIsAILaunching(false);
+                    aiLaunchProgress.setValue(0);
+                    aiLaunchCleanupRef.current = null;
+                }, 120);
+            });
+            return;
+        }
+
+        if (isAILaunching) {
+            if (aiLaunchCleanupRef.current) {
+                clearTimeout(aiLaunchCleanupRef.current);
+                aiLaunchCleanupRef.current = null;
+            }
+
+            aiLaunchProgress.stopAnimation();
+            aiLaunchProgress.setValue(0);
+            setIsAILaunching(false);
+        }
+
+        workspace.openTab(tabId as Workspace['activeTab']);
         scrollToTop();
     };
     const openNotifications = () => {
         setShowNotifications(true);
         scrollToTop();
     };
-    const refreshPage = showNotifications ? async () => undefined : tabActions[workspace.activeTab];
-    const sharedBottomNav = (
+    const leaveAIChat = () => openWorkspaceTab('home');
+    const closeChatHistory = () => setShowChatHistory(false);
+    const refreshPage = showNotifications ? async () => undefined : (tabActions[workspace.activeTab as keyof typeof tabActions] || (() => Promise.resolve()));
+    const isAIPage = !showNotifications && workspace.activeTab === 'ai';
+    const bottomNavInset = isAIPage ? 0 : layout.isTablet ? 88 : 96;
+    const chatTitle = chatHistory[0]?.title || DEFAULT_CHAT_TITLE;
+    const pageTransitionKey = showNotifications ? 'notifications' : workspace.activeTab;
+
+    useEffect(() => {
+        if (!workspace.isAuthenticated) {
+            clearChatHistory();
+            setChatHistory([]);
+            setShowChatHistory(false);
+            return;
+        }
+
+        setChatHistory(readChatHistory());
+    }, [workspace.isAuthenticated]);
+
+    useEffect(() => {
+        if (!isAIPage || chatHistory.length > 0) return;
+
+        const initialHistory = [{
+            id: 'current-chat',
+            title: DEFAULT_CHAT_TITLE,
+            updatedAt: new Date().toISOString()
+        }];
+
+        setChatHistory(initialHistory);
+        writeChatHistory(initialHistory);
+    }, [chatHistory.length, isAIPage]);
+
+    useEffect(() => {
+        if (pageTransitionKey === 'ai') {
+            pageTransition.setValue(1);
+            return;
+        }
+
+        pageTransition.setValue(0);
+        const animation = Animated.timing(pageTransition, {
+            toValue: 1,
+            duration: 260,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true
+        });
+
+        animation.start();
+        return () => animation.stop();
+    }, [pageTransition, pageTransitionKey]);
+
+    useEffect(() => {
+        return () => {
+            if (aiLaunchCleanupRef.current) {
+                clearTimeout(aiLaunchCleanupRef.current);
+            }
+        };
+    }, []);
+
+    if (!workspace.isReady) return <BootPage />;
+    if (!workspace.isAuthenticated) return <LoginPage workspace={workspace} />;
+
+    const renderHeaderContent = () => {
+        if (isAIPage) {
+            return (
+                <>
+                    <View style={styles.headerIdentity}>
+                        <Pressable onPress={leaveAIChat} style={styles.headerNotificationButton}>
+                            <ArrowLeft color={colors.textMuted} size={22} />
+                        </Pressable>
+                        <Pressable onPress={() => setShowChatHistory((current) => !current)} style={styles.headerNotificationButton}>
+                            <History color={colors.textMuted} size={21} />
+                        </Pressable>
+                        <Text numberOfLines={1} style={styles.headerTitle}>{chatTitle}</Text>
+                    </View>
+                </>
+            );
+        }
+
+        if (layout.isTablet) {
+            return (
+                <>
+                    <View style={styles.headerIdentity}>
+                        <GraduationCap color={colors.brandDark} size={26} />
+                        <View style={styles.headerTextStack}>
+                            <Text numberOfLines={1} style={styles.headerBrandTitle}>Meu Campus</Text>
+                            <Text numberOfLines={1} style={styles.headerSubtitle}>{showNotifications ? t('notifications.title') : activeTabLabel}</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.headerActions}>
+                        <Pressable onPress={openNotifications} style={styles.headerNotificationButton}>
+                            <Bell color={colors.textMuted} size={22} />
+                        </Pressable>
+                    </View>
+                </>
+            );
+        }
+
+        return (
+            <>
+                <View style={styles.headerIdentity}>
+                    <GraduationCap color={colors.brandDark} size={26} />
+                    <Text numberOfLines={1} style={styles.headerBrandTitle}>{showNotifications ? t('notifications.title') : 'Meu Campus'}</Text>
+                </View>
+
+                <View style={styles.headerActions}>
+                    <Pressable onPress={openNotifications} style={styles.headerNotificationButton}>
+                        <Bell color={colors.textMuted} size={22} />
+                    </Pressable>
+                </View>
+            </>
+        );
+    };
+    const aiLaunchBarStyle = {
+        opacity: aiLaunchProgress.interpolate({
+            inputRange: [0, 0.18, 1],
+            outputRange: [0, 1, 1]
+        }),
+        transform: [{
+            translateY: aiLaunchProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [14, 0]
+            })
+        }]
+    };
+    const aiLaunchPromptContentStyle = {
+        opacity: aiLaunchProgress.interpolate({
+            inputRange: [0, 0.3, 1],
+            outputRange: [0, 1, 1]
+        })
+    };
+    const sharedBottomNav = isAIPage || isAILaunching ? null : (
         <View style={styles.bottomNavShell}>
             <View style={[styles.bottomNav, layout.isTablet ? styles.bottomNavDesktop : null]}>
                 {bottomTabs.map((tab) => {
@@ -78,7 +290,11 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
             </View>
         </View>
     );
-    const pageContent = (
+    const pageContent = isAIPage ? (
+        <View style={styles.flexScroll}>
+            <AIPage bottomInset={bottomNavInset} hidePromptInput={isAILaunching} onChatScroll={closeChatHistory} />
+        </View>
+    ) : (
         <ScrollView
             ref={pageScrollRef}
             contentContainerStyle={[styles.content, { paddingBottom: layout.isTablet ? 112 : 112, paddingHorizontal: layout.pagePadding }]}
@@ -105,48 +321,60 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
         <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
             <LinearGradient colors={gradients.app} style={StyleSheet.absoluteFill} />
             <View style={[styles.appShell, layout.isDesktop ? styles.appShellDesktop : null]}>
-                {layout.isTablet ? (
-                    <>
-                        <View style={styles.headerShell}>
-                            <View style={styles.header}>
-                                <View style={styles.headerIdentity}>
-                                    <GraduationCap color={colors.brandDark} size={26} />
-                                    <View style={styles.headerTextStack}>
-                                        <Text numberOfLines={1} style={styles.headerBrandTitle}>Meu Campus</Text>
-                                        <Text numberOfLines={1} style={styles.headerSubtitle}>{showNotifications ? t('notifications.title') : activeTabLabel}</Text>
-                                    </View>
-                                </View>
+                <View style={styles.headerShell}>
+                    <View style={styles.header}>
+                        {renderHeaderContent()}
+                    </View>
+                </View>
 
-                                <View style={styles.headerActions}>
-                                    <Pressable onPress={openNotifications} style={styles.headerNotificationButton}>
-                                        <Bell color={colors.textMuted} size={22} />
+                <Animated.View
+                    style={[
+                        styles.pageTransition,
+                        {
+                            opacity: pageTransition,
+                            transform: [{
+                                translateY: pageTransition.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [10, 0]
+                                })
+                            }]
+                        }
+                    ]}
+                >
+                    {pageContent}
+                </Animated.View>
+                {isAIPage && showChatHistory ? (
+                    <>
+                        <Pressable onPress={closeChatHistory} style={styles.chatHistoryDismissLayer} />
+                        <View style={styles.chatHistorySidebar}>
+                            <Text style={styles.chatHistoryTitle}>Historico</Text>
+                            <View style={styles.chatHistoryList}>
+                                {chatHistory.map((chat) => (
+                                    <Pressable key={chat.id} onPress={closeChatHistory} style={styles.chatHistoryItem}>
+                                        <Text numberOfLines={1} style={styles.chatHistoryItemTitle}>{chat.title}</Text>
+                                        <Text numberOfLines={1} style={styles.chatHistoryItemMeta}>Sessao atual</Text>
                                     </Pressable>
-                                </View>
+                                ))}
                             </View>
                         </View>
-
-                        {pageContent}
                     </>
-                ) : (
-                    <>
-                        <View style={styles.headerShell}>
-                            <View style={styles.header}>
-                                <View style={styles.headerIdentity}>
-                                    <GraduationCap color={colors.brandDark} size={26} />
-                                    <Text numberOfLines={1} style={styles.headerBrandTitle}>{showNotifications ? t('notifications.title') : 'Meu Campus'}</Text>
-                                </View>
+                ) : null}
 
-                                <View style={styles.headerActions}>
-                                    <Pressable onPress={openNotifications} style={styles.headerNotificationButton}>
-                                        <Bell color={colors.textMuted} size={22} />
-                                    </Pressable>
-                                </View>
+                {isAILaunching ? (
+                    <Animated.View pointerEvents="none" style={[styles.aiLaunchOverlay, aiLaunchBarStyle]}>
+                        <View style={[styles.aiLaunchBar, layout.isTablet ? styles.aiLaunchBarDesktop : null]}>
+                            <View style={styles.aiLaunchPrompt}>
+                                <Animated.View style={[styles.aiLaunchPromptContent, aiLaunchPromptContentStyle]}>
+                                    <Brain color={colors.brand} size={18} />
+                                    <Text numberOfLines={1} style={styles.aiLaunchPromptText}>Pergunte qualquer coisa...</Text>
+                                </Animated.View>
+                            </View>
+                            <View style={styles.aiLaunchSendButton}>
+                                <Send color={colors.inverseText} size={18} />
                             </View>
                         </View>
-
-                        {pageContent}
-                    </>
-                )}
+                    </Animated.View>
+                ) : null}
 
                 {sharedBottomNav}
             </View>
@@ -198,7 +426,3 @@ function NotificationsPage() {
         </View>
     );
 }
-
-
-
-
