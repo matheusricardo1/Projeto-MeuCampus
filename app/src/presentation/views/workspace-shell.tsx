@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bell, BellOff, BookOpen, Calendar, ChartColumn, CheckCheck, ClipboardList, GraduationCap, IdCard, Info, Landmark, LayoutDashboard, Menu, User } from 'lucide-react-native';
+import { Bell, BellOff, BookOpen, Calendar, CheckCheck, GraduationCap, Info, LayoutDashboard, Menu, User } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, gradients } from '@/presentation/design-system';
 import { useLanguage } from '@/presentation/i18n/language-provider';
@@ -31,20 +31,27 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
     if (!workspace.isReady) return <BootPage />;
     if (!workspace.isAuthenticated) return <LoginPage workspace={workspace} />;
 
-    const tabs = [
-        { id: 'home' as const, label: t('nav.home'), icon: Landmark, action: workspace.refreshDashboard },
-        { id: 'profile' as const, label: t('nav.profile'), icon: IdCard, action: workspace.loadProfile },
-        { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar, action: workspace.loadSchedule },
-        { id: 'grades' as const, label: t('nav.grades'), icon: ChartColumn, action: workspace.loadGrades },
-        { id: 'lessonPlan' as const, label: t('nav.lessonPlan'), icon: ClipboardList, action: workspace.loadLessonPlanSubjects }
-    ];
+    const tabActions = {
+        grades: workspace.loadGrades,
+        home: workspace.refreshDashboard,
+        lessonPlan: workspace.loadLessonPlanSubjects,
+        profile: workspace.loadProfile,
+        schedule: workspace.loadSchedule
+    } satisfies Record<Workspace['activeTab'], () => Promise<void>>;
+    const tabLabels = {
+        grades: t('nav.grades'),
+        home: t('nav.panel'),
+        lessonPlan: t('nav.subjects'),
+        profile: t('nav.profile'),
+        schedule: t('nav.schedule')
+    } satisfies Record<Workspace['activeTab'], string>;
     const bottomTabs = [
         { id: 'home' as const, label: t('nav.panel'), icon: LayoutDashboard },
         { id: 'lessonPlan' as const, label: t('nav.subjects'), icon: BookOpen },
         { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar },
         { id: 'profile' as const, label: t('nav.profile'), icon: User }
     ];
-    const activeTab = tabs.find((tab) => tab.id === workspace.activeTab) || tabs[0]!;
+    const activeTabLabel = tabLabels[workspace.activeTab];
     const openWorkspaceTab = (tabId: Workspace['activeTab']) => {
         setShowNotifications(false);
         workspace.openTab(tabId);
@@ -54,37 +61,27 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
         setShowNotifications(true);
         scrollToTop();
     };
-    const refreshPage = showNotifications ? async () => undefined : activeTab.action;
-    const sidebarNav = (
-        <View style={styles.sidebar}>
-            <View style={styles.sidebarBrand}>
-                <View style={styles.sidebarLogo}>
-                    <GraduationCap color={colors.inverseText} size={22} />
-                </View>
-                <View style={styles.sidebarBrandText}>
-                    <Text numberOfLines={1} style={styles.sidebarTitle}>Meu Campus</Text>
-                    <Text numberOfLines={1} style={styles.sidebarSubtitle}>{t('app.brandSubtitle')}</Text>
-                </View>
-            </View>
-
-            <View style={styles.sidebarNav}>
-            {tabs.map((tab) => {
-                const Icon = tab.icon;
-                const active = workspace.activeTab === tab.id;
-                return (
-                    <Pressable key={tab.id} onPress={() => openWorkspaceTab(tab.id)} style={[styles.sidebarNavItem, active ? styles.sidebarNavItemActive : null]}>
-                        <Icon color={active ? colors.inverseText : colors.textMuted} size={20} />
-                        <Text numberOfLines={1} style={[styles.sidebarNavText, active ? styles.sidebarNavTextActive : null]}>{tab.label}</Text>
-                    </Pressable>
-                );
-            })}
+    const refreshPage = showNotifications ? async () => undefined : tabActions[workspace.activeTab];
+    const sharedBottomNav = (
+        <View style={styles.bottomNavShell}>
+            <View style={[styles.bottomNav, layout.isTablet ? styles.bottomNavDesktop : null]}>
+                {bottomTabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const active = !showNotifications && workspace.activeTab === tab.id;
+                    return (
+                        <Pressable key={tab.id} onPress={() => openWorkspaceTab(tab.id)} style={[styles.navItem, layout.isTablet ? styles.navItemDesktop : null, active ? styles.navItemActive : null]}>
+                            <Icon color={active ? colors.brandMuted : colors.textMuted} size={20} />
+                            <Text numberOfLines={1} style={[styles.navText, active ? styles.navTextActive : null]}>{tab.label}</Text>
+                        </Pressable>
+                    );
+                })}
             </View>
         </View>
     );
     const pageContent = (
         <ScrollView
             ref={pageScrollRef}
-            contentContainerStyle={[styles.content, { paddingBottom: layout.isTablet ? 32 : 112, paddingHorizontal: layout.pagePadding }]}
+            contentContainerStyle={[styles.content, { paddingBottom: layout.isTablet ? 112 : 112, paddingHorizontal: layout.pagePadding }]}
             refreshControl={<RefreshControl refreshing={!showNotifications && workspace.isLoading} onRefresh={() => void refreshPage()} tintColor={colors.brand} />}
             showsVerticalScrollIndicator={Platform.OS === 'web' && !layout.isMobileWeb}
             style={Platform.OS === 'web' ? styles.webFreeScroll : styles.flexScroll}
@@ -109,18 +106,27 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
             <LinearGradient colors={gradients.app} style={StyleSheet.absoluteFill} />
             <View style={[styles.appShell, layout.isDesktop ? styles.appShellDesktop : null]}>
                 {layout.isTablet ? (
-                    <View style={styles.sidebarLayout}>
-                        {sidebarNav}
-                        <View style={styles.sidebarMain}>
-                            <View style={styles.sidebarHeader}>
-                                <Text numberOfLines={1} style={styles.headerTitle}>{showNotifications ? t('notifications.title') : activeTab.label}</Text>
-                                <Pressable onPress={openNotifications} style={styles.headerNotificationButton}>
-                                    <Bell color={colors.textMuted} size={22} />
-                                </Pressable>
+                    <>
+                        <View style={styles.headerShell}>
+                            <View style={styles.header}>
+                                <View style={styles.headerIdentity}>
+                                    <GraduationCap color={colors.brandDark} size={26} />
+                                    <View style={styles.headerTextStack}>
+                                        <Text numberOfLines={1} style={styles.headerBrandTitle}>Meu Campus</Text>
+                                        <Text numberOfLines={1} style={styles.headerSubtitle}>{showNotifications ? t('notifications.title') : activeTabLabel}</Text>
+                                    </View>
+                                </View>
+
+                                <View style={styles.headerActions}>
+                                    <Pressable onPress={openNotifications} style={styles.headerNotificationButton}>
+                                        <Bell color={colors.textMuted} size={22} />
+                                    </Pressable>
+                                </View>
                             </View>
-                            {pageContent}
                         </View>
-                    </View>
+
+                        {pageContent}
+                    </>
                 ) : (
                     <>
                         <View style={styles.headerShell}>
@@ -142,22 +148,7 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
                     </>
                 )}
 
-                {layout.showBottomNav ? (
-                    <View style={styles.bottomNavShell}>
-                        <View style={styles.bottomNav}>
-                            {bottomTabs.map((tab) => {
-                                const Icon = tab.icon;
-                                const active = !showNotifications && workspace.activeTab === tab.id;
-                                return (
-                                    <Pressable key={tab.id} onPress={() => openWorkspaceTab(tab.id)} style={[styles.navItem, !showNotifications && active ? styles.navItemActive : null]}>
-                                        <Icon color={active ? colors.brandMuted : colors.textMuted} size={20} />
-                                        <Text numberOfLines={1} style={[styles.navText, active ? styles.navTextActive : null]}>{tab.label}</Text>
-                                    </Pressable>
-                                );
-                            })}
-                        </View>
-                    </View>
-                ) : null}
+                {sharedBottomNav}
             </View>
         </SafeAreaView>
     );

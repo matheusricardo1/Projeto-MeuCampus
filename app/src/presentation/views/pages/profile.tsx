@@ -4,7 +4,7 @@ import type { Workspace } from '@/presentation/views/workspace.types';
 import { EmptyState, SkeletonBlock } from '@/presentation/views/components';
 import { LanguageSelector } from '@/presentation/views/components/language-selector';
 import { useLanguage } from '@/presentation/i18n/language-provider';
-import { getInitials, toTitleName } from '@/presentation/views/workspace.utils';
+import { getInitials, toTitleName, useResponsiveLayout } from '@/presentation/views/workspace.utils';
 import { styles } from '@/presentation/views/workspace.styles';
 
 export function ProfilePage({
@@ -19,6 +19,7 @@ export function ProfilePage({
     profile: Workspace['profile'];
 }) {
     const { t } = useLanguage();
+    const layout = useResponsiveLayout();
 
     if (loading && !profile) return <ProfileSkeleton />;
     if (!profile) return <EmptyState label={t('profile.load')} loading={loading} onRefresh={onRefresh} />;
@@ -72,12 +73,14 @@ export function ProfilePage({
                     <ProfileListRow icon={Phone} label={t('profile.phone')} value={profile.contact?.cellphone || profile.contact?.home_phone || ''} />
                 </View>
 
-                <View style={styles.profileLanguageCard}>
+                <View style={[styles.profileLanguageCard, !layout.isTablet ? styles.profileLanguageCardMobile : null]}>
                     <View style={styles.profileLanguageText}>
                         <Text style={styles.profileSectionTitle}>{t('profile.languageTitle')}</Text>
                         <Text style={styles.profileListValue}>{t('profile.languageDescription')}</Text>
                     </View>
-                    <LanguageSelector />
+                    <View style={!layout.isTablet ? styles.profileLanguageSelectorMobile : null}>
+                        <LanguageSelector />
+                    </View>
                 </View>
 
                 <View style={styles.profileActions}>
