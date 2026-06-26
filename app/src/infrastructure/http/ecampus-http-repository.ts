@@ -7,7 +7,8 @@ import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
 import type { ScheduleClass } from '@/domain/entities/schedule-class';
 import type { StudentProfile } from '@/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
-import type { EcampusRepository, LoginCredentials, SendAiChatMessageRequest } from '@/domain/repositories/ecampus-repository';
+import { EcampusResourcePendingError } from '@/domain/errors/ecampus-resource-pending.error';
+import type { EcampusRepository, EcampusScrapeJobType, LoginCredentials, SendAiChatMessageRequest } from '@/domain/repositories/ecampus-repository';
 
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://127.0.0.1:3001';
 const DEFAULT_APP_ENV = 'production';
@@ -34,6 +35,14 @@ export class EcampusHttpRepository implements EcampusRepository {
         await this.request<{ status: string }>('/ecampus/logout', {
             method: 'POST',
             headers: this.authHeaders(accessToken)
+        });
+    }
+
+    async enqueueScrapeJob(accessToken: string, type: EcampusScrapeJobType, data: Record<string, unknown> = {}): Promise<void> {
+        await this.request<{ jobId: string }>(`/ecampus/jobs/${encodeURIComponent(type)}`, {
+            method: 'POST',
+            headers: this.authHeaders(accessToken),
+            body: JSON.stringify(data)
         });
     }
 
@@ -103,6 +112,10 @@ export class EcampusHttpRepository implements EcampusRepository {
 
         const body = await response.text();
         const payload = body ? JSON.parse(body) : null;
+
+        if (response.status === 202 && payload?.status === 'pending' && typeof payload.resource === 'string') {
+            throw new EcampusResourcePendingError(payload.resource);
+        }
 
         if (!response.ok) {
             if (path !== '/ecampus/login' && (response.status === 401 || response.status === 403)) {

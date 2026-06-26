@@ -1,3 +1,3 @@
-import { appLogger } from '@/shared/logging/app-logger';
+import { appLogger } from '@/logging/app-logger';
 
 export const logger = appLogger;

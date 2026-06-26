@@ -8,7 +8,8 @@ import { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
 export abstract class CacheRepository {
   abstract getProfile(cpf: string): Promise<any>;
   abstract getSchedule(cpf: string): Promise<any>;
-  abstract getGrades(cpf: string): Promise<any>;
+  abstract getGrades(cpf: string, year: string, period: string): Promise<any>;
   abstract getLessonPlanSubjects(cpf: string): Promise<any>;
   abstract getLessonPlan(cpf: string, planId: string): Promise<any>;
+  abstract clearUserCache(cpf: string): Promise<number>;
 }

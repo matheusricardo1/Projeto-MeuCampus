@@ -12,6 +12,9 @@ export abstract class JobService {
    */
   abstract enqueue(name: string, data: Record<string, unknown>): Promise<Job>;
 
-  /** Queue instance – needed only for awaiting a job (e.g., login). */
+  /** Queue instance – needed only for job enqueues. */
   abstract getQueue(): import('bullmq').Queue;
+
+  /** QueueEvents instance – needed for waiting on job completion. */
+  abstract getQueueEvents(): import('bullmq').QueueEvents;
 }

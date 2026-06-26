@@ -12,8 +12,6 @@ import { EcampusAuthService } from '@ecampus/infrastructure/ecampus/ecampus-auth
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 
 export class EcampusHttpRepository implements EcampusRepository {
-    private readonly userQueues = new Map<string, Promise<void>>();
-
     constructor(private readonly authService: EcampusAuthService) {}
 
     async logout(credentials: EcampusCredentials): Promise<void> {
@@ -434,27 +432,10 @@ export class EcampusHttpRepository implements EcampusRepository {
         return subject.planId;
     }
 
-    private async runExclusive<T>(key: string, operation: () => Promise<T>): Promise<T> {
-        const previous = this.userQueues.get(key) || Promise.resolve();
-        let release: () => void = () => undefined;
-        const current = new Promise<void>((resolve) => {
-            release = resolve;
-        });
-        const queued = previous.catch(() => undefined).then(() => current);
-
-        this.userQueues.set(key, queued);
-
-        await previous.catch(() => undefined);
-
-        try {
-            return await operation();
-        } finally {
-            release();
-
-            if (this.userQueues.get(key) === queued) {
-                this.userQueues.delete(key);
-            }
-        }
+    private runExclusive<T>(_key: string, operation: () => Promise<T>): Promise<T> {
+        // Each job owns an HTTP client and imported cookie jar, so requests for the
+        // same user can safely run concurrently in separate worker slots.
+        return operation();
     }
 
     private async withExternalRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {

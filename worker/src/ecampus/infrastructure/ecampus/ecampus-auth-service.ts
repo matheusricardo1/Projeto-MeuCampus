@@ -1,10 +1,9 @@
-import type { EcampusAuthenticator } from '@ecampus/application/ports/ecampus-authenticator';
 import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
 import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
 import { EcampusClient } from '@ecampus/infrastructure/ecampus/ecampus-client';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 
-export class EcampusAuthService implements EcampusAuthenticator {
+export class EcampusAuthService {
     authenticate(credentials: EcampusCredentials, password: string): Promise<Record<string, unknown>> {
         return this.loginAndExportSession(credentials.cpf, password);
     }

@@ -1,4 +1,5 @@
 import { ClearAuthSessionUseCase } from '@/application/use-cases/clear-auth-session.usecase';
+import { EnqueueEcampusScrapeJobUseCase } from '@/application/use-cases/enqueue-ecampus-scrape-job.usecase';
 import { GetAuthSessionUseCase } from '@/application/use-cases/get-auth-session.usecase';
 import { GetGradesUseCase } from '@/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@/application/use-cases/get-lesson-plan.usecase';
@@ -17,6 +18,7 @@ export function createEcampusUseCases() {
 
     return {
         clearAuthSession: new ClearAuthSessionUseCase(sessionStore),
+        enqueueScrapeJob: new EnqueueEcampusScrapeJobUseCase(repository, sessionStore),
         getAuthSession: new GetAuthSessionUseCase(sessionStore),
         getGrades: new GetGradesUseCase(repository, sessionStore),
         getLessonPlan: new GetLessonPlanUseCase(repository, sessionStore),

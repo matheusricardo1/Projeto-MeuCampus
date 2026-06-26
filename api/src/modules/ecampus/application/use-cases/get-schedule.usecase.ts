@@ -1,7 +1,8 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CacheRepository } from '@/modules/ecampus/application/ports/cache-repository';
 import { JobService } from '@/modules/ecampus/application/ports/job-service';
 import { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
+import { pendingScrapeJob } from '@/modules/ecampus/application/services/pending-scrape-job';
 
 @Injectable()
 export class GetScheduleUseCase {
@@ -13,9 +14,13 @@ export class GetScheduleUseCase {
   async execute(credentials: EcampusCredentials): Promise<any> {
     try {
       return await this.cache.getSchedule(credentials.cpf);
-    } catch {
+    } catch (error) {
+      if (!(error instanceof NotFoundException)) {
+        throw error;
+      }
+
       const job = await this.jobService.enqueue('schedule', { credentials });
-      throw new BadRequestException({ message: 'Schedule not cached yet', jobId: job.id });
+      return pendingScrapeJob('schedule');
     }
   }
 }

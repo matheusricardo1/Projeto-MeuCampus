@@ -1,8 +1,10 @@
 import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
 
-export const ECAMPUS_SCRAPE_QUEUE_NAME = process.env.ECAMPUS_SCRAPE_QUEUE || 'ecampus:scrape';
+export const ECAMPUS_SCRAPE_QUEUE_NAME = process.env.ECAMPUS_SCRAPE_QUEUE || 'ecampus-scrape';
 
 export type EcampusScrapeJobName =
+    | 'login'
+    | 'logout'
     | 'profile'
     | 'schedule'
     | 'grades'
@@ -10,6 +12,10 @@ export type EcampusScrapeJobName =
     | 'lesson-plan';
 
 export type EcampusScrapeJobData =
+    | {
+        cpf: string;
+        password: string;
+      }
     | {
         credentials: EcampusCredentials;
       }
@@ -22,4 +28,3 @@ export type EcampusScrapeJobData =
         credentials: EcampusCredentials;
         planId: string;
       };
-

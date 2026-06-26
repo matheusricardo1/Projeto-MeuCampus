@@ -1,37 +1,15 @@
 services:
-  api:
-    build:
-      context: ./api
-      dockerfile: Dockerfile
-    container_name: ufam-academics-api
-    env_file:
-      - ./api/.env
-    environment:
-      PORT: 3001
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_URL: redis://redis:6379
-    ports:
-      - "3001:3001"
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
 
   ecampus-worker:
     build:
-      context: ./api
+      context: ./worker
       dockerfile: Dockerfile
-    container_name: ufam-academics-ecampus-worker
-    command: ["node", "dist/worker.js"]
-    env_file:
-      - ./api/.env
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_URL: redis://redis:6379
-      ECAMPUS_SCRAPE_QUEUE: ecampus:scrape
-      ECAMPUS_SCRAPE_WORKER_CONCURRENCY: 2
+      ECAMPUS_SCRAPE_QUEUE: ecampus-scrape
+      ECAMPUS_SCRAPE_WORKER_CONCURRENCY: 4
     depends_on:
       redis:
         condition: service_healthy

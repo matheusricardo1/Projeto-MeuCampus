@@ -9,10 +9,14 @@ import {
     type EcampusScrapeJobData,
     type EcampusScrapeJobName
 } from './ecampus-scrape-job';
+import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from './ecampus-cache';
+import { ECAMPUS_SCRAPE_RESULT_CHANNEL, type EcampusResourceReadyEvent } from './ecampus-scrape-events';
+
+type AuthenticatedScrapeJobData = Extract<EcampusScrapeJobData, { credentials: unknown }>;
 
 export class EcampusScrapingWorker {
     private readonly repository = new EcampusHttpRepository(new EcampusAuthService());
-    private readonly redis = new (require('ioredis'))(createRedisConnectionOptions());
+    private readonly redis = new Redis(createRedisConnectionOptions());
     private readonly worker: Worker<EcampusScrapeJobData>;
 
     constructor() {
@@ -21,7 +25,7 @@ export class EcampusScrapingWorker {
             (job) => this.process(job),
             {
                 connection: createRedisConnectionOptions(),
-                concurrency: Number(process.env.ECAMPUS_SCRAPE_WORKER_CONCURRENCY || 2)
+                concurrency: Number(process.env.ECAMPUS_SCRAPE_WORKER_CONCURRENCY || 4)
             }
         );
 
@@ -45,12 +49,13 @@ export class EcampusScrapingWorker {
     async run(): Promise<void> {
         appLogger.info('eCampus scraping worker started.', {
             queue: ECAMPUS_SCRAPE_QUEUE_NAME,
-            concurrency: Number(process.env.ECAMPUS_SCRAPE_WORKER_CONCURRENCY || 2)
+            concurrency: Number(process.env.ECAMPUS_SCRAPE_WORKER_CONCURRENCY || 4)
         });
     }
 
     async close(): Promise<void> {
         await this.worker.close();
+        await this.redis.quit();
     }
 
     private async process(job: Job<EcampusScrapeJobData>): Promise<unknown> {
@@ -62,50 +67,60 @@ export class EcampusScrapingWorker {
             jobName: name
         });
 
-        // @ts-ignore – add login case
-    switch (name) {
+        if (name === 'login') {
+            const { cpf, password } = data as { cpf: string; password: string };
+            const authService = new EcampusAuthService();
+            const session = await authService.authenticate({ cpf }, password);
+            return { session };
+        }
+
+        const authenticatedData = data as AuthenticatedScrapeJobData;
+
+        switch (name) {
+            case 'logout':
+                return this.logoutAndClearCache(authenticatedData.credentials);
             case 'profile': {
-                const result = await this.repository.getStudentProfile(data.credentials);
-                await this.redis.set(`ecampus:result:${data.credentials.cpf}:profile`, JSON.stringify(result), 'EX', 3600);
-                return result;
+                return this.cacheAndPublish('profile', authenticatedData.credentials, this.repository.getStudentProfile(authenticatedData.credentials));
             }
             case 'schedule': {
-                const result = await this.repository.getSchedule(data.credentials);
-                await this.redis.set(`ecampus:result:${data.credentials.cpf}:schedule`, JSON.stringify(result), 'EX', 3600);
-                return result;
+                return this.cacheAndPublish('schedule', authenticatedData.credentials, this.repository.getSchedule(authenticatedData.credentials));
             }
             case 'grades': {
-                const result = await this.repository.getGrades(
-                    data.credentials,
-                    this.requireField(data, 'year'),
-                    this.requireField(data, 'period')
-                );
-                await this.redis.set(`ecampus:result:${data.credentials.cpf}:grades`, JSON.stringify(result), 'EX', 3600);
-                return result;
+                const year = this.requireField(authenticatedData, 'year');
+                const period = this.requireField(authenticatedData, 'period');
+                return this.cacheAndPublish('grades', authenticatedData.credentials, this.repository.getGrades(authenticatedData.credentials, year, period), { year, period });
             }
             case 'lesson-plan-subjects': {
-                const result = await this.repository.getLessonPlanSubjects(data.credentials);
-                await this.redis.set(`ecampus:result:${data.credentials.cpf}:lesson-plan-subjects`, JSON.stringify(result), 'EX', 3600);
-                return result;
+                return this.cacheAndPublish('lesson-plan-subjects', authenticatedData.credentials, this.repository.getLessonPlanSubjects(authenticatedData.credentials));
             }
             case 'lesson-plan': {
-                const planId = this.requireField(data, 'planId');
-                const result = await this.repository.getLessonPlan(data.credentials, planId);
-                await this.redis.set(`ecampus:result:${data.credentials.cpf}:lesson-plan:${planId}`, JSON.stringify(result), 'EX', 3600);
-                return result;
-            }
-            case 'login': {
-                // data contains { cpf, password }
-                const authService = new EcampusAuthService();
-                const session = await authService.authenticate({ cpf: (data as any).cpf }, (data as any).password);
-                // Store session in Redis for later API lookup (optional)
-                await this.redis.set(`ecampus:session:${(data as any).cpf}`, JSON.stringify({ session }), 'EX', 3600);
-                // Return the raw session object – the API will encrypt it later
-                return { session };
+                const planId = this.requireField(authenticatedData, 'planId');
+                return this.cacheAndPublish('lesson-plan', authenticatedData.credentials, this.repository.getLessonPlan(authenticatedData.credentials, planId), { planId });
             }
             default:
                 throw new Error(`Unsupported eCampus scraping job: ${name}`);
         }
+    }
+
+    private async logoutAndClearCache(credentials: { cpf: string }): Promise<{ cacheDeletedKeys: number; externalLogout: 'ok' | 'failed' }> {
+        let externalLogout: 'ok' | 'failed' = 'ok';
+
+        try {
+            await this.repository.logout(credentials);
+        } catch (error) {
+            externalLogout = 'failed';
+            appLogger.warning('eCampus remote logout failed; local cache will still be cleared.', {
+                errorName: error instanceof Error ? error.name : 'UnknownError',
+                message: error instanceof Error ? error.message : String(error)
+            });
+        }
+
+        const cacheDeletedKeys = await this.clearUserCache(credentials.cpf);
+        appLogger.info('Cleared eCampus cached data after logout.', {
+            cacheDeletedKeys
+        });
+
+        return { cacheDeletedKeys, externalLogout };
     }
 
     private requireField<T extends string>(data: Record<string, unknown>, field: T): string {
@@ -116,5 +131,44 @@ export class EcampusScrapingWorker {
 
         return value;
     }
-}
 
+    private async clearUserCache(cpf: string): Promise<number> {
+        const pattern = getEcampusUserCachePattern(cpf);
+        let cursor = '0';
+        let deletedKeys = 0;
+
+        do {
+            const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+            cursor = nextCursor;
+
+            if (keys.length > 0) {
+                deletedKeys += await this.redis.del(...keys);
+            }
+        } while (cursor !== '0');
+
+        return deletedKeys;
+    }
+
+    private async cacheAndPublish<T>(
+        resource: EcampusCachedResource,
+        credentials: { cpf: string },
+        resultPromise: Promise<T>,
+        parameters: Pick<EcampusResourceReadyEvent, 'year' | 'period' | 'planId'> = {}
+    ): Promise<T> {
+        const result = await resultPromise;
+        const extra = resource === 'grades'
+            ? `${parameters.year}-${parameters.period}`
+            : resource === 'lesson-plan'
+                ? parameters.planId
+                : undefined;
+
+        await this.redis.set(getEcampusCacheKey(resource, credentials.cpf, extra), JSON.stringify(result), 'EX', 3600);
+        await this.redis.publish(ECAMPUS_SCRAPE_RESULT_CHANNEL, JSON.stringify({
+            cpf: credentials.cpf,
+            resource,
+            ...parameters
+        } satisfies EcampusResourceReadyEvent));
+
+        return result;
+    }
+}

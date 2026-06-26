@@ -19,6 +19,9 @@ export class EcampusClient {
         const client = axios.create({
             baseURL: this.baseUrl,
             withCredentials: true,
+            // The Docker network has no IPv6 route. Prefer the public IPv4 endpoint
+            // without replacing the agent managed by axios-cookiejar-support.
+            family: 4,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0',
                 'Accept-Language': 'en-US,en;q=0.9'
@@ -90,9 +93,8 @@ export class EcampusClient {
                 })
             );
 
-            const requestPath = (response.request as { path?: string } | undefined)?.path;
             const html = response.data;
-            if (typeof html === 'string' && (html.includes('Acesso ecampus') || requestPath?.includes('loginValida'))) {
+            if (typeof html === 'string' && html.includes('Acesso ecampus')) {
                 this.authenticated = false;
                 logger.error("Authentication failed: Invalid credentials.");
                 throw new AuthenticationError('CPF ou senha invalidos.');
@@ -101,7 +103,11 @@ export class EcampusClient {
             this.authenticated = true;
             logger.info("Authentication successful.");
 
-            await this.setStudentModule();
+            try {
+                await this.setStudentModule();
+            } catch (error) {
+                logger.warning("Unable to activate the default student module. Continuing with the authenticated session.", this.toErrorContext(error, '/home/setModulo/22'));
+            }
         } catch (error) {
             if (error instanceof AuthenticationError) {
                 throw error;
@@ -188,9 +194,14 @@ export class EcampusClient {
     }
 
     private shouldRetry(error: unknown): boolean {
-        if (!(error instanceof AxiosError)) {
-            return false;
+        const networkErrors = this.getNetworkErrors(error);
+        if (networkErrors.some(({ code }) => code && [
+            'ECONNABORTED', 'ECONNRESET', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'ETIMEDOUT'
+        ].includes(code))) {
+            return true;
         }
+
+        if (!(error instanceof AxiosError)) return false;
 
         if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message)) {
             return true;
@@ -204,12 +215,16 @@ export class EcampusClient {
     }
 
     private toErrorContext(error: unknown, fallbackUrl: string): Record<string, unknown> {
+        const networkErrors = this.getNetworkErrors(error);
+
         if (error instanceof AxiosError) {
             return {
                 url: error.config?.url || fallbackUrl,
                 method: error.config?.method?.toUpperCase(),
                 externalStatus: error.response?.status,
                 externalStatusText: error.response?.statusText,
+                code: error.code,
+                networkErrors: networkErrors.length ? networkErrors : undefined,
                 location: this.getStackLocation(error.stack)
             };
         }
@@ -218,11 +233,32 @@ export class EcampusClient {
             return {
                 url: fallbackUrl,
                 errorName: error.name,
+                networkErrors: networkErrors.length ? networkErrors : undefined,
                 location: this.getStackLocation(error.stack)
             };
         }
 
         return { url: fallbackUrl };
+    }
+
+    private getNetworkErrors(error: unknown): Array<{ code: string | undefined; message: string }> {
+        if (error instanceof AggregateError) {
+            return error.errors
+                .filter((entry): entry is Error => entry instanceof Error)
+                .map((entry) => ({
+                    code: (entry as NodeJS.ErrnoException).code,
+                    message: entry.message
+                }));
+        }
+
+        if (error instanceof Error) {
+            return [{
+                code: (error as NodeJS.ErrnoException).code,
+                message: error.message
+            }];
+        }
+
+        return [];
     }
 
     private getStackLocation(stack?: string): string | undefined {

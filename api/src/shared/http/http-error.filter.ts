@@ -30,16 +30,17 @@ export class HttpErrorFilter implements ExceptionFilter {
         const errorName = exception instanceof Error ? exception.name : 'UnknownError';
         const message = this.getMessage(exception, statusCode);
         const stack = exception instanceof Error ? exception.stack : undefined;
+        const location = this.getStackLocation(stack);
+        const isServerError = statusCode >= 500;
+        const logMessage = `${request.method} ${request.originalUrl}`;
+        const logContext = isServerError
+            ? { statusCode, errorName, message, location }
+            : { statusCode, errorName, message };
 
-        appLogger.error(`${request.method} ${request.originalUrl} failed`, {
-            statusCode,
-            errorName,
-            message,
-            location: this.getStackLocation(stack)
-        });
-
-        if (stack && statusCode >= 500) {
-            appLogger.error('Stack trace', { stack });
+        if (isServerError) {
+            appLogger.error(logMessage, logContext);
+        } else {
+            appLogger.warning(logMessage, logContext);
         }
 
         response.status(statusCode).json({

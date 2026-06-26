@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Grade } from '@/domain/entities/grade';
 import type { AiChatMessage } from '@/domain/entities/ai-chat-message';
 import type { LessonPlanItem } from '@/domain/entities/lesson-plan-item';
@@ -6,12 +6,15 @@ import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
 import type { ScheduleClass } from '@/domain/entities/schedule-class';
 import type { StudentProfile } from '@/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
+import { EcampusResourcePendingError } from '@/domain/errors/ecampus-resource-pending.error';
 import { createEcampusUseCases } from '@/presentation/composition/create-ecampus-use-cases';
+import { connectEcampusRealtime, type EcampusResourceReadyEvent } from '@/infrastructure/realtime/ecampus-realtime-client';
 import { useLanguage } from '@/presentation/i18n/language-provider';
 import type { TranslationKey, TranslationValues } from '@/presentation/i18n/languages';
 
 type WorkspaceTab = 'home' | 'profile' | 'schedule' | 'grades' | 'lessonPlan' | 'ai';
 type ResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects' | 'lessonPlan' | 'prefetch' | 'restore' | 'login' | 'logout' | 'aiChat';
+type InitialResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects' | 'lessonPlan';
 
 interface LoginInput {
     user: string;
@@ -64,6 +67,7 @@ export function useEcampusWorkspace() {
     const currentGradesInput = useMemo(() => getCurrentGradesInput(), []);
     const sessionGeneration = useRef(0);
     const inFlightRequests = useRef(new Map<ResourceKey, Promise<unknown>>());
+    const realtimeHandlerRef = useRef<(event: EcampusResourceReadyEvent) => void>(() => undefined);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [loadingRequests, setLoadingRequests] = useState(0);
@@ -76,8 +80,10 @@ export function useEcampusWorkspace() {
     const [lessonPlanSubjects, setLessonPlanSubjects] = useState<LessonPlanSubject[]>([]);
     const [selectedLessonPlanSubjectCode, setSelectedLessonPlanSubjectCode] = useState('');
     const [gradesInput, setGradesInput] = useState<GradesInput>(currentGradesInput);
+    const [pendingInitialResources, setPendingInitialResources] = useState<Set<InitialResourceKey>>(new Set());
 
-    const isLoading = loadingRequests > 0;
+    const isInitialDataLoading = pendingInitialResources.size > 0;
+    const isLoading = loadingRequests > 0 || isInitialDataLoading;
     const error = errorState
         ? errorState.kind === 'translated'
             ? t(errorState.key, errorState.values)
@@ -94,13 +100,35 @@ export function useEcampusWorkspace() {
         setLessonPlan([]);
         setLessonPlanSubjects([]);
         setSelectedLessonPlanSubjectCode('');
+        setPendingInitialResources(new Set());
     };
 
     const startNewSessionGeneration = () => {
         sessionGeneration.current += 1;
         inFlightRequests.current.clear();
         setLoadingRequests(0);
+        setPendingInitialResources(new Set());
         return sessionGeneration.current;
+    };
+
+    const markInitialResourcesPending = (resources: InitialResourceKey[]) => {
+        setPendingInitialResources((current) => {
+            const next = new Set(current);
+            resources.forEach((resource) => next.add(resource));
+            return next;
+        });
+    };
+
+    const markInitialResourceReady = (resource: InitialResourceKey) => {
+        setPendingInitialResources((current) => {
+            if (!current.has(resource)) {
+                return current;
+            }
+
+            const next = new Set(current);
+            next.delete(resource);
+            return next;
+        });
     };
 
     const expireSession = async (message?: string) => {
@@ -146,6 +174,10 @@ export function useEcampusWorkspace() {
         try {
             return await task();
         } catch (caught) {
+            if (caught instanceof EcampusResourcePendingError) {
+                return null;
+            }
+
             if (caught instanceof AuthSessionExpiredError) {
                 if (requestOptions.sessionGeneration === undefined || requestOptions.sessionGeneration === sessionGeneration.current) {
                     await expireSession(caught.message);
@@ -180,6 +212,7 @@ export function useEcampusWorkspace() {
         if (data && generation === sessionGeneration.current) {
             setProfile(data);
             setIsAuthenticated(true);
+            markInitialResourceReady('profile');
         }
     };
 
@@ -192,6 +225,7 @@ export function useEcampusWorkspace() {
 
         if (data && generation === sessionGeneration.current) {
             setSchedule(data);
+            markInitialResourceReady('schedule');
         }
     };
 
@@ -204,6 +238,7 @@ export function useEcampusWorkspace() {
 
         if (data && generation === sessionGeneration.current) {
             setGrades(data);
+            markInitialResourceReady('grades');
         }
     };
 
@@ -232,19 +267,7 @@ export function useEcampusWorkspace() {
 
     const loadLessonPlanSubjects = async (options?: RequestOptions) => {
         const generation = sessionGeneration.current;
-        const data = await runSingle('lessonPlanSubjects', () => run(async () => {
-            const subjects = await useCases.getLessonPlanSubjects.execute();
-            const selectedSubject = pickLessonPlanSubject(subjects, selectedLessonPlanSubjectCode);
-            const items = selectedSubject?.planId
-                ? await useCases.getLessonPlan.execute(selectedSubject.planId)
-                : [];
-
-            return {
-                items,
-                selectedCode: selectedSubject?.code || '',
-                subjects
-            };
-        }, {
+        const data = await runSingle('lessonPlanSubjects', () => run(() => useCases.getLessonPlanSubjects.execute(), {
             ...options,
             sessionGeneration: generation
         }));
@@ -253,9 +276,17 @@ export function useEcampusWorkspace() {
             return;
         }
 
-        setLessonPlanSubjects(data.subjects);
-        setSelectedLessonPlanSubjectCode(data.selectedCode);
-        setLessonPlan(data.items);
+        const selectedSubject = pickLessonPlanSubject(data, selectedLessonPlanSubjectCode);
+        setLessonPlanSubjects(data);
+        setSelectedLessonPlanSubjectCode(selectedSubject?.code || '');
+        markInitialResourceReady('lessonPlanSubjects');
+
+        if (selectedSubject?.planId) {
+            await enqueueLessonPlanScrape(selectedSubject.planId, { reportError: false, showGlobalLoading: false });
+        } else {
+            setLessonPlan([]);
+            markInitialResourceReady('lessonPlan');
+        }
     };
 
     const loadLessonPlan = async (options?: RequestOptions) => {
@@ -282,35 +313,116 @@ export function useEcampusWorkspace() {
 
         if (data && generation === sessionGeneration.current) {
             setLessonPlan(data);
+            markInitialResourceReady('lessonPlan');
         }
     };
 
-    const prefetchWorkspace = async (options?: PrefetchOptions) => {
-        const backgroundOptions: RequestOptions = {
+    const enqueueLessonPlanScrape = async (planId: string, options?: RequestOptions) => {
+        await run(() => useCases.enqueueScrapeJob.execute('lesson-plan', { planId }), {
             reportError: false,
-            showGlobalLoading: true,
+            showGlobalLoading: false,
             ...options
-        };
+        });
+    };
 
+    realtimeHandlerRef.current = (event: EcampusResourceReadyEvent) => {
+        const silentOptions: RequestOptions = { reportError: false, showGlobalLoading: false };
+
+        switch (event.resource) {
+            case 'profile':
+                void loadProfile(silentOptions);
+                return;
+            case 'schedule':
+                void loadSchedule(silentOptions);
+                return;
+            case 'grades':
+                if (event.year === gradesInput.year && event.period === gradesInput.period) {
+                    void loadGrades(silentOptions);
+                }
+                return;
+            case 'lesson-plan-subjects':
+                void loadLessonPlanSubjects(silentOptions);
+                return;
+            case 'lesson-plan': {
+                const selectedSubject = pickLessonPlanSubject(lessonPlanSubjects, selectedLessonPlanSubjectCode);
+                if (!event.planId || event.planId === selectedSubject?.planId) {
+                    void loadLessonPlan(silentOptions);
+                }
+            }
+        }
+    };
+
+    useEffect(() => {
+        let disconnect: (() => void) | undefined;
+        let disposed = false;
+
+        if (!isAuthenticated) {
+            return undefined;
+        }
+
+        void useCases.getAuthSession.execute().then((session) => {
+            if (!session || disposed) {
+                return;
+            }
+
+            disconnect = connectEcampusRealtime(
+                session.accessToken,
+                (event) => realtimeHandlerRef.current(event),
+                () => {
+                    if (!disposed) {
+                        void prefetchWorkspace({ force: false });
+                    }
+                }
+            );
+        });
+
+        return () => {
+            disposed = true;
+            disconnect?.();
+        };
+    }, [isAuthenticated, useCases]);
+
+    const prefetchWorkspace = async (options?: PrefetchOptions) => {
         await runSingle('prefetch', async () => {
-            const tasks: Array<Promise<void>> = [];
+            const tasks: Array<Promise<unknown>> = [];
+            const resourcesToWaitFor: InitialResourceKey[] = [];
 
             if ((options?.includeProfile ?? true) && (options?.force || !profile)) {
-                tasks.push(loadProfile(backgroundOptions));
+                resourcesToWaitFor.push('profile');
+                tasks.push(run(() => useCases.enqueueScrapeJob.execute('profile'), {
+                    reportError: options?.reportError ?? false,
+                    showGlobalLoading: false
+                }));
             }
 
             if (options?.force || schedule.length === 0) {
-                tasks.push(loadSchedule(backgroundOptions));
+                resourcesToWaitFor.push('schedule');
+                tasks.push(run(() => useCases.enqueueScrapeJob.execute('schedule'), {
+                    reportError: options?.reportError ?? false,
+                    showGlobalLoading: false
+                }));
             }
 
             if (options?.force || grades.length === 0) {
-                tasks.push(loadGrades(backgroundOptions));
+                resourcesToWaitFor.push('grades');
+                tasks.push(run(() => useCases.enqueueScrapeJob.execute('grades', {
+                    year: gradesInput.year,
+                    period: gradesInput.period
+                }), {
+                    reportError: options?.reportError ?? false,
+                    showGlobalLoading: false
+                }));
             }
 
             if (options?.force || lessonPlanSubjects.length === 0) {
-                tasks.push(loadLessonPlanSubjects(backgroundOptions));
+                resourcesToWaitFor.push('lessonPlanSubjects', 'lessonPlan');
+                tasks.push(run(() => useCases.enqueueScrapeJob.execute('lesson-plan-subjects'), {
+                    reportError: options?.reportError ?? false,
+                    showGlobalLoading: false
+                }));
             }
 
+            markInitialResourcesPending(resourcesToWaitFor);
             await Promise.allSettled(tasks);
         });
     };
@@ -341,22 +453,7 @@ export function useEcampusWorkspace() {
             clearError();
             setActiveTab('home');
 
-            const generation = sessionGeneration.current;
-            const data = await runSingle('restore', () => run(() => useCases.getStudentProfile.execute(), {
-                reportError: false,
-                showGlobalLoading: true,
-                sessionGeneration: generation
-            }));
-
-            if (!data || generation !== sessionGeneration.current) {
-                await expireSession();
-                setIsReady(true);
-                return;
-            }
-
-            setProfile(data);
             setIsAuthenticated(true);
-            void prefetchWorkspace({ includeProfile: false });
         } finally {
             setIsReady(true);
         }
@@ -374,7 +471,6 @@ export function useEcampusWorkspace() {
         setActiveTab('home');
         setIsAuthenticated(true);
         clearError();
-        void prefetchWorkspace({ force: true });
     };
 
     const logout = async () => {
@@ -436,15 +532,12 @@ export function useEcampusWorkspace() {
             return;
         }
 
-        const data = await run(() => useCases.getLessonPlan.execute(selectedSubject.planId!), {
+        markInitialResourcesPending(['lessonPlan']);
+        await run(() => useCases.enqueueScrapeJob.execute('lesson-plan', { planId: selectedSubject.planId }), {
             reportError: true,
             showGlobalLoading: true,
             sessionGeneration: generation
         });
-
-        if (data && generation === sessionGeneration.current) {
-            setLessonPlan(data);
-        }
     };
 
     const openTab = (tab: WorkspaceTab) => {
@@ -457,11 +550,39 @@ export function useEcampusWorkspace() {
         setActiveTab(tab);
 
         if (tab === 'home') void prefetchWorkspace();
-        if (tab === 'profile' && !profile) void loadProfile({ reportError: false, showGlobalLoading: true });
-        if (tab === 'schedule' && schedule.length === 0) void loadSchedule({ reportError: false, showGlobalLoading: true });
-        if (tab === 'grades' && grades.length === 0) void loadGrades({ reportError: false, showGlobalLoading: true });
-        if (tab === 'lessonPlan' && grades.length === 0) void loadGrades({ reportError: false, showGlobalLoading: true });
-        if (tab === 'lessonPlan' && lessonPlanSubjects.length === 0) void loadLessonPlanSubjects({ reportError: false, showGlobalLoading: true });
+        if (tab === 'profile' && !profile) {
+            markInitialResourcesPending(['profile']);
+            void run(() => useCases.enqueueScrapeJob.execute('profile'), { reportError: false, showGlobalLoading: false });
+        }
+        if (tab === 'schedule' && schedule.length === 0) {
+            markInitialResourcesPending(['schedule']);
+            void run(() => useCases.enqueueScrapeJob.execute('schedule'), { reportError: false, showGlobalLoading: false });
+        }
+        if (tab === 'grades' && grades.length === 0) {
+            markInitialResourcesPending(['grades']);
+            void run(() => useCases.enqueueScrapeJob.execute('grades', {
+                year: gradesInput.year,
+                period: gradesInput.period
+            }), { reportError: false, showGlobalLoading: false });
+        }
+        if (tab === 'lessonPlan' && grades.length === 0) {
+            markInitialResourcesPending(['grades']);
+            void run(() => useCases.enqueueScrapeJob.execute('grades', {
+                year: gradesInput.year,
+                period: gradesInput.period
+            }), { reportError: false, showGlobalLoading: false });
+        }
+        if (tab === 'lessonPlan' && lessonPlanSubjects.length === 0) {
+            markInitialResourcesPending(['lessonPlanSubjects', 'lessonPlan']);
+            void run(() => useCases.enqueueScrapeJob.execute('lesson-plan-subjects'), { reportError: false, showGlobalLoading: false });
+        }
+        if (tab === 'lessonPlan' && lessonPlanSubjects.length > 0 && lessonPlan.length === 0) {
+            const selectedSubject = pickLessonPlanSubject(lessonPlanSubjects, selectedLessonPlanSubjectCode);
+            if (selectedSubject?.planId) {
+                markInitialResourcesPending(['lessonPlan']);
+                void enqueueLessonPlanScrape(selectedSubject.planId, { reportError: false, showGlobalLoading: false });
+            }
+        }
         // AI tab doesn't require data loading
     };
 
@@ -474,6 +595,7 @@ export function useEcampusWorkspace() {
         grades,
         gradesInput,
         isAuthenticated,
+        isInitialDataLoading,
         isLoading,
         isReady,
         lessonPlan,

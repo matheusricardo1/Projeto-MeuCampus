@@ -10,7 +10,7 @@ import { styles } from '@/presentation/views/workspace.styles';
 export function DashboardPage({ workspace }: { workspace: Workspace }) {
     const layout = useResponsiveLayout();
     const { t } = useLanguage();
-    const { grades, isLoading, lessonPlanSubjects, profile, schedule } = workspace;
+    const { grades, isInitialDataLoading, isLoading, lessonPlanSubjects, profile, schedule } = workspace;
     const groupedSchedule = groupScheduleByDay(schedule);
     const weekMap = buildWeekMap(groupedSchedule, t);
     const nextClass = getNextScheduleClass(schedule, t);
@@ -38,7 +38,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
         { label: t('nav.profile'), icon: FileText, action: () => workspace.openTab('profile'), tone: styles.homeShortcutToneNeutral }
     ];
 
-    if (isLoading && !profile && schedule.length === 0 && grades.length === 0) return <DashboardSkeleton />;
+    if (isInitialDataLoading || (isLoading && !profile && schedule.length === 0 && grades.length === 0)) return <DashboardSkeleton />;
 
     return (
         <View style={styles.homeScreenStack}>

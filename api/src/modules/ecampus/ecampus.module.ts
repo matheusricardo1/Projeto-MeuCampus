@@ -6,8 +6,6 @@ import { GetScheduleUseCase } from '@ecampus/application/use-cases/get-schedule.
 import { GetProfileUseCase } from '@ecampus/application/use-cases/get-profile.usecase';
 import { LoginUseCase } from '@ecampus/application/use-cases/login.usecase';
 import { LogoutEcampusUseCase } from '@ecampus/application/use-cases/logout-ecampus.usecase';
-import { EcampusAuthService } from '@ecampus/infrastructure/ecampus/ecampus-auth-service';
-import { EcampusHttpRepository } from '@ecampus/infrastructure/ecampus/ecampus-http.repository';
 import { JwtAccessTokenService } from '@ecampus/infrastructure/security/jwt-access-token-service';
 import { CacheRepository } from '@/modules/ecampus/application/ports/cache-repository';
 import { JobService } from '@/modules/ecampus/application/ports/job-service';
@@ -15,6 +13,8 @@ import { EcampusRedisRepository } from '@/modules/ecampus/infrastructure/redis/e
 import { EcampusJobService } from '@/modules/ecampus/application/services/ecampus-job.service';
 import { EcampusController } from '@ecampus/presentation/http/ecampus.controller';
 import { EcampusJwtGuard } from '@ecampus/presentation/http/guards/ecampus-jwt.guard';
+import { EcampusGateway } from '@ecampus/presentation/ws/ecampus.gateway';
+import { EcampusScrapeEventsSubscriber } from '@ecampus/application/services/ecampus-scrape-events.subscriber';
 
 @Module({
   controllers: [EcampusController],
@@ -23,16 +23,11 @@ import { EcampusJwtGuard } from '@ecampus/presentation/http/guards/ecampus-jwt.g
     EcampusJobService,
     EcampusRedisRepository,
     EcampusJwtGuard,
+    EcampusGateway,
+    EcampusScrapeEventsSubscriber,
     // Ports mapping
     { provide: CacheRepository, useExisting: EcampusRedisRepository },
     { provide: JobService, useExisting: EcampusJobService },
-    // Infra providers
-    { provide: EcampusAuthService, useFactory: () => new EcampusAuthService() },
-    {
-      provide: EcampusHttpRepository,
-      useFactory: (auth: EcampusAuthService) => new EcampusHttpRepository(auth),
-      inject: [EcampusAuthService],
-    },
     // Use‑cases
     {
       provide: GetGradesUseCase,
@@ -63,8 +58,8 @@ import { EcampusJwtGuard } from '@ecampus/presentation/http/guards/ecampus-jwt.g
     LoginUseCase,
     {
       provide: LogoutEcampusUseCase,
-      useFactory: (repo: EcampusHttpRepository) => new LogoutEcampusUseCase(repo),
-      inject: [EcampusHttpRepository],
+      useFactory: (jobs: JobService, cache: CacheRepository) => new LogoutEcampusUseCase(jobs, cache),
+      inject: [JobService, CacheRepository],
     },
   ],
 })

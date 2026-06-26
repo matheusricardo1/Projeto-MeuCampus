@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards, BadRequestException, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { GetGradesUseCase } from '@ecampus/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@ecampus/application/use-cases/get-lesson-plan.usecase';
 import { GetLessonPlanSubjectsUseCase } from '@ecampus/application/use-cases/get-lesson-plan-subjects.usecase';
@@ -9,10 +10,11 @@ import { LogoutEcampusUseCase } from '@ecampus/application/use-cases/logout-ecam
 import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
 import { CurrentEcampusCredentials } from '@ecampus/presentation/http/decorators/current-ecampus-credentials.decorator';
 import { GetGradesQuery } from '@ecampus/presentation/http/dto/get-grades.query';
-import { GetLessonPlanParams } from '@ecampus/presentation/http/dto/get-lesson-plan.params';
 import type { LoginEcampusRequest } from '@ecampus/presentation/http/dto/login-ecampus.request';
 import { EcampusJwtGuard } from '@ecampus/presentation/http/guards/ecampus-jwt.guard';
 import { JobService } from '@/modules/ecampus/application/ports/job-service';
+import { isPendingScrapeJob } from '@/modules/ecampus/application/services/pending-scrape-job';
+import type { EcampusCachedResource } from '@/shared/ecampus-cache';
 
 @Controller('ecampus')
 export class EcampusController {
@@ -33,47 +35,52 @@ export class EcampusController {
   }
 
   @Post('login')
-  async login(@Body() body: LoginEcampusRequest) {
+  async login(@Body() body: LoginEcampusRequest, @Res({ passthrough: true }) response: Response) {
     const { user, password } = body as any;
     if (!user || !password) {
       throw new BadRequestException('Missing credentials');
     }
+    response.locals.ecampusDataSource = 'worker';
+    response.locals.ecampusResource = 'login';
     return this.loginUseCase.execute({ cpf: user, password });
   }
 
   @Post('logout')
   @HttpCode(200)
   @UseGuards(EcampusJwtGuard)
-  async logout(@CurrentEcampusCredentials() credentials: EcampusCredentials) {
+  async logout(@CurrentEcampusCredentials() credentials: EcampusCredentials, @Res({ passthrough: true }) response: Response) {
+    response.locals.ecampusDataSource = 'worker';
+    response.locals.ecampusResource = 'logout';
     await this.logoutUseCase.execute(credentials);
     return { status: 'ok' };
   }
 
   @Get('profile')
   @UseGuards(EcampusJwtGuard)
-  async getStudentProfile(@CurrentEcampusCredentials() credentials: EcampusCredentials) {
-    return this.getProfileUseCase.execute(credentials);
+  async getStudentProfile(@CurrentEcampusCredentials() credentials: EcampusCredentials, @Res({ passthrough: true }) response: Response) {
+    return this.respondWithResourceStatus(response, 'profile', await this.getProfileUseCase.execute(credentials));
   }
 
   @Get('schedule')
   @UseGuards(EcampusJwtGuard)
-  async getSchedule(@CurrentEcampusCredentials() credentials: EcampusCredentials) {
-    return this.getScheduleUseCase.execute(credentials);
+  async getSchedule(@CurrentEcampusCredentials() credentials: EcampusCredentials, @Res({ passthrough: true }) response: Response) {
+    return this.respondWithResourceStatus(response, 'schedule', await this.getScheduleUseCase.execute(credentials));
   }
 
   @Get('grades')
   @UseGuards(EcampusJwtGuard)
   async getGrades(
     @CurrentEcampusCredentials() credentials: EcampusCredentials,
+    @Res({ passthrough: true }) response: Response,
     @Query('year') year?: string,
     @Query('period') period?: string,
   ) {
     const input = new GetGradesQuery(year, period).toUseCaseInput();
-    return this.getGradesUseCase.execute({
+    return this.respondWithResourceStatus(response, 'grades', await this.getGradesUseCase.execute({
       credentials,
       year: input.year,
       period: input.period,
-    });
+    }));
   }
 
   @Get('lesson-plans/:planId')
@@ -81,14 +88,15 @@ export class EcampusController {
   async getLessonPlan(
     @CurrentEcampusCredentials() credentials: EcampusCredentials,
     @Param('planId') planId: string,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return this.getLessonPlanUseCase.execute(credentials, planId);
+    return this.respondWithResourceStatus(response, 'lesson-plan', await this.getLessonPlanUseCase.execute(credentials, planId));
   }
 
   @Get('lesson-plans')
   @UseGuards(EcampusJwtGuard)
-  async getLessonPlanSubjects(@CurrentEcampusCredentials() credentials: EcampusCredentials) {
-    return this.getLessonPlanSubjectsUseCase.execute(credentials);
+  async getLessonPlanSubjects(@CurrentEcampusCredentials() credentials: EcampusCredentials, @Res({ passthrough: true }) response: Response) {
+    return this.respondWithResourceStatus(response, 'lesson-plan-subjects', await this.getLessonPlanSubjectsUseCase.execute(credentials));
   }
   // -----------------------------------------------------------------
   // Endpoint para enfileirar jobs manualmente (útil para depuração)
@@ -99,6 +107,7 @@ export class EcampusController {
     @Param('type') type: string,
     @CurrentEcampusCredentials() credentials: EcampusCredentials,
     @Body() body: any,
+    @Res({ passthrough: true }) response: Response,
   ) {
     const allowed = ['profile', 'schedule', 'grades', 'lesson-plan-subjects', 'lesson-plan'];
     if (!allowed.includes(type)) {
@@ -120,7 +129,22 @@ export class EcampusController {
       }
       data.planId = planId;
     }
+    response.locals.ecampusDataSource = 'worker';
+    response.locals.ecampusResource = type;
     const job = await this.jobService.enqueue(type, data);
     return { jobId: job.id };
+  }
+
+  private respondWithResourceStatus<T>(response: Response, resource: EcampusCachedResource, result: T): T {
+    if (isPendingScrapeJob(result)) {
+      response.status(202);
+      response.locals.ecampusDataSource = 'worker';
+      response.locals.ecampusResource = result.resource;
+      return result;
+    }
+
+    response.locals.ecampusDataSource = 'cache-aside';
+    response.locals.ecampusResource = resource;
+    return result;
   }
 }

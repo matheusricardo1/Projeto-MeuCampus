@@ -18,9 +18,12 @@ export interface SendAiChatMessageRequest {
     history?: AiChatMessage[];
 }
 
+export type EcampusScrapeJobType = 'profile' | 'schedule' | 'grades' | 'lesson-plan-subjects' | 'lesson-plan';
+
 export interface EcampusRepository {
     login(credentials: LoginCredentials): Promise<AuthSession>;
     logout(accessToken: string): Promise<void>;
+    enqueueScrapeJob(accessToken: string, type: EcampusScrapeJobType, data?: Record<string, unknown>): Promise<void>;
     getProfile(accessToken: string): Promise<StudentProfile>;
     getGrades(accessToken: string, year: string, period: string): Promise<Grade[]>;
     getSchedule(accessToken: string): Promise<ScheduleClass[]>;

@@ -33,7 +33,7 @@ export class LoginUseCase {
     });
 
     // Espera o worker terminar (bolteia apenas aqui)
-    const result = await job.waitUntilFinished(this.jobService.getQueue().events);
+    const result = await job.waitUntilFinished(this.jobService.getQueueEvents());
     if (!result || typeof result !== 'object' || !('session' in result)) {
       throw new BadRequestException('Login failed');
     }
@@ -42,12 +42,6 @@ export class LoginUseCase {
       session: (result as any).session,
     };
     const token = this.jwtService.sign(credentials);
-
-    // Opcional: pré‑carrega dados básicos
-    void this.jobService.enqueue('profile', { credentials });
-    void this.jobService.enqueue('schedule', { credentials });
-    // Enfileira também os jobs que não precisam de parâmetros adicionais
-    void this.jobService.enqueue('lesson-plan-subjects', { credentials });
 
     return { accessToken: token, tokenType: 'Bearer' };
   }
