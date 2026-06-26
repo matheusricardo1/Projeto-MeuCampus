@@ -1,12 +1,13 @@
 import { Platform } from 'react-native';
 import type { AuthSession } from '@/domain/entities/auth-session';
+import type { AiChatReply } from '@/domain/entities/ai-chat-reply';
 import type { Grade } from '@/domain/entities/grade';
 import type { LessonPlanItem } from '@/domain/entities/lesson-plan-item';
 import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
 import type { ScheduleClass } from '@/domain/entities/schedule-class';
 import type { StudentProfile } from '@/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
-import type { EcampusRepository, LoginCredentials } from '@/domain/repositories/ecampus-repository';
+import type { EcampusRepository, LoginCredentials, SendAiChatMessageRequest } from '@/domain/repositories/ecampus-repository';
 
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://127.0.0.1:3001';
 const DEFAULT_APP_ENV = 'production';
@@ -72,6 +73,14 @@ export class EcampusHttpRepository implements EcampusRepository {
     getLessonPlan(accessToken: string, planId: string): Promise<LessonPlanItem[]> {
         return this.request<LessonPlanItem[]>(`/ecampus/lesson-plans/${encodeURIComponent(planId)}`, {
             headers: this.authHeaders(accessToken)
+        });
+    }
+
+    sendAiChatMessage(accessToken: string, input: SendAiChatMessageRequest): Promise<AiChatReply> {
+        return this.request<AiChatReply>('/ai/chat/messages', {
+            method: 'POST',
+            headers: this.authHeaders(accessToken),
+            body: JSON.stringify(input)
         });
     }
 

@@ -1,7 +1,10 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { appLogger } from '@/shared/logging/app-logger';
+import { InvalidAiMessageError } from '@ai/domain/errors/invalid-ai-message.error';
+import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
 import { ResourceNotFoundError } from '@ecampus/domain/errors/resource-not-found.error';
+import { InvalidEcampusRequestError } from '@ecampus/presentation/http/errors/invalid-ecampus-request.error';
 
 const statusMessages: Record<number, string> = {
     [HttpStatus.BAD_REQUEST]: 'Requisicao invalida.',
@@ -68,6 +71,14 @@ export class HttpErrorFilter implements ExceptionFilter {
             return this.translateMessage(exception.message, statusCode);
         }
 
+        if (exception instanceof InvalidAiMessageError) {
+            return this.translateMessage(exception.message, statusCode);
+        }
+
+        if (exception instanceof AuthenticationError || exception instanceof InvalidEcampusRequestError) {
+            return this.translateMessage(exception.message, statusCode);
+        }
+
         return statusMessages[statusCode] || 'Nao foi possivel concluir a operacao.';
     }
 
@@ -115,6 +126,9 @@ export class HttpErrorFilter implements ExceptionFilter {
 
     private getStatusCode(exception: unknown): number {
         if (exception instanceof HttpException) return exception.getStatus();
+        if (exception instanceof InvalidAiMessageError) return HttpStatus.BAD_REQUEST;
+        if (exception instanceof InvalidEcampusRequestError) return HttpStatus.BAD_REQUEST;
+        if (exception instanceof AuthenticationError) return HttpStatus.UNAUTHORIZED;
         if (exception instanceof ResourceNotFoundError) return HttpStatus.NOT_FOUND;
         return HttpStatus.INTERNAL_SERVER_ERROR;
     }

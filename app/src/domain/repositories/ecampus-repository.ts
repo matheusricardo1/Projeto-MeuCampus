@@ -1,4 +1,6 @@
 import type { AuthSession } from '@/domain/entities/auth-session';
+import type { AiChatMessage } from '@/domain/entities/ai-chat-message';
+import type { AiChatReply } from '@/domain/entities/ai-chat-reply';
 import type { Grade } from '@/domain/entities/grade';
 import type { LessonPlanItem } from '@/domain/entities/lesson-plan-item';
 import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
@@ -10,6 +12,12 @@ export interface LoginCredentials {
     password: string;
 }
 
+export interface SendAiChatMessageRequest {
+    conversationId?: string;
+    message: string;
+    history?: AiChatMessage[];
+}
+
 export interface EcampusRepository {
     login(credentials: LoginCredentials): Promise<AuthSession>;
     logout(accessToken: string): Promise<void>;
@@ -18,4 +26,5 @@ export interface EcampusRepository {
     getSchedule(accessToken: string): Promise<ScheduleClass[]>;
     getLessonPlanSubjects(accessToken: string): Promise<LessonPlanSubject[]>;
     getLessonPlan(accessToken: string, planId: string): Promise<LessonPlanItem[]>;
+    sendAiChatMessage(accessToken: string, input: SendAiChatMessageRequest): Promise<AiChatReply>;
 }

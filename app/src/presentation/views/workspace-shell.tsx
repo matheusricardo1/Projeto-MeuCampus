@@ -25,6 +25,7 @@ type ChatHistoryEntry = {
 
 const CHAT_HISTORY_STORAGE_KEY = 'ecampus.ai-chat-history';
 const DEFAULT_CHAT_TITLE = 'Desempenho em Calculo I';
+const IS_AI_FEATURE_ENABLED = process.env.EXPO_PUBLIC_APP_ENV === 'development';
 
 function readChatHistory(): ChatHistoryEntry[] {
     if (typeof localStorage === 'undefined') return [];
@@ -87,7 +88,7 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
     const bottomTabs = [
         { id: 'home' as const, label: t('nav.panel'), icon: LayoutDashboard },
         { id: 'lessonPlan' as const, label: t('nav.subjects'), icon: BookOpen },
-        { id: 'ai' as const, label: t('nav.ai'), icon: Brain }, // AI tab in the center
+        ...(IS_AI_FEATURE_ENABLED ? [{ id: 'ai' as const, label: t('nav.ai'), icon: Brain }] : []),
         { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar },
         { id: 'profile' as const, label: t('nav.profile'), icon: User }
     ];
@@ -95,6 +96,12 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
     const openWorkspaceTab = (tabId: Workspace['activeTab'] | 'ai') => {
         setShowNotifications(false);
         setShowChatHistory(false);
+
+        if (tabId === 'ai' && !IS_AI_FEATURE_ENABLED) {
+            workspace.openTab('home');
+            scrollToTop();
+            return;
+        }
 
         if (tabId === 'ai' && workspace.activeTab !== 'ai') {
             if (aiLaunchCleanupRef.current) {
@@ -146,7 +153,7 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
     const leaveAIChat = () => openWorkspaceTab('home');
     const closeChatHistory = () => setShowChatHistory(false);
     const refreshPage = showNotifications ? async () => undefined : (tabActions[workspace.activeTab as keyof typeof tabActions] || (() => Promise.resolve()));
-    const isAIPage = !showNotifications && workspace.activeTab === 'ai';
+    const isAIPage = IS_AI_FEATURE_ENABLED && !showNotifications && workspace.activeTab === 'ai';
     const bottomNavInset = isAIPage ? 0 : layout.isTablet ? 88 : 96;
     const chatTitle = chatHistory[0]?.title || DEFAULT_CHAT_TITLE;
     const pageTransitionKey = showNotifications ? 'notifications' : workspace.activeTab;
@@ -161,6 +168,11 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
 
         setChatHistory(readChatHistory());
     }, [workspace.isAuthenticated]);
+
+    useEffect(() => {
+        if (IS_AI_FEATURE_ENABLED || workspace.activeTab !== 'ai') return;
+        workspace.openTab('home');
+    }, [workspace]);
 
     useEffect(() => {
         if (!isAIPage || chatHistory.length > 0) return;
@@ -292,7 +304,7 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
     );
     const pageContent = isAIPage ? (
         <View style={styles.flexScroll}>
-            <AIPage bottomInset={bottomNavInset} hidePromptInput={isAILaunching} onChatScroll={closeChatHistory} />
+            <AIPage bottomInset={bottomNavInset} hidePromptInput={isAILaunching} onChatScroll={closeChatHistory} onSendMessage={workspace.sendAiChatMessage} />
         </View>
     ) : (
         <ScrollView

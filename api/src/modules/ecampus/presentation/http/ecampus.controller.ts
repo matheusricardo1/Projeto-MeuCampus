@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Query, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { GetGradesUseCase } from '@ecampus/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@ecampus/application/use-cases/get-lesson-plan.usecase';
 import { GetLessonPlanSubjectsUseCase } from '@ecampus/application/use-cases/get-lesson-plan-subjects.usecase';
@@ -6,9 +6,10 @@ import { GetScheduleUseCase } from '@ecampus/application/use-cases/get-schedule.
 import { GetStudentProfileUseCase } from '@ecampus/application/use-cases/get-student-profile.usecase';
 import { LoginEcampusUseCase } from '@ecampus/application/use-cases/login-ecampus.usecase';
 import { LogoutEcampusUseCase } from '@ecampus/application/use-cases/logout-ecampus.usecase';
-import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
 import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
 import { CurrentEcampusCredentials } from '@ecampus/presentation/http/decorators/current-ecampus-credentials.decorator';
+import { GetGradesQuery } from '@ecampus/presentation/http/dto/get-grades.query';
+import { GetLessonPlanParams } from '@ecampus/presentation/http/dto/get-lesson-plan.params';
 import { LoginEcampusRequest } from '@ecampus/presentation/http/dto/login-ecampus.request';
 import { EcampusJwtGuard } from '@ecampus/presentation/http/guards/ecampus-jwt.guard';
 
@@ -34,21 +35,7 @@ export class EcampusController {
 
     @Post('login')
     async login(@Body() body: LoginEcampusRequest) {
-        const user = this.parseCpf(body.user);
-        const password = this.parsePassword(body.password);
-
-        try {
-            return await this.loginEcampusUseCase.execute({
-                user,
-                password
-            });
-        } catch (error) {
-            if (error instanceof AuthenticationError) {
-                throw new UnauthorizedException('CPF ou senha invalidos.');
-            }
-
-            throw error;
-        }
+        return this.loginEcampusUseCase.execute(new LoginEcampusRequest(body?.user, body?.password).toCredentialsInput());
     }
 
     @Post('logout')
@@ -75,10 +62,9 @@ export class EcampusController {
         @Query('year') year?: string,
         @Query('period') period?: string
     ) {
-        const normalizedYear = this.parseYear(year);
-        const normalizedPeriod = this.parsePeriod(period);
+        const input = new GetGradesQuery(year, period).toUseCaseInput();
 
-        return this.getGradesUseCase.execute(credentials, normalizedYear, normalizedPeriod);
+        return this.getGradesUseCase.execute(credentials, input.year, input.period);
     }
 
     @Get('schedule')
@@ -93,82 +79,12 @@ export class EcampusController {
         @CurrentEcampusCredentials() credentials: EcampusCredentials,
         @Param('planId') planId: string
     ) {
-        return this.getLessonPlanUseCase.execute(credentials, this.parsePlanId(planId));
+        return this.getLessonPlanUseCase.execute(credentials, new GetLessonPlanParams(planId).toUseCaseInput().planId);
     }
 
     @Get('lesson-plans')
     @UseGuards(EcampusJwtGuard)
     getLessonPlanSubjects(@CurrentEcampusCredentials() credentials: EcampusCredentials) {
         return this.getLessonPlanSubjectsUseCase.execute(credentials);
-    }
-
-    private parseCpf(value?: string): string {
-        const digits = value?.replace(/\D/g, '') || '';
-        if (!this.isValidCpf(digits)) {
-            throw new BadRequestException('Informe um CPF valido.');
-        }
-
-        return digits;
-    }
-
-    private isValidCpf(digits: string): boolean {
-        if (!/^\d{11}$/.test(digits) || /^(\d)\1{10}$/.test(digits)) {
-            return false;
-        }
-
-        const calculateDigit = (size: number) => {
-            let sum = 0;
-            for (let index = 0; index < size; index += 1) {
-                sum += Number(digits[index]) * (size + 1 - index);
-            }
-
-            const remainder = (sum * 10) % 11;
-            return remainder === 10 ? 0 : remainder;
-        };
-
-        return calculateDigit(9) === Number(digits[9]) && calculateDigit(10) === Number(digits[10]);
-    }
-
-    private parsePassword(value?: string): string {
-        if (typeof value !== 'string' || value.length < 1 || value.length > 128 || /[\u0000-\u001F\u007F]/.test(value)) {
-            throw new BadRequestException('Informe uma senha valida.');
-        }
-
-        return value;
-    }
-
-    private parseYear(value?: string): string {
-        const year = value?.trim() || '';
-        if (!/^\d{4}$/.test(year)) {
-            throw new BadRequestException('Informe um ano com 4 digitos.');
-        }
-
-        const numericYear = Number(year);
-        const nextYear = new Date().getFullYear() + 1;
-        if (numericYear < 2000 || numericYear > nextYear) {
-            throw new BadRequestException('Informe um ano dentro do periodo aceito.');
-        }
-
-        return year;
-    }
-
-    private parsePeriod(value?: string): string {
-        const period = value?.trim().toLowerCase() || '';
-        const acceptedPeriods = new Set(['1', '1o', '201', '2', '2o', '202', 'ferias1', 'ferias-1', '203', 'ferias2', 'ferias-2', '204', 'especial', '5', '401']);
-
-        if (!acceptedPeriods.has(period)) {
-            throw new BadRequestException('Informe um periodo valido.');
-        }
-
-        return period;
-    }
-
-    private parsePlanId(value: string): string {
-        const planId = value.trim();
-        if (!/^\d{1,20}$/.test(planId)) {
-            throw new BadRequestException('Plano de ensino invalido.');
-        }
-
-        return planId;
     }
 }

@@ -14,6 +14,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
+      "@ai/*": ["src/modules/ai/*"],
       "@ecampus/*": ["src/modules/ecampus/*"]
     },
     "types": ["node"],

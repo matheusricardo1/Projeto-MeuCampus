@@ -16,10 +16,13 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@ai-sdk/google": "^3.0.84",
+    "@ai-sdk/openai": "^3.0.75",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.1.27",
+    "ai": "^6.0.211",
     "axios": "^1.18.0",
     "axios-cookiejar-support": "^5.0.5",
     "dotenv": "^17.4.2",

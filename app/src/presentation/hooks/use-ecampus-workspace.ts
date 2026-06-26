@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { Grade } from '@/domain/entities/grade';
+import type { AiChatMessage } from '@/domain/entities/ai-chat-message';
 import type { LessonPlanItem } from '@/domain/entities/lesson-plan-item';
 import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
 import type { ScheduleClass } from '@/domain/entities/schedule-class';
@@ -10,7 +11,7 @@ import { useLanguage } from '@/presentation/i18n/language-provider';
 import type { TranslationKey, TranslationValues } from '@/presentation/i18n/languages';
 
 type WorkspaceTab = 'home' | 'profile' | 'schedule' | 'grades' | 'lessonPlan' | 'ai';
-type ResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects' | 'lessonPlan' | 'prefetch' | 'restore' | 'login' | 'logout';
+type ResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects' | 'lessonPlan' | 'prefetch' | 'restore' | 'login' | 'logout' | 'aiChat';
 
 interface LoginInput {
     user: string;
@@ -20,6 +21,12 @@ interface LoginInput {
 interface GradesInput {
     year: string;
     period: string;
+}
+
+interface SendAiChatMessageInput {
+    conversationId?: string;
+    message: string;
+    history?: AiChatMessage[];
 }
 
 interface RequestOptions {
@@ -41,6 +48,7 @@ const DEFAULT_REQUEST_OPTIONS: Required<Pick<RequestOptions, 'reportError' | 'sh
     reportError: true,
     showGlobalLoading: true
 };
+const IS_AI_FEATURE_ENABLED = process.env.EXPO_PUBLIC_APP_ENV === 'development';
 
 function getCurrentGradesInput(): GradesInput {
     const now = new Date();
@@ -386,6 +394,31 @@ export function useEcampusWorkspace() {
         });
     };
 
+    const sendAiChatMessage = async (input: SendAiChatMessageInput) => {
+        const generation = sessionGeneration.current;
+        clearError();
+
+        try {
+            return await useCases.sendAiChatMessage.execute(input);
+        } catch (caught) {
+            if (caught instanceof AuthSessionExpiredError) {
+                if (generation === sessionGeneration.current) {
+                    await expireSession(caught.message);
+                }
+
+                return null;
+            }
+
+            if (caught instanceof Error) {
+                setRawError(caught.message);
+                throw caught;
+            }
+
+            setTranslatedError('errors.generic');
+            throw new Error(t('errors.generic'));
+        }
+    };
+
     const changeLessonPlanSubject = async (code: string) => {
         const generation = sessionGeneration.current;
         const selectedSubject = lessonPlanSubjects.find((subject) => subject.code === code);
@@ -415,6 +448,12 @@ export function useEcampusWorkspace() {
     };
 
     const openTab = (tab: WorkspaceTab) => {
+        if (tab === 'ai' && !IS_AI_FEATURE_ENABLED) {
+            setActiveTab('home');
+            void prefetchWorkspace();
+            return;
+        }
+
         setActiveTab(tab);
 
         if (tab === 'home') void prefetchWorkspace();
@@ -452,6 +491,7 @@ export function useEcampusWorkspace() {
         restoreSession,
         schedule,
         selectedLessonPlanSubjectCode,
+        sendAiChatMessage,
         setGradesInput
     };
 }

@@ -7,6 +7,7 @@ import { GetScheduleUseCase } from '@/application/use-cases/get-schedule.usecase
 import { GetStudentProfileUseCase } from '@/application/use-cases/get-student-profile.usecase';
 import { LoginEcampusUseCase } from '@/application/use-cases/login-ecampus.usecase';
 import { LogoutUseCase } from '@/application/use-cases/logout.usecase';
+import { SendAiChatMessageUseCase } from '@/application/use-cases/send-ai-chat-message.usecase';
 import { AsyncAuthSessionStore } from '@/infrastructure/auth/async-auth-session-store';
 import { EcampusHttpRepository } from '@/infrastructure/http/ecampus-http-repository';
 
@@ -23,6 +24,7 @@ export function createEcampusUseCases() {
         getSchedule: new GetScheduleUseCase(repository, sessionStore),
         getStudentProfile: new GetStudentProfileUseCase(repository, sessionStore),
         login: new LoginEcampusUseCase(repository, sessionStore),
-        logout: new LogoutUseCase(repository, sessionStore)
+        logout: new LogoutUseCase(repository, sessionStore),
+        sendAiChatMessage: new SendAiChatMessageUseCase(repository, sessionStore)
     };
 }
