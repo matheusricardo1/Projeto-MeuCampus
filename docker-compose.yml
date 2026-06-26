@@ -1,9 +1,32 @@
 services:
 
+  ai-worker:
+    build:
+      context: ./workers/ai
+      dockerfile: Dockerfile
+    env_file:
+      - ./workers/ai/.env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379
+      AI_CHAT_QUEUE: ai-chat
+      AI_CHAT_WORKER_CONCURRENCY: 2
+      GEMINI_AI_MODEL: ${GEMINI_AI_MODEL:-gemini-2.5-flash}
+      DEEP_SEEK_AI_BASE_URL: ${DEEP_SEEK_AI_BASE_URL:-https://api.deepseek.com}
+      DEEP_SEEK_AI_MODEL: ${DEEP_SEEK_AI_MODEL:-deepseek-v4-flash}
+      AI_CHAT_MODEL: ${AI_CHAT_MODEL:-gpt-4o-mini}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   ecampus-worker:
     build:
-      context: ./worker
+      context: ./workers/ecampus
       dockerfile: Dockerfile
+    env_file:
+      - ./workers/ecampus/.env
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379

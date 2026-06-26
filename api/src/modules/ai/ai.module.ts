@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SendAiChatMessageUseCase } from '@ai/application/use-cases/send-ai-chat-message.usecase';
-import { AI_CHAT_PROVIDER, type AiChatProvider } from '@ai/application/ports/ai-chat-provider';
-import { VercelAiChatProvider } from '@ai/infrastructure/providers/vercel-ai-chat.provider';
+import { AiJobService } from '@ai/application/ports/ai-job-service';
+import { AiChatJobService } from '@ai/application/services/ai-chat-job.service';
 import { AiController } from '@ai/presentation/http/ai.controller';
 import { AiAuthGuard } from '@ai/presentation/http/guards/ai-auth.guard';
 import { JwtAccessTokenService } from '@ecampus/infrastructure/security/jwt-access-token-service';
@@ -11,16 +11,14 @@ import { JwtAccessTokenService } from '@ecampus/infrastructure/security/jwt-acce
     providers: [
         JwtAccessTokenService,
         AiAuthGuard,
-        {
-            provide: AI_CHAT_PROVIDER,
-            useFactory: () => new VercelAiChatProvider()
-        },
+        AiChatJobService,
+        { provide: AiJobService, useExisting: AiChatJobService },
         {
             provide: SendAiChatMessageUseCase,
-            useFactory: (aiChatProvider: AiChatProvider) => {
-                return new SendAiChatMessageUseCase(aiChatProvider);
+            useFactory: (aiJobService: AiJobService) => {
+                return new SendAiChatMessageUseCase(aiJobService);
             },
-            inject: [AI_CHAT_PROVIDER]
+            inject: [AiJobService]
         }
     ]
 })

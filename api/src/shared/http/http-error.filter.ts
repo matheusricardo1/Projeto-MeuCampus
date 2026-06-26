@@ -122,7 +122,7 @@ export class HttpErrorFilter implements ExceptionFilter {
             'Internal server error': fallbackServerMessage
         };
 
-        return dictionary[normalized] || statusMessages[statusCode] || normalized;
+        return dictionary[normalized] || normalized || statusMessages[statusCode] || 'Nao foi possivel concluir a operacao.';
     }
 
     private getStatusCode(exception: unknown): number {
