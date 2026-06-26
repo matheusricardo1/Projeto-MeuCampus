@@ -6,7 +6,7 @@ import { GetScheduleUseCase } from '@ecampus/application/use-cases/get-schedule.
 import { GetProfileUseCase } from '@ecampus/application/use-cases/get-profile.usecase';
 import { LoginUseCase } from '@ecampus/application/use-cases/login.usecase';
 import { LogoutEcampusUseCase } from '@ecampus/application/use-cases/logout-ecampus.usecase';
-import { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
+import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
 import { CurrentEcampusCredentials } from '@ecampus/presentation/http/decorators/current-ecampus-credentials.decorator';
 import { GetGradesQuery } from '@ecampus/presentation/http/dto/get-grades.query';
 import { GetLessonPlanParams } from '@ecampus/presentation/http/dto/get-lesson-plan.params';
@@ -34,7 +34,11 @@ export class EcampusController {
 
   @Post('login')
   async login(@Body() body: LoginEcampusRequest) {
-    return this.loginUseCase.execute({ cpf: body?.user, password: body?.password });
+    const { user, password } = body as any;
+    if (!user || !password) {
+      throw new BadRequestException('Missing credentials');
+    }
+    return this.loginUseCase.execute({ cpf: user, password });
   }
 
   @Post('logout')

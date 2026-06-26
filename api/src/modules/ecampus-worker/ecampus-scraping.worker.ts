@@ -7,7 +7,7 @@ import {
     ECAMPUS_SCRAPE_QUEUE_NAME,
     type EcampusScrapeJobData,
     type EcampusScrapeJobName
-} from './ecampus-scrape-job';
+} from '@/shared/ecampus-scrape-job';
 
 export class EcampusScrapingWorker {
     private readonly repository = new EcampusHttpRepository(new EcampusAuthService());
@@ -60,17 +60,32 @@ export class EcampusScrapingWorker {
             jobName: name
         });
 
+        // Login job has a different payload (cpf & password). Handle it separately.
+        if (name === 'login') {
+            const { cpf, password } = data as { cpf: string; password: string };
+            const auth = new EcampusAuthService();
+            const session = await auth.authenticate({ cpf, password } as any, password);
+            return { session };
+        }
+
+        // All other jobs carry an authenticated credentials object.
+        const { credentials } = data as { credentials: any };
+
         switch (name) {
             case 'profile':
-                return this.repository.getStudentProfile(data.credentials);
+                return this.repository.getStudentProfile(credentials);
             case 'schedule':
-                return this.repository.getSchedule(data.credentials);
+                return this.repository.getSchedule(credentials);
             case 'grades':
-                return this.repository.getGrades(data.credentials, this.requireField(data, 'year'), this.requireField(data, 'period'));
+                return this.repository.getGrades(
+                    credentials,
+                    this.requireField(data, 'year'),
+                    this.requireField(data, 'period'),
+                );
             case 'lesson-plan-subjects':
-                return this.repository.getLessonPlanSubjects(data.credentials);
+                return this.repository.getLessonPlanSubjects(credentials);
             case 'lesson-plan':
-                return this.repository.getLessonPlan(data.credentials, this.requireField(data, 'planId'));
+                return this.repository.getLessonPlan(credentials, this.requireField(data, 'planId'));
             default:
                 throw new Error(`Unsupported eCampus scraping job: ${name}`);
         }

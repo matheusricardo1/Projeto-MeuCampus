@@ -1,4 +1,5 @@
 import { Worker, type Job } from 'bullmq';
+import Redis from 'ioredis';
 import { EcampusAuthService } from '@ecampus/infrastructure/ecampus/ecampus-auth-service';
 import { EcampusHttpRepository } from '@ecampus/infrastructure/ecampus/ecampus-http.repository';
 import { appLogger } from '@/logging/app-logger';
@@ -11,6 +12,7 @@ import {
 
 export class EcampusScrapingWorker {
     private readonly repository = new EcampusHttpRepository(new EcampusAuthService());
+    private readonly redis = new (require('ioredis'))(createRedisConnectionOptions());
     private readonly worker: Worker<EcampusScrapeJobData>;
 
     constructor() {
@@ -60,17 +62,47 @@ export class EcampusScrapingWorker {
             jobName: name
         });
 
-        switch (name) {
-            case 'profile':
-                return this.repository.getStudentProfile(data.credentials);
-            case 'schedule':
-                return this.repository.getSchedule(data.credentials);
-            case 'grades':
-                return this.repository.getGrades(data.credentials, this.requireField(data, 'year'), this.requireField(data, 'period'));
-            case 'lesson-plan-subjects':
-                return this.repository.getLessonPlanSubjects(data.credentials);
-            case 'lesson-plan':
-                return this.repository.getLessonPlan(data.credentials, this.requireField(data, 'planId'));
+        // @ts-ignore – add login case
+    switch (name) {
+            case 'profile': {
+                const result = await this.repository.getStudentProfile(data.credentials);
+                await this.redis.set(`ecampus:result:${data.credentials.cpf}:profile`, JSON.stringify(result), 'EX', 3600);
+                return result;
+            }
+            case 'schedule': {
+                const result = await this.repository.getSchedule(data.credentials);
+                await this.redis.set(`ecampus:result:${data.credentials.cpf}:schedule`, JSON.stringify(result), 'EX', 3600);
+                return result;
+            }
+            case 'grades': {
+                const result = await this.repository.getGrades(
+                    data.credentials,
+                    this.requireField(data, 'year'),
+                    this.requireField(data, 'period')
+                );
+                await this.redis.set(`ecampus:result:${data.credentials.cpf}:grades`, JSON.stringify(result), 'EX', 3600);
+                return result;
+            }
+            case 'lesson-plan-subjects': {
+                const result = await this.repository.getLessonPlanSubjects(data.credentials);
+                await this.redis.set(`ecampus:result:${data.credentials.cpf}:lesson-plan-subjects`, JSON.stringify(result), 'EX', 3600);
+                return result;
+            }
+            case 'lesson-plan': {
+                const planId = this.requireField(data, 'planId');
+                const result = await this.repository.getLessonPlan(data.credentials, planId);
+                await this.redis.set(`ecampus:result:${data.credentials.cpf}:lesson-plan:${planId}`, JSON.stringify(result), 'EX', 3600);
+                return result;
+            }
+            case 'login': {
+                // data contains { cpf, password }
+                const authService = new EcampusAuthService();
+                const session = await authService.authenticate({ cpf: (data as any).cpf }, (data as any).password);
+                // Store session in Redis for later API lookup (optional)
+                await this.redis.set(`ecampus:session:${(data as any).cpf}`, JSON.stringify({ session }), 'EX', 3600);
+                // Return the raw session object – the API will encrypt it later
+                return { session };
+            }
             default:
                 throw new Error(`Unsupported eCampus scraping job: ${name}`);
         }

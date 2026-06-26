@@ -2,7 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { JwtAccessTokenService } from '@ecampus/infrastructure/security/jwt-access-token-service';
 import { JobService } from '@/modules/ecampus/application/ports/job-service';
 // Removed incorrect import; using JobService port instead
-import { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
+import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
 
 export interface LoginInput {
   cpf: string;
@@ -33,7 +33,7 @@ export class LoginUseCase {
     });
 
     // Espera o worker terminar (bolteia apenas aqui)
-    const result = await job.waitUntilFinished(this.jobService.getQueue());
+    const result = await job.waitUntilFinished(this.jobService.getQueue().events);
     if (!result || typeof result !== 'object' || !('session' in result)) {
       throw new BadRequestException('Login failed');
     }
