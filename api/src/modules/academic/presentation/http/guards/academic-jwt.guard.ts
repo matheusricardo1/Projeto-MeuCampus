@@ -1,24 +1,24 @@
 import { Injectable, type CanActivate, type ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import type { AiAuthenticatedUser } from '@ai/domain/models/ai-authenticated-user';
-import { JwtAccessTokenService } from '@ecampus/infrastructure/security/jwt-access-token-service';
+import { AccessTokenService } from '@academic/application/ports/access-token-service';
 import { AcademicSessionRegistry } from '@academic/application/ports/academic-session-registry';
+import type { AcademicCredentials } from '@academic/domain/models/academic-credentials';
 
-interface RequestWithAiUser {
+interface RequestWithAcademicCredentials {
     headers: {
         authorization?: string;
     };
-    aiUser?: AiAuthenticatedUser;
+    academicCredentials?: AcademicCredentials;
 }
 
 @Injectable()
-export class AiAuthGuard implements CanActivate {
+export class AcademicJwtGuard implements CanActivate {
     constructor(
-        private readonly accessTokenService: JwtAccessTokenService,
+        private readonly accessTokenService: AccessTokenService,
         private readonly sessionRegistry: AcademicSessionRegistry
     ) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
-        const request = context.switchToHttp().getRequest<RequestWithAiUser>();
+        const request = context.switchToHttp().getRequest<RequestWithAcademicCredentials>();
         const token = this.extractBearerToken(request.headers.authorization);
 
         try {
@@ -28,9 +28,9 @@ export class AiAuthGuard implements CanActivate {
                 throw new Error('Academic session is not active.');
             }
 
-            request.aiUser = { id: credentials.cpf };
+            request.academicCredentials = credentials;
             return true;
-        } catch {
+        } catch (error) {
             throw new UnauthorizedException('Sua sessao expirou. Entre novamente.');
         }
     }

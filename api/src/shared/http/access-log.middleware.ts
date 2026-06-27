@@ -15,8 +15,8 @@ export function accessLogMiddleware(request: Request, response: Response, next: 
         appLogger.access(`${request.method} ${request.originalUrl}`, {
             statusCode: response.statusCode,
             durationMs: Number(durationMs.toFixed(2)),
-            source: response.locals.ecampusDataSource,
-            resource: response.locals.ecampusResource
+            source: response.locals.academicDataSource ?? response.locals.ecampusDataSource,
+            resource: response.locals.academicResource ?? response.locals.ecampusResource
         });
     });
 

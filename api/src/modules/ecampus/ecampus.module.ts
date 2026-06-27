@@ -1,71 +1,80 @@
 import { Module } from '@nestjs/common';
-import { GetAcademicSubjectsUseCase } from '@ecampus/application/use-cases/get-academic-subjects.usecase';
-import { GetGradesUseCase } from '@ecampus/application/use-cases/get-grades.usecase';
-import { GetLessonPlanUseCase } from '@ecampus/application/use-cases/get-lesson-plan.usecase';
-import { GetLessonPlanSubjectsUseCase } from '@ecampus/application/use-cases/get-lesson-plan-subjects.usecase';
-import { GetScheduleUseCase } from '@ecampus/application/use-cases/get-schedule.usecase';
-import { GetProfileUseCase } from '@ecampus/application/use-cases/get-profile.usecase';
-import { LoginUseCase } from '@ecampus/application/use-cases/login.usecase';
-import { LogoutEcampusUseCase } from '@ecampus/application/use-cases/logout-ecampus.usecase';
+import { GetAcademicSubjectsUseCase } from '@academic/application/use-cases/get-academic-subjects.usecase';
+import { GetGradesUseCase } from '@academic/application/use-cases/get-grades.usecase';
+import { GetLessonPlanUseCase } from '@academic/application/use-cases/get-lesson-plan.usecase';
+import { GetLessonPlanSubjectsUseCase } from '@academic/application/use-cases/get-lesson-plan-subjects.usecase';
+import { GetScheduleUseCase } from '@academic/application/use-cases/get-schedule.usecase';
+import { GetProfileUseCase } from '@academic/application/use-cases/get-profile.usecase';
+import { LoginUseCase } from '@academic/application/use-cases/login.usecase';
+import { LogoutAcademicSessionUseCase } from '@academic/application/use-cases/logout-academic-session.usecase';
 import { JwtAccessTokenService } from '@ecampus/infrastructure/security/jwt-access-token-service';
-import { CacheRepository } from '@/modules/ecampus/application/ports/cache-repository';
-import { JobService } from '@/modules/ecampus/application/ports/job-service';
+import { AccessTokenService } from '@academic/application/ports/access-token-service';
+import { AcademicSessionRegistry } from '@academic/application/ports/academic-session-registry';
+import { AcademicDataRepository } from '@/modules/academic/application/ports/academic-data-repository';
+import { ScrapingJobService } from '@/modules/academic/application/ports/scraping-job-service';
 import { EcampusRedisRepository } from '@/modules/ecampus/infrastructure/redis/ecampus-redis.repository';
-import { EcampusJobService } from '@/modules/ecampus/application/services/ecampus-job.service';
-import { EcampusController } from '@ecampus/presentation/http/ecampus.controller';
-import { EcampusJwtGuard } from '@ecampus/presentation/http/guards/ecampus-jwt.guard';
-import { EcampusGateway } from '@ecampus/presentation/ws/ecampus.gateway';
-import { EcampusScrapeEventsSubscriber } from '@ecampus/application/services/ecampus-scrape-events.subscriber';
+import { EcampusSessionRegistry } from '@/modules/ecampus/infrastructure/redis/ecampus-session-registry';
+import { EcampusScrapingJobService } from '@/modules/ecampus/infrastructure/queue/ecampus-job.service';
+import { AcademicController } from '@academic/presentation/http/academic.controller';
+import { AcademicJwtGuard } from '@academic/presentation/http/guards/academic-jwt.guard';
+import { AcademicGateway } from '@academic/presentation/ws/academic.gateway';
+import { EcampusScrapeEventsSubscriber } from '@ecampus/infrastructure/redis/ecampus-scrape-events.subscriber';
 
 @Module({
-  controllers: [EcampusController],
+  controllers: [AcademicController],
   providers: [
     JwtAccessTokenService,
-    EcampusJobService,
+    EcampusScrapingJobService,
     EcampusRedisRepository,
-    EcampusJwtGuard,
-    EcampusGateway,
+    EcampusSessionRegistry,
+    AcademicJwtGuard,
+    AcademicGateway,
     EcampusScrapeEventsSubscriber,
     // Ports mapping
-    { provide: CacheRepository, useExisting: EcampusRedisRepository },
-    { provide: JobService, useExisting: EcampusJobService },
+    { provide: AccessTokenService, useExisting: JwtAccessTokenService },
+    { provide: AcademicDataRepository, useExisting: EcampusRedisRepository },
+    { provide: AcademicSessionRegistry, useExisting: EcampusSessionRegistry },
+    { provide: ScrapingJobService, useExisting: EcampusScrapingJobService },
     // Use‑cases
     {
       provide: GetAcademicSubjectsUseCase,
-      useFactory: (cache: CacheRepository, jobs: JobService) => new GetAcademicSubjectsUseCase(cache, jobs),
-      inject: [CacheRepository, JobService],
+      useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetAcademicSubjectsUseCase(cache, jobs),
+      inject: [AcademicDataRepository, ScrapingJobService],
     },
     {
       provide: GetGradesUseCase,
-      useFactory: (cache: CacheRepository, jobs: JobService) => new GetGradesUseCase(cache, jobs),
-      inject: [CacheRepository, JobService],
+      useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetGradesUseCase(cache, jobs),
+      inject: [AcademicDataRepository, ScrapingJobService],
     },
     {
       provide: GetLessonPlanUseCase,
-      useFactory: (cache: CacheRepository, jobs: JobService) => new GetLessonPlanUseCase(cache, jobs),
-      inject: [CacheRepository, JobService],
+      useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetLessonPlanUseCase(cache, jobs),
+      inject: [AcademicDataRepository, ScrapingJobService],
     },
     {
       provide: GetLessonPlanSubjectsUseCase,
-      useFactory: (cache: CacheRepository, jobs: JobService) => new GetLessonPlanSubjectsUseCase(cache, jobs),
-      inject: [CacheRepository, JobService],
+      useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetLessonPlanSubjectsUseCase(cache, jobs),
+      inject: [AcademicDataRepository, ScrapingJobService],
     },
     {
       provide: GetScheduleUseCase,
-      useFactory: (cache: CacheRepository, jobs: JobService) => new GetScheduleUseCase(cache, jobs),
-      inject: [CacheRepository, JobService],
+      useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetScheduleUseCase(cache, jobs),
+      inject: [AcademicDataRepository, ScrapingJobService],
     },
     {
       provide: GetProfileUseCase,
-      useFactory: (cache: CacheRepository, jobs: JobService) => new GetProfileUseCase(cache, jobs),
-      inject: [CacheRepository, JobService],
+      useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetProfileUseCase(cache, jobs),
+      inject: [AcademicDataRepository, ScrapingJobService],
     },
-    // Login already receives JobService via its constructor
-    LoginUseCase,
     {
-      provide: LogoutEcampusUseCase,
-      useFactory: (jobs: JobService, cache: CacheRepository) => new LogoutEcampusUseCase(jobs, cache),
-      inject: [JobService, CacheRepository],
+      provide: LoginUseCase,
+      useFactory: (jobs: ScrapingJobService, tokens: AccessTokenService, sessions: AcademicSessionRegistry) => new LoginUseCase(jobs, tokens, sessions),
+      inject: [ScrapingJobService, AccessTokenService, AcademicSessionRegistry],
+    },
+    {
+      provide: LogoutAcademicSessionUseCase,
+      useFactory: (jobs: ScrapingJobService, cache: AcademicDataRepository, sessions: AcademicSessionRegistry) => new LogoutAcademicSessionUseCase(jobs, cache, sessions),
+      inject: [ScrapingJobService, AcademicDataRepository, AcademicSessionRegistry],
     },
   ],
 })

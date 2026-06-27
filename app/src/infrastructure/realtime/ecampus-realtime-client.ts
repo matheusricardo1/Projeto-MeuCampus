@@ -8,7 +8,7 @@ const AUTH_REJECTED_EVENT = 'ecampus:auth-rejected';
 type RealtimeSubscriber = {
     onResourceReady: (event: EcampusResourceReadyEvent) => void;
     onConnected: () => void;
-    onAuthRejected?: () => void;
+    onAuthRejected?: (event?: EcampusAuthRejectedEvent) => void;
     onResourceFailed?: (event: EcampusResourceFailedEvent) => void;
 };
 
@@ -25,6 +25,10 @@ export interface EcampusResourceFailedEvent extends EcampusResourceReadyEvent {
     message: string;
 }
 
+export interface EcampusAuthRejectedEvent {
+    message?: string;
+}
+
 let activeToken: string | null = null;
 let activeSocket: Socket | null = null;
 const subscribers = new Set<RealtimeSubscriber>();
@@ -33,7 +37,7 @@ export function connectEcampusRealtime(
     accessToken: string,
     onResourceReady: (event: EcampusResourceReadyEvent) => void,
     onConnected: () => void,
-    onAuthRejected?: () => void,
+    onAuthRejected?: (event?: EcampusAuthRejectedEvent) => void,
     onResourceFailed?: (event: EcampusResourceFailedEvent) => void
 ): () => void {
     if (!isJwtLike(accessToken)) {
@@ -89,9 +93,11 @@ function ensureSocket(accessToken: string): void {
         }
     });
 
-    activeSocket.on(AUTH_REJECTED_EVENT, () => {
-        for (const subscriber of subscribers) {
-            subscriber.onAuthRejected?.();
+    activeSocket.on(AUTH_REJECTED_EVENT, (event?: EcampusAuthRejectedEvent) => {
+        const snapshot = [...subscribers];
+        disconnectSocket();
+        for (const subscriber of snapshot) {
+            subscriber.onAuthRejected?.(event);
         }
     });
 }

@@ -2,26 +2,21 @@ import 'reflect-metadata';
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
-import { register } from 'tsconfig-paths';
+import { AppModule } from '@/app.module';
+import { HttpErrorFilter } from '@/shared/http/http-error.filter';
+import { accessLogMiddleware } from '@/shared/http/access-log.middleware';
+import { securityHeadersMiddleware } from '@/shared/http/security-headers.middleware';
+import { httpsEnforcementMiddleware } from '@/shared/http/https-enforcement.middleware';
+import { createRequestHardeningMiddleware } from '@/shared/http/request-hardening.middleware';
+import { rateLimitMiddleware } from '@/shared/http/rate-limit.middleware';
 
-register({
-    baseUrl: __dirname,
-    paths: {
-        '@/*': ['*'],
-        '@ecampus/*': ['modules/ecampus/*']
-    }
-});
+type CorsCallback = (error: Error | null, allow?: boolean) => void;
 
-const { AppModule } = require('@/app.module') as typeof import('./app.module');
-const { HttpErrorFilter } = require('@/shared/http/http-error.filter') as typeof import('./shared/http/http-error.filter');
-const { accessLogMiddleware } = require('@/shared/http/access-log.middleware') as typeof import('./shared/http/access-log.middleware');
-const { securityHeadersMiddleware } = require('@/shared/http/security-headers.middleware') as typeof import('./shared/http/security-headers.middleware');
-const { httpsEnforcementMiddleware } = require('@/shared/http/https-enforcement.middleware') as typeof import('./shared/http/https-enforcement.middleware');
-const { createRequestHardeningMiddleware } = require('@/shared/http/request-hardening.middleware') as typeof import('./shared/http/request-hardening.middleware');
-const { rateLimitMiddleware } = require('@/shared/http/rate-limit.middleware') as typeof import('./shared/http/rate-limit.middleware');
+const allowedOrigins = getAllowedOrigins();
 
 export async function createNestApp(): Promise<INestApplication> {
     const app = await NestFactory.create(AppModule);
+
     app.getHttpAdapter().getInstance().set('trust proxy', 1);
     app.use(securityHeadersMiddleware);
     app.use(httpsEnforcementMiddleware);
@@ -31,7 +26,7 @@ export async function createNestApp(): Promise<INestApplication> {
     app.useGlobalFilters(new HttpErrorFilter());
     app.enableShutdownHooks();
     app.enableCors({
-        origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
+        origin: (origin: string | undefined, callback: CorsCallback) => {
             if (!origin || isAllowedOrigin(origin)) {
                 callback(null, true);
                 return;
@@ -78,7 +73,7 @@ function isAllowedOrigin(origin: string): boolean {
         return false;
     }
 
-    return getAllowedOrigins().some((allowedOrigin) => matchesOrigin(normalizedOrigin, allowedOrigin));
+    return allowedOrigins.some((allowedOrigin) => matchesOrigin(normalizedOrigin, allowedOrigin));
 }
 
 function matchesOrigin(origin: string, allowedOrigin: string): boolean {

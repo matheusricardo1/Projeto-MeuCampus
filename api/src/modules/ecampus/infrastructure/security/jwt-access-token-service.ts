@@ -1,8 +1,8 @@
 import { JwtService } from '@nestjs/jwt';
 import type { StringValue } from 'ms';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
-import type { AccessTokenService } from '@ecampus/application/ports/access-token-service';
-import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
+import { AccessTokenService } from '@academic/application/ports/access-token-service';
+import type { AcademicCredentials } from '@academic/domain/models/academic-credentials';
 
 interface EcampusJwtPayload {
     sub: string;
@@ -10,13 +10,14 @@ interface EcampusJwtPayload {
     version: 3;
 }
 
-export class JwtAccessTokenService implements AccessTokenService {
+export class JwtAccessTokenService extends AccessTokenService {
     private readonly jwtService: JwtService;
     private readonly encryptionKey: Buffer;
 
     constructor(
         secret: string | undefined = process.env.ECAMPUS_JWT_SECRET || process.env.JWT_SECRET
     ) {
+        super();
         if (!secret) {
             throw new Error("CRITICAL: ECAMPUS_JWT_SECRET or JWT_SECRET must be defined.");
         }
@@ -30,9 +31,9 @@ export class JwtAccessTokenService implements AccessTokenService {
         });
     }
 
-    sign(credentials: EcampusCredentials): string {
+    sign(credentials: AcademicCredentials): string {
         if (!credentials.session) {
-            throw new Error("Session payload is required to sign the eCampus token.");
+            throw new Error("Session payload is required to sign the access token.");
         }
 
         return this.jwtService.sign({
@@ -42,11 +43,11 @@ export class JwtAccessTokenService implements AccessTokenService {
         } satisfies EcampusJwtPayload);
     }
 
-    verify(token: string): EcampusCredentials {
+    verify(token: string): AcademicCredentials {
         const payload = this.jwtService.verify<EcampusJwtPayload>(token);
 
         if (!payload.sub || payload.version !== 3 || !payload.session) {
-            throw new Error("Invalid eCampus token payload.");
+            throw new Error("Invalid access token payload.");
         }
 
         return {
@@ -69,7 +70,7 @@ export class JwtAccessTokenService implements AccessTokenService {
         const [ivPart, authTagPart, encryptedPart] = value.split('.');
 
         if (!ivPart || !authTagPart || !encryptedPart) {
-            throw new Error("Invalid encrypted eCampus session payload.");
+            throw new Error("Invalid encrypted session payload.");
         }
 
         const decipher = createDecipheriv(
@@ -87,7 +88,7 @@ export class JwtAccessTokenService implements AccessTokenService {
 
         const parsed = JSON.parse(decrypted);
         if (!parsed || typeof parsed !== 'object') {
-            throw new Error("Invalid decrypted eCampus session payload.");
+            throw new Error("Invalid decrypted session payload.");
         }
 
         return parsed as Record<string, unknown>;

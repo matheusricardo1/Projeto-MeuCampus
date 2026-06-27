@@ -392,9 +392,9 @@ export function useEcampusWorkspace() {
                         void prefetchWorkspace({ force: false });
                     }
                 },
-                () => {
+                (event) => {
                     if (!disposed) {
-                        void expireSession();
+                        void expireSession(event?.message);
                     }
                 },
                 (event) => {

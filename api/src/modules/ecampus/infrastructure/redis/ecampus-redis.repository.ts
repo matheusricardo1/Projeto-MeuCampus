@@ -1,27 +1,27 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import Redis from 'ioredis';
-import { CacheRepository } from '@/modules/ecampus/application/ports/cache-repository';
+import { AcademicDataRepository } from '@/modules/academic/application/ports/academic-data-repository';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
-import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from '@/shared/ecampus-cache';
-import type { AcademicSubject } from '@ecampus/domain/models/academic-subject';
-import type { Grade } from '@ecampus/domain/models/grade';
-import type { LessonPlanItem } from '@ecampus/domain/models/lesson-plan-item';
-import type { LessonPlanSubject } from '@ecampus/domain/models/lesson-plan-subject';
-import type { ScheduleClass } from '@ecampus/domain/models/schedule-class';
-import type { StudentProfile } from '@ecampus/domain/models/student-profile';
+import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from '@ecampus/infrastructure/redis/ecampus-cache';
+import type { AcademicSubject } from '@academic/domain/models/academic-subject';
+import type { Grade } from '@academic/domain/models/grade';
+import type { LessonPlanItem } from '@academic/domain/models/lesson-plan-item';
+import type { LessonPlanSubject } from '@academic/domain/models/lesson-plan-subject';
+import type { ScheduleClass } from '@academic/domain/models/schedule-class';
+import type { StudentProfile } from '@academic/domain/models/student-profile';
 import {
   normalizeAcademicSubjects,
   normalizeGrades,
   normalizeLessonPlanSubjects,
   normalizeSchedule
-} from '@ecampus/domain/services/academic-subject-normalizer';
+} from '@academic/domain/services/academic-subject-normalizer';
 
 /**
  * Reads the raw page-level results saved by workers and maps them into the
  * domain shapes expected by the application.
  */
 @Injectable()
-export class EcampusRedisRepository extends CacheRepository {
+export class EcampusRedisRepository extends AcademicDataRepository {
   private readonly redis: Redis;
 
   constructor() {

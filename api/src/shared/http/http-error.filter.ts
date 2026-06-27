@@ -2,9 +2,7 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from
 import type { Request, Response } from 'express';
 import { appLogger } from '@/shared/logging/app-logger';
 import { InvalidAiMessageError } from '@ai/domain/errors/invalid-ai-message.error';
-import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
-import { ResourceNotFoundError } from '@ecampus/domain/errors/resource-not-found.error';
-import { InvalidEcampusRequestError } from '@ecampus/presentation/http/errors/invalid-ecampus-request.error';
+import { InvalidAcademicRequestError } from '@academic/presentation/http/errors/invalid-academic-request.error';
 
 const statusMessages: Record<number, string> = {
     [HttpStatus.BAD_REQUEST]: 'Requisicao invalida.',
@@ -68,15 +66,11 @@ export class HttpErrorFilter implements ExceptionFilter {
             }
         }
 
-        if (exception instanceof ResourceNotFoundError) {
-            return this.translateMessage(exception.message, statusCode);
-        }
-
         if (exception instanceof InvalidAiMessageError) {
             return this.translateMessage(exception.message, statusCode);
         }
 
-        if (exception instanceof AuthenticationError || exception instanceof InvalidEcampusRequestError) {
+        if (exception instanceof InvalidAcademicRequestError) {
             return this.translateMessage(exception.message, statusCode);
         }
 
@@ -128,9 +122,7 @@ export class HttpErrorFilter implements ExceptionFilter {
     private getStatusCode(exception: unknown): number {
         if (exception instanceof HttpException) return exception.getStatus();
         if (exception instanceof InvalidAiMessageError) return HttpStatus.BAD_REQUEST;
-        if (exception instanceof InvalidEcampusRequestError) return HttpStatus.BAD_REQUEST;
-        if (exception instanceof AuthenticationError) return HttpStatus.UNAUTHORIZED;
-        if (exception instanceof ResourceNotFoundError) return HttpStatus.NOT_FOUND;
+        if (exception instanceof InvalidAcademicRequestError) return HttpStatus.BAD_REQUEST;
         return HttpStatus.INTERNAL_SERVER_ERROR;
     }
 

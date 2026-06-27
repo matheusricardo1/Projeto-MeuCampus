@@ -17,6 +17,7 @@ type AuthenticatedScrapeJobData = Extract<EcampusScrapeJobData, { credentials: u
 export class EcampusScrapingWorker {
     private readonly repository = new EcampusHttpRepository(new EcampusAuthService());
     private readonly redis = new Redis(createRedisConnectionOptions());
+    private readonly publishedFailedJobIds = new Set<string>();
     private readonly worker: Worker<EcampusScrapeJobData>;
 
     constructor() {
@@ -43,6 +44,10 @@ export class EcampusScrapingWorker {
                 errorName: error.name,
                 message: error.message
             });
+
+            if (job) {
+                void this.publishFailedJob(job, error, 'worker-failed-listener');
+            }
         });
     }
 
@@ -103,7 +108,7 @@ export class EcampusScrapingWorker {
             }
         } catch (error) {
             const normalizedError = this.toError(error);
-            await this.publishFailedJob(job, normalizedError);
+            await this.publishFailedJob(job, normalizedError, 'processor-catch');
             throw normalizedError;
         }
     }
@@ -178,9 +183,22 @@ export class EcampusScrapingWorker {
         return result;
     }
 
-    private async publishFailedJob(job: Job<EcampusScrapeJobData>, error: Error): Promise<void> {
+    private async publishFailedJob(job: Job<EcampusScrapeJobData>, error: Error, origin: 'processor-catch' | 'worker-failed-listener'): Promise<void> {
+        const jobId = job.id ?? `${job.name}:${job.timestamp}`;
+        if (this.publishedFailedJobIds.has(jobId)) {
+            return;
+        }
+
         const resource = this.toCachedResource(job.name);
         if (!resource || !('credentials' in job.data)) {
+            appLogger.warning('Skipped eCampus scraping failure notification without publishable job data.', {
+                jobId: job.id,
+                jobName: job.name,
+                origin,
+                hasResource: Boolean(resource),
+                hasCredentials: 'credentials' in job.data,
+                errorName: error.name
+            });
             return;
         }
 
@@ -193,13 +211,44 @@ export class EcampusScrapingWorker {
             ...this.getEventParameters(resource, job.data)
         };
 
-        await this.redis.publish(ECAMPUS_SCRAPE_RESULT_CHANNEL, JSON.stringify(event));
-        appLogger.warning('Published eCampus scraping failure notification.', {
-            channel: ECAMPUS_SCRAPE_RESULT_CHANNEL,
-            jobId: job.id,
-            jobName: job.name,
-            resource,
-            errorName: error.name
+        if (error.name === 'AuthenticationError') {
+            await this.invalidateLocalSessionAfterAuthenticationFailure(event.cpf);
+        }
+
+        try {
+            this.publishedFailedJobIds.add(jobId);
+            await this.redis.publish(ECAMPUS_SCRAPE_RESULT_CHANNEL, JSON.stringify(event));
+            appLogger.warning('Published eCampus scraping failure notification.', {
+                channel: ECAMPUS_SCRAPE_RESULT_CHANNEL,
+                jobId: job.id,
+                jobName: job.name,
+                resource,
+                errorName: error.name,
+                origin
+            });
+        } catch (publishError) {
+            this.publishedFailedJobIds.delete(jobId);
+            appLogger.error('Failed to publish eCampus scraping failure notification.', {
+                channel: ECAMPUS_SCRAPE_RESULT_CHANNEL,
+                jobId: job.id,
+                jobName: job.name,
+                resource,
+                errorName: error.name,
+                origin,
+                publishErrorName: publishError instanceof Error ? publishError.name : 'UnknownError',
+                publishErrorMessage: publishError instanceof Error ? publishError.message : String(publishError)
+            });
+        }
+    }
+
+    private async invalidateLocalSessionAfterAuthenticationFailure(cpf: string): Promise<void> {
+        const [cacheDeletedKeys] = await Promise.all([
+            this.clearUserCache(cpf),
+            this.redis.del(`ecampus:session:${cpf}`)
+        ]);
+
+        appLogger.warning('Invalidated eCampus session after authentication failure.', {
+            cacheDeletedKeys
         });
     }
 

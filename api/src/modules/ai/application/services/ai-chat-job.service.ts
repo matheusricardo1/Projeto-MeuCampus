@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Queue, QueueEvents } from 'bullmq';
 import { AiJobService } from '@ai/application/ports/ai-job-service';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
-import { AI_CHAT_QUEUE_NAME, type AiChatJobData } from '@/shared/ai-chat-job';
+import { AI_CHAT_QUEUE_NAME, type AiChatJobData } from '@ai/application/services/ai-chat-job';
 
 @Injectable()
 export class AiChatJobService extends AiJobService {
