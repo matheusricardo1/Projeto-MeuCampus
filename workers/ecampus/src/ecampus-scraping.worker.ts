@@ -10,7 +10,7 @@ import {
     type EcampusScrapeJobName
 } from './ecampus-scrape-job';
 import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from './ecampus-cache';
-import { ECAMPUS_SCRAPE_RESULT_CHANNEL, type EcampusResourceReadyEvent } from './ecampus-scrape-events';
+import { ECAMPUS_SCRAPE_RESULT_CHANNEL, type EcampusResourceFailedEvent, type EcampusResourceReadyEvent } from './ecampus-scrape-events';
 
 type AuthenticatedScrapeJobData = Extract<EcampusScrapeJobData, { credentials: unknown }>;
 
@@ -76,29 +76,35 @@ export class EcampusScrapingWorker {
 
         const authenticatedData = data as AuthenticatedScrapeJobData;
 
-        switch (name) {
-            case 'logout':
-                return this.logoutAndClearCache(authenticatedData.credentials);
-            case 'profile': {
-                return this.cacheAndPublish('profile', authenticatedData.credentials, this.repository.getStudentProfile(authenticatedData.credentials));
+        try {
+            switch (name) {
+                case 'logout':
+                    return this.logoutAndClearCache(authenticatedData.credentials);
+                case 'profile': {
+                    return this.cacheAndPublish('profile', authenticatedData.credentials, this.repository.getStudentProfile(authenticatedData.credentials));
+                }
+                case 'schedule': {
+                    return this.cacheAndPublish('schedule', authenticatedData.credentials, this.repository.getSchedule(authenticatedData.credentials));
+                }
+                case 'grades': {
+                    const year = this.requireField(authenticatedData, 'year');
+                    const period = this.requireField(authenticatedData, 'period');
+                    return this.cacheAndPublish('grades', authenticatedData.credentials, this.repository.getGrades(authenticatedData.credentials, year, period), { year, period });
+                }
+                case 'lesson-plan-subjects': {
+                    return this.cacheAndPublish('lesson-plan-subjects', authenticatedData.credentials, this.repository.getLessonPlanSubjects(authenticatedData.credentials));
+                }
+                case 'lesson-plan': {
+                    const planId = this.requireField(authenticatedData, 'planId');
+                    return this.cacheAndPublish('lesson-plan', authenticatedData.credentials, this.repository.getLessonPlan(authenticatedData.credentials, planId), { planId });
+                }
+                default:
+                    throw new Error(`Unsupported eCampus scraping job: ${name}`);
             }
-            case 'schedule': {
-                return this.cacheAndPublish('schedule', authenticatedData.credentials, this.repository.getSchedule(authenticatedData.credentials));
-            }
-            case 'grades': {
-                const year = this.requireField(authenticatedData, 'year');
-                const period = this.requireField(authenticatedData, 'period');
-                return this.cacheAndPublish('grades', authenticatedData.credentials, this.repository.getGrades(authenticatedData.credentials, year, period), { year, period });
-            }
-            case 'lesson-plan-subjects': {
-                return this.cacheAndPublish('lesson-plan-subjects', authenticatedData.credentials, this.repository.getLessonPlanSubjects(authenticatedData.credentials));
-            }
-            case 'lesson-plan': {
-                const planId = this.requireField(authenticatedData, 'planId');
-                return this.cacheAndPublish('lesson-plan', authenticatedData.credentials, this.repository.getLessonPlan(authenticatedData.credentials, planId), { planId });
-            }
-            default:
-                throw new Error(`Unsupported eCampus scraping job: ${name}`);
+        } catch (error) {
+            const normalizedError = this.toError(error);
+            await this.publishFailedJob(job, normalizedError);
+            throw normalizedError;
         }
     }
 
@@ -170,5 +176,55 @@ export class EcampusScrapingWorker {
         } satisfies EcampusResourceReadyEvent));
 
         return result;
+    }
+
+    private async publishFailedJob(job: Job<EcampusScrapeJobData>, error: Error): Promise<void> {
+        const resource = this.toCachedResource(job.name);
+        if (!resource || !('credentials' in job.data)) {
+            return;
+        }
+
+        const event: EcampusResourceFailedEvent = {
+            cpf: job.data.credentials.cpf,
+            resource,
+            status: 'failed',
+            errorName: error.name,
+            message: error.message,
+            ...this.getEventParameters(resource, job.data)
+        };
+
+        await this.redis.publish(ECAMPUS_SCRAPE_RESULT_CHANNEL, JSON.stringify(event));
+        appLogger.warning('Published eCampus scraping failure notification.', {
+            channel: ECAMPUS_SCRAPE_RESULT_CHANNEL,
+            jobId: job.id,
+            jobName: job.name,
+            resource,
+            errorName: error.name
+        });
+    }
+
+    private toError(error: unknown): Error {
+        return error instanceof Error ? error : new Error(String(error));
+    }
+
+    private toCachedResource(name: string): EcampusCachedResource | null {
+        return ['profile', 'schedule', 'grades', 'lesson-plan-subjects', 'lesson-plan'].includes(name)
+            ? name as EcampusCachedResource
+            : null;
+    }
+
+    private getEventParameters(
+        resource: EcampusCachedResource,
+        data: EcampusScrapeJobData
+    ): Pick<EcampusResourceReadyEvent, 'year' | 'period' | 'planId'> {
+        if (resource === 'grades' && 'year' in data && 'period' in data) {
+            return { year: data.year, period: data.period };
+        }
+
+        if (resource === 'lesson-plan' && 'planId' in data) {
+            return { planId: data.planId };
+        }
+
+        return {};
     }
 }

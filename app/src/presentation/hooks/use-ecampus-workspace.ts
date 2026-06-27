@@ -8,7 +8,7 @@ import type { StudentProfile } from '@/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
 import { EcampusResourcePendingError } from '@/domain/errors/ecampus-resource-pending.error';
 import { createEcampusUseCases } from '@/presentation/composition/create-ecampus-use-cases';
-import { connectEcampusRealtime, type EcampusResourceReadyEvent } from '@/infrastructure/realtime/ecampus-realtime-client';
+import { connectEcampusRealtime, type EcampusResourceFailedEvent, type EcampusResourceReadyEvent } from '@/infrastructure/realtime/ecampus-realtime-client';
 import { useLanguage } from '@/presentation/i18n/language-provider';
 import type { TranslationKey, TranslationValues } from '@/presentation/i18n/languages';
 
@@ -66,8 +66,10 @@ export function useEcampusWorkspace() {
     const useCases = useMemo(() => createEcampusUseCases(), []);
     const currentGradesInput = useMemo(() => getCurrentGradesInput(), []);
     const sessionGeneration = useRef(0);
+    const isExpiringSessionRef = useRef(false);
     const inFlightRequests = useRef(new Map<ResourceKey, Promise<unknown>>());
     const realtimeHandlerRef = useRef<(event: EcampusResourceReadyEvent) => void>(() => undefined);
+    const realtimeFailureHandlerRef = useRef<(event: EcampusResourceFailedEvent) => void>(() => undefined);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [loadingRequests, setLoadingRequests] = useState(0);
@@ -132,16 +134,25 @@ export function useEcampusWorkspace() {
     };
 
     const expireSession = async (message?: string) => {
-        startNewSessionGeneration();
-        setIsAuthenticated(false);
-        clearWorkspaceData();
-        setActiveTab('home');
-        if (message) {
-            setRawError(message);
-        } else {
-            setTranslatedError('errors.sessionExpired');
+        if (isExpiringSessionRef.current) {
+            return;
         }
-        await useCases.clearAuthSession.execute();
+
+        isExpiringSessionRef.current = true;
+        try {
+            startNewSessionGeneration();
+            setIsAuthenticated(false);
+            clearWorkspaceData();
+            setActiveTab('home');
+            if (message) {
+                setRawError(message);
+            } else {
+                setTranslatedError('errors.sessionExpired');
+            }
+            await useCases.clearAuthSession.execute();
+        } finally {
+            isExpiringSessionRef.current = false;
+        }
     };
 
     const runSingle = async <T,>(key: ResourceKey, task: () => Promise<T>): Promise<T | null> => {
@@ -267,7 +278,7 @@ export function useEcampusWorkspace() {
 
     const loadLessonPlanSubjects = async (options?: RequestOptions) => {
         const generation = sessionGeneration.current;
-        const data = await runSingle('lessonPlanSubjects', () => run(() => useCases.getLessonPlanSubjects.execute(), {
+        const data = await runSingle('lessonPlanSubjects', () => run(() => useCases.getLessonPlanSubjects.execute(gradesInput.year, gradesInput.period), {
             ...options,
             sessionGeneration: generation
         }));
@@ -334,10 +345,12 @@ export function useEcampusWorkspace() {
                 return;
             case 'schedule':
                 void loadSchedule(silentOptions);
+                void loadLessonPlanSubjects(silentOptions);
                 return;
             case 'grades':
                 if (event.year === gradesInput.year && event.period === gradesInput.period) {
                     void loadGrades(silentOptions);
+                    void loadLessonPlanSubjects(silentOptions);
                 }
                 return;
             case 'lesson-plan-subjects':
@@ -349,6 +362,12 @@ export function useEcampusWorkspace() {
                     void loadLessonPlan(silentOptions);
                 }
             }
+        }
+    };
+
+    realtimeFailureHandlerRef.current = (event: EcampusResourceFailedEvent) => {
+        if (event.errorName === 'AuthenticationError') {
+            void expireSession(event.message);
         }
     };
 
@@ -371,6 +390,16 @@ export function useEcampusWorkspace() {
                 () => {
                     if (!disposed) {
                         void prefetchWorkspace({ force: false });
+                    }
+                },
+                () => {
+                    if (!disposed) {
+                        void expireSession();
+                    }
+                },
+                (event) => {
+                    if (!disposed) {
+                        realtimeFailureHandlerRef.current(event);
                     }
                 }
             );

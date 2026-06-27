@@ -2,12 +2,14 @@ import { io, type Socket } from 'socket.io-client';
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3001';
 const RESOURCE_READY_EVENT = 'ecampus:resource-ready';
+const RESOURCE_FAILED_EVENT = 'ecampus:resource-failed';
 const AUTH_REJECTED_EVENT = 'ecampus:auth-rejected';
 
 type RealtimeSubscriber = {
     onResourceReady: (event: EcampusResourceReadyEvent) => void;
     onConnected: () => void;
     onAuthRejected?: () => void;
+    onResourceFailed?: (event: EcampusResourceFailedEvent) => void;
 };
 
 export interface EcampusResourceReadyEvent {
@@ -15,6 +17,12 @@ export interface EcampusResourceReadyEvent {
     year?: string;
     period?: string;
     planId?: string;
+}
+
+export interface EcampusResourceFailedEvent extends EcampusResourceReadyEvent {
+    status: 'failed';
+    errorName: string;
+    message: string;
 }
 
 let activeToken: string | null = null;
@@ -25,14 +33,15 @@ export function connectEcampusRealtime(
     accessToken: string,
     onResourceReady: (event: EcampusResourceReadyEvent) => void,
     onConnected: () => void,
-    onAuthRejected?: () => void
+    onAuthRejected?: () => void,
+    onResourceFailed?: (event: EcampusResourceFailedEvent) => void
 ): () => void {
     if (!isJwtLike(accessToken)) {
         onAuthRejected?.();
         return () => undefined;
     }
 
-    const subscriber = { onResourceReady, onConnected, onAuthRejected };
+    const subscriber = { onResourceReady, onConnected, onAuthRejected, onResourceFailed };
     subscribers.add(subscriber);
     ensureSocket(accessToken);
 
@@ -65,6 +74,12 @@ function ensureSocket(accessToken: string): void {
     activeSocket.on(RESOURCE_READY_EVENT, (event: EcampusResourceReadyEvent) => {
         for (const subscriber of subscribers) {
             subscriber.onResourceReady(event);
+        }
+    });
+
+    activeSocket.on(RESOURCE_FAILED_EVENT, (event: EcampusResourceFailedEvent) => {
+        for (const subscriber of subscribers) {
+            subscriber.onResourceFailed?.(event);
         }
     });
 

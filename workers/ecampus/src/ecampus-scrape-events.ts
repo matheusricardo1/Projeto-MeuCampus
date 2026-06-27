@@ -9,3 +9,11 @@ export interface EcampusResourceReadyEvent {
     period?: string;
     planId?: string;
 }
+
+export interface EcampusResourceFailedEvent extends EcampusResourceReadyEvent {
+    status: 'failed';
+    errorName: string;
+    message: string;
+}
+
+export type EcampusScrapeResultEvent = EcampusResourceReadyEvent | EcampusResourceFailedEvent;

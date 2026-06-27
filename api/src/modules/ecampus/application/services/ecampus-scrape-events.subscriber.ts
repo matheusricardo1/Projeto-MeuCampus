@@ -3,7 +3,11 @@ import Redis from 'ioredis';
 import { EcampusGateway } from '@ecampus/presentation/ws/ecampus.gateway';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
-import { ECAMPUS_SCRAPE_RESULT_CHANNEL, type EcampusResourceReadyEvent } from '@/shared/ecampus-scrape-events';
+import {
+    ECAMPUS_SCRAPE_RESULT_CHANNEL,
+    type EcampusResourceFailedEvent,
+    type EcampusScrapeResultEvent
+} from '@/shared/ecampus-scrape-events';
 
 @Injectable()
 export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDestroy {
@@ -33,10 +37,10 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
     }
 
     private handleMessage(message: string): void {
-        let event: EcampusResourceReadyEvent;
+        let event: EcampusScrapeResultEvent;
 
         try {
-            event = JSON.parse(message) as EcampusResourceReadyEvent;
+            event = JSON.parse(message) as EcampusScrapeResultEvent;
             if (!event.cpf || !event.resource) {
                 throw new Error('Invalid eCampus scrape event.');
             }
@@ -53,10 +57,16 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
             resource: event.resource,
             year: event.year,
             period: event.period,
-            planId: event.planId
+            planId: event.planId,
+            status: 'status' in event ? event.status : 'ready'
         });
 
         try {
+            if (this.isFailedEvent(event)) {
+                this.gateway.emitResourceFailed(event);
+                return;
+            }
+
             this.gateway.emitResourceReady(event);
         } catch (error) {
             logger.error('Failed to send eCampus scrape notification through WebSocket.', {
@@ -68,5 +78,9 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
                 planId: event.planId
             });
         }
+    }
+
+    private isFailedEvent(event: EcampusScrapeResultEvent): event is EcampusResourceFailedEvent {
+        return 'status' in event && event.status === 'failed';
     }
 }

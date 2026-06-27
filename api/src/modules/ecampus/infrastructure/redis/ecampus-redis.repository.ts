@@ -1,44 +1,92 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import Redis from 'ioredis';
+import { CacheRepository } from '@/modules/ecampus/application/ports/cache-repository';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from '@/shared/ecampus-cache';
+import type { AcademicSubject } from '@ecampus/domain/models/academic-subject';
+import type { Grade } from '@ecampus/domain/models/grade';
+import type { LessonPlanItem } from '@ecampus/domain/models/lesson-plan-item';
+import type { LessonPlanSubject } from '@ecampus/domain/models/lesson-plan-subject';
+import type { ScheduleClass } from '@ecampus/domain/models/schedule-class';
+import type { StudentProfile } from '@ecampus/domain/models/student-profile';
+import {
+  normalizeAcademicSubjects,
+  normalizeGrades,
+  normalizeLessonPlanSubjects,
+  normalizeSchedule
+} from '@ecampus/domain/services/academic-subject-normalizer';
 
 /**
- * Simple read‑only repository that fetches data that the worker stored in Redis.
- * The cache TTL is 1 hour (set by the worker). If a key is missing we throw
- * a NotFoundException – the controller can decide to enqueue a job instead.
+ * Reads the raw page-level results saved by workers and maps them into the
+ * domain shapes expected by the application.
  */
 @Injectable()
-export class EcampusRedisRepository {
+export class EcampusRedisRepository extends CacheRepository {
   private readonly redis: Redis;
 
   constructor() {
+    super();
     this.redis = new Redis(createRedisConnectionOptions());
   }
 
-  async get<T>(resource: EcampusCachedResource, cpf: string, extra?: string): Promise<T> {
-    const raw = await this.redis.get(getEcampusCacheKey(resource, cpf, extra));
-    if (!raw) {
-      throw new NotFoundException(`No cached result for ${resource}`);
-    }
-    return JSON.parse(raw) as T;
+  async getProfile(cpf: string): Promise<StudentProfile> {
+    return this.getRequired<StudentProfile>('profile', cpf);
   }
 
-  // Convenience helpers used by the controller (typed)
-  async getProfile(cpf: string) {
-    return this.get<any>('profile', cpf);
+  async getSchedule(cpf: string): Promise<ScheduleClass[]> {
+    return normalizeSchedule(await this.getRequired('schedule', cpf));
   }
-  async getSchedule(cpf: string) {
-    return this.get<any>('schedule', cpf);
+
+  async getGrades(cpf: string, year: string, period: string): Promise<Grade[]> {
+    const [grades, lessonPlanSubjects] = await Promise.all([
+      this.getRequired('grades', cpf, `${year}-${period}`),
+      this.getOptional('lesson-plan-subjects', cpf)
+    ]);
+
+    return normalizeGrades(grades, lessonPlanSubjects);
   }
-  async getGrades(cpf: string, year: string, period: string) {
-    return this.get<any>('grades', cpf, `${year}-${period}`);
+
+  async getLessonPlanSubjects(cpf: string): Promise<LessonPlanSubject[]> {
+    const [lessonPlanSubjects, schedule] = await Promise.all([
+      this.getRequired('lesson-plan-subjects', cpf),
+      this.getOptional('schedule', cpf)
+    ]);
+
+    const academicSubjects = normalizeAcademicSubjects({
+      lessonPlanSubjects,
+      schedule
+    });
+
+    return academicSubjects.map((subject) => ({
+      planId: subject.planId,
+      code: subject.code,
+      subject: subject.subject,
+      classIdentifier: subject.classIdentifier,
+      credits: subject.credits,
+      professor: subject.professor,
+      workloadHours: subject.workloadHours,
+      available: subject.available,
+      grade: subject.grade,
+      scheduleItems: subject.scheduleItems
+    }));
   }
-  async getLessonPlanSubjects(cpf: string) {
-    return this.get<any>('lesson-plan-subjects', cpf);
+
+  async getLessonPlan(cpf: string, planId: string): Promise<LessonPlanItem[]> {
+    return this.getRequired<LessonPlanItem[]>('lesson-plan', cpf, planId);
   }
-  async getLessonPlan(cpf: string, planId: string) {
-    return this.get<any>('lesson-plan', cpf, planId);
+
+  async getAcademicSubjects(cpf: string, year: string, period: string): Promise<AcademicSubject[]> {
+    const [grades, lessonPlanSubjects, schedule] = await Promise.all([
+      this.getRequired('grades', cpf, `${year}-${period}`),
+      this.getOptional('lesson-plan-subjects', cpf),
+      this.getOptional('schedule', cpf)
+    ]);
+
+    return normalizeAcademicSubjects({
+      grades,
+      lessonPlanSubjects,
+      schedule
+    });
   }
 
   async clearUserCache(cpf: string): Promise<number> {
@@ -56,5 +104,19 @@ export class EcampusRedisRepository {
     } while (cursor !== '0');
 
     return deletedKeys;
+  }
+
+  private async getRequired<T = unknown>(resource: EcampusCachedResource, cpf: string, extra?: string): Promise<T> {
+    const raw = await this.redis.get(getEcampusCacheKey(resource, cpf, extra));
+    if (!raw) {
+      throw new NotFoundException(`No cached result for ${resource}`);
+    }
+
+    return JSON.parse(raw) as T;
+  }
+
+  private async getOptional<T = unknown>(resource: EcampusCachedResource, cpf: string, extra?: string): Promise<T | null> {
+    const raw = await this.redis.get(getEcampusCacheKey(resource, cpf, extra));
+    return raw ? JSON.parse(raw) as T : null;
   }
 }

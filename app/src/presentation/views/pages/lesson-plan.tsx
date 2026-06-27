@@ -101,31 +101,54 @@ export function LessonPlanPage({
         }
 
         for (const subject of subjects) {
+            const backendGrade = subject.grade ?? null;
             const current = byCode.get(subject.code);
+            const grade = current ?? (backendGrade ? {
+                absences: backendGrade.absences,
+                available: true,
+                classIdentifier: backendGrade.class_identifier,
+                code: backendGrade.code,
+                credits: null,
+                evaluations: backendGrade.evaluations.map((evaluation) => `${evaluation.weight}: ${evaluation.score}`).join(' | '),
+                evaluationItems: backendGrade.evaluations,
+                exerciseAverage: backendGrade.exercise_average,
+                finalExam: backendGrade.final_exam,
+                finalGrade: backendGrade.final_grade,
+                attendance: backendGrade.attendance,
+                planItems: backendGrade.code === selectedSubjectCode ? items : [],
+                professor: '',
+                scheduleItems: [],
+                status: backendGrade.status || t('lesson.inProgress'),
+                subject: backendGrade.subject,
+                workloadHours: backendGrade.attendance?.workload_hours ?? null
+            } : null);
             const attendance = buildAttendanceSummary(
-                current?.attendance ?? null,
-                subject.workloadHours ?? current?.workloadHours ?? null,
-                current?.absences || '0'
+                grade?.attendance ?? null,
+                subject.workloadHours ?? grade?.workloadHours ?? null,
+                grade?.absences || '0'
             );
+            const backendScheduleItems = subject.scheduleItems ?? [];
 
             byCode.set(subject.code, {
-                absences: current?.absences || '0',
+                absences: grade?.absences || '0',
                 available: subject.available,
-                classIdentifier: current?.classIdentifier || subject.classIdentifier,
+                classIdentifier: grade?.classIdentifier || subject.classIdentifier,
                 code: subject.code,
                 credits: subject.credits,
-                evaluations: current?.evaluations || '',
-                evaluationItems: current?.evaluationItems || [],
-                exerciseAverage: current?.exerciseAverage || '',
-                finalExam: current?.finalExam || '',
-                finalGrade: current?.finalGrade || '',
+                evaluations: grade?.evaluations || '',
+                evaluationItems: grade?.evaluationItems || [],
+                exerciseAverage: grade?.exerciseAverage || '',
+                finalExam: grade?.finalExam || '',
+                finalGrade: grade?.finalGrade || '',
                 attendance,
                 planItems: subject.code === selectedSubjectCode ? items : [],
                 professor: subject.professor,
-                scheduleItems: schedule.filter((item) => item.code === subject.code || item.class_identifier === subject.classIdentifier),
-                status: current?.status || (subject.available ? t('lesson.planAvailable') : t('lesson.planUnavailable')),
-                subject: current?.subject || subject.subject,
-                workloadHours: subject.workloadHours ?? current?.workloadHours ?? null
+                scheduleItems: backendScheduleItems.length > 0
+                    ? backendScheduleItems
+                    : schedule.filter((item) => item.code === subject.code || item.class_identifier === subject.classIdentifier),
+                status: grade?.status || (subject.available ? t('lesson.planAvailable') : t('lesson.planUnavailable')),
+                subject: grade?.subject || subject.subject,
+                workloadHours: subject.workloadHours ?? grade?.workloadHours ?? null
             });
         }
 

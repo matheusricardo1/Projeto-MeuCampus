@@ -1,3 +1,6 @@
+import type { Grade } from './grade';
+import type { ScheduleClass } from './schedule-class';
+
 export interface LessonPlanSubject {
     planId: string | null;
     code: string;
@@ -7,4 +10,6 @@ export interface LessonPlanSubject {
     professor: string;
     workloadHours: number | null;
     available: boolean;
+    grade?: Grade | null;
+    scheduleItems?: ScheduleClass[];
 }

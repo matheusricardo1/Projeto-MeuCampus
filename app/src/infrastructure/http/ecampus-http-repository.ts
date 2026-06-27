@@ -73,6 +73,13 @@ export class EcampusHttpRepository implements EcampusRepository {
         });
     }
 
+    getAcademicSubjects(accessToken: string, year: string, period: string): Promise<LessonPlanSubject[]> {
+        const params = new URLSearchParams({ year, period });
+        return this.request<LessonPlanSubject[]>(`/ecampus/subjects?${params.toString()}`, {
+            headers: this.authHeaders(accessToken)
+        });
+    }
+
     getLessonPlanSubjects(accessToken: string): Promise<LessonPlanSubject[]> {
         return this.request<LessonPlanSubject[]>('/ecampus/lesson-plans', {
             headers: this.authHeaders(accessToken)

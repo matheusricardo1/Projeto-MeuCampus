@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { GetAcademicSubjectsUseCase } from '@ecampus/application/use-cases/get-academic-subjects.usecase';
 import { GetGradesUseCase } from '@ecampus/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@ecampus/application/use-cases/get-lesson-plan.usecase';
 import { GetLessonPlanSubjectsUseCase } from '@ecampus/application/use-cases/get-lesson-plan-subjects.usecase';
@@ -29,6 +30,11 @@ import { EcampusScrapeEventsSubscriber } from '@ecampus/application/services/eca
     { provide: CacheRepository, useExisting: EcampusRedisRepository },
     { provide: JobService, useExisting: EcampusJobService },
     // Use‑cases
+    {
+      provide: GetAcademicSubjectsUseCase,
+      useFactory: (cache: CacheRepository, jobs: JobService) => new GetAcademicSubjectsUseCase(cache, jobs),
+      inject: [CacheRepository, JobService],
+    },
     {
       provide: GetGradesUseCase,
       useFactory: (cache: CacheRepository, jobs: JobService) => new GetGradesUseCase(cache, jobs),

@@ -27,6 +27,7 @@ export interface EcampusRepository {
     getProfile(accessToken: string): Promise<StudentProfile>;
     getGrades(accessToken: string, year: string, period: string): Promise<Grade[]>;
     getSchedule(accessToken: string): Promise<ScheduleClass[]>;
+    getAcademicSubjects(accessToken: string, year: string, period: string): Promise<LessonPlanSubject[]>;
     getLessonPlanSubjects(accessToken: string): Promise<LessonPlanSubject[]>;
     getLessonPlan(accessToken: string, planId: string): Promise<LessonPlanItem[]>;
     sendAiChatMessage(accessToken: string, input: SendAiChatMessageRequest): Promise<AiChatReply>;

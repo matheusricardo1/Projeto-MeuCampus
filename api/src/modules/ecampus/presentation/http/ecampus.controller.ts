@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards, BadRequestException, Res } from '@nestjs/common';
 import type { Response } from 'express';
+import { GetAcademicSubjectsUseCase } from '@ecampus/application/use-cases/get-academic-subjects.usecase';
 import { GetGradesUseCase } from '@ecampus/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@ecampus/application/use-cases/get-lesson-plan.usecase';
 import { GetLessonPlanSubjectsUseCase } from '@ecampus/application/use-cases/get-lesson-plan-subjects.usecase';
@@ -21,6 +22,7 @@ export class EcampusController {
   constructor(
     private readonly loginUseCase: LoginUseCase,
     private readonly logoutUseCase: LogoutEcampusUseCase,
+    private readonly getAcademicSubjectsUseCase: GetAcademicSubjectsUseCase,
     private readonly getProfileUseCase: GetProfileUseCase,
     private readonly getScheduleUseCase: GetScheduleUseCase,
     private readonly getGradesUseCase: GetGradesUseCase,
@@ -93,6 +95,22 @@ export class EcampusController {
     return this.respondWithResourceStatus(response, 'lesson-plan', await this.getLessonPlanUseCase.execute(credentials, planId));
   }
 
+  @Get('subjects')
+  @UseGuards(EcampusJwtGuard)
+  async getAcademicSubjects(
+    @CurrentEcampusCredentials() credentials: EcampusCredentials,
+    @Res({ passthrough: true }) response: Response,
+    @Query('year') year?: string,
+    @Query('period') period?: string,
+  ) {
+    const input = new GetGradesQuery(year, period).toUseCaseInput();
+    return this.respondWithResourceStatus(response, 'academic-subjects', await this.getAcademicSubjectsUseCase.execute({
+      credentials,
+      year: input.year,
+      period: input.period,
+    }));
+  }
+
   @Get('lesson-plans')
   @UseGuards(EcampusJwtGuard)
   async getLessonPlanSubjects(@CurrentEcampusCredentials() credentials: EcampusCredentials, @Res({ passthrough: true }) response: Response) {
@@ -135,7 +153,7 @@ export class EcampusController {
     return { jobId: job.id };
   }
 
-  private respondWithResourceStatus<T>(response: Response, resource: EcampusCachedResource, result: T): T {
+  private respondWithResourceStatus<T>(response: Response, resource: EcampusCachedResource | 'academic-subjects', result: T): T {
     if (isPendingScrapeJob(result)) {
       response.status(202);
       response.locals.ecampusDataSource = 'worker';

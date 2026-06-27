@@ -1,7 +1,12 @@
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import type { Namespace, Socket } from 'socket.io';
 import { JwtAccessTokenService } from '@ecampus/infrastructure/security/jwt-access-token-service';
-import { ECAMPUS_RESOURCE_READY_EVENT, type EcampusResourceReadyEvent } from '@/shared/ecampus-scrape-events';
+import {
+    ECAMPUS_RESOURCE_FAILED_EVENT,
+    ECAMPUS_RESOURCE_READY_EVENT,
+    type EcampusResourceFailedEvent,
+    type EcampusResourceReadyEvent
+} from '@/shared/ecampus-scrape-events';
 import { appLogger } from '@/shared/logging/app-logger';
 
 const ECAMPUS_AUTH_REJECTED_EVENT = 'ecampus:auth-rejected';
@@ -70,6 +75,22 @@ export class EcampusGateway {
             year: event.year,
             period: event.period,
             planId: event.planId,
+            roomClients
+        });
+    }
+
+    emitResourceFailed(event: EcampusResourceFailedEvent): void {
+        const { cpf: _cpf, ...payload } = event;
+        const room = this.roomFor(event.cpf);
+        const roomClients = this.getRoomClientCount(room);
+        this.server.to(room).emit(ECAMPUS_RESOURCE_FAILED_EVENT, payload);
+        appLogger.warning('Sent eCampus resource failure through WebSocket.', {
+            event: ECAMPUS_RESOURCE_FAILED_EVENT,
+            resource: event.resource,
+            year: event.year,
+            period: event.period,
+            planId: event.planId,
+            errorName: event.errorName,
             roomClients
         });
     }
