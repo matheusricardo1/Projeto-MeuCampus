@@ -20,6 +20,7 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
     const { t } = useLanguage();
     const layout = useResponsiveLayout();
     const insets = useSafeAreaInsets();
+    const isMobileLayout = !layout.isTablet;
     const scrollRef = useRef<ScrollView>(null);
     const cpfFieldRef = useRef<View>(null);
     const passwordFieldRef = useRef<View>(null);
@@ -77,11 +78,11 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                     ref={scrollRef}
                     contentContainerStyle={[
                         styles.loginScrollContent,
-                        !layout.isTablet ? styles.loginScrollContentMobile : null,
+                        isMobileLayout ? styles.loginScrollContentMobile : null,
                         {
-                            paddingBottom: Math.max(12, insets.bottom + 12),
-                            paddingHorizontal: layout.pagePadding,
-                            paddingTop: Math.max(12, insets.top + 12)
+                            paddingBottom: isMobileLayout ? 0 : Math.max(12, insets.bottom + 12),
+                            paddingHorizontal: isMobileLayout ? 0 : layout.pagePadding,
+                            paddingTop: isMobileLayout ? 0 : Math.max(12, insets.top + 12)
                         }
                     ]}
                     keyboardShouldPersistTaps="handled"
@@ -89,7 +90,17 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                     showsVerticalScrollIndicator={Platform.OS === 'web'}
                     style={styles.loginScroll}
                 >
-                    <View style={[styles.loginCard, layout.isTablet ? styles.loginCardWide : null, { maxWidth: layout.loginMaxWidth, transform: [{ translateY: focusedInputOffset }] }]}>
+                    <View
+                        style={[
+                            styles.loginCard,
+                            isMobileLayout ? styles.loginCardMobile : null,
+                            layout.isTablet ? styles.loginCardWide : null,
+                            {
+                                maxWidth: isMobileLayout ? '100%' : layout.loginMaxWidth,
+                                transform: [{ translateY: focusedInputOffset }]
+                            }
+                        ]}
+                    >
                         <LinearGradient colors={gradients.brand} style={[styles.loginShowcase, layout.isTablet ? styles.loginShowcaseWide : null]}>
                             <View style={styles.loginShowcaseTopRow}>
                                 <View style={styles.loginMark}>

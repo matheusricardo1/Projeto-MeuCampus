@@ -24,7 +24,7 @@ type ChatHistoryEntry = {
 };
 
 const CHAT_HISTORY_STORAGE_KEY = 'ecampus.ai-chat-history';
-const DEFAULT_CHAT_TITLE = 'Desempenho em Calculo I';
+const DEFAULT_CHAT_TITLE = 'Meu Campus AI';
 const IS_AI_FEATURE_ENABLED = process.env.EXPO_PUBLIC_APP_ENV === 'development';
 
 function readChatHistory(): ChatHistoryEntry[] {
