@@ -2,7 +2,6 @@ import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig, type Ax
 import { wrapper } from 'axios-cookiejar-support';
 import { CookieJar } from 'tough-cookie';
 import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
-import { ExternalServiceError } from '@ecampus/domain/errors/external-service.error';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 
 export class EcampusClient {
@@ -51,39 +50,8 @@ export class EcampusClient {
     importCookies(cookieDict: Record<string, unknown>): void {
         this.jar = CookieJar.fromJSON(cookieDict as any) || new CookieJar();
         this.session.defaults.jar = this.jar;
+        this.authenticated = true;
         logger.info("Cookies loaded into the session.");
-    }
-
-    async isSessionAlive(): Promise<boolean> {
-        try {
-            const response = await this.withExternalRetry(
-                'session check',
-                () => this.session.get('/home/index', {
-                    maxRedirects: 0,
-                    timeout: EcampusClient.DEFAULT_TIMEOUT_MS,
-                    validateStatus: (status) => status < 400
-                })
-            );
-
-            this.authenticated = response.status === 200 && !String(response.data).includes('loginValida');
-
-            if (this.authenticated) {
-                logger.info("Session is alive and valid.");
-                return true;
-            }
-
-            logger.warning("Session has expired or is invalid.");
-            return false;
-        } catch (error) {
-            this.authenticated = false;
-            if (error instanceof AxiosError && [401, 403].includes(error.response?.status ?? 0)) {
-                logger.warning("Session has expired or is invalid.", this.toErrorContext(error, '/home/index'));
-                return false;
-            }
-
-            logger.warning("Session check failed due to eCampus instability.", this.toErrorContext(error, '/home/index'));
-            throw new ExternalServiceError('O eCampus falhou ao validar a sessao. Tente novamente em instantes.');
-        }
     }
 
     async login(cpf: string, password: string): Promise<void> {
@@ -165,18 +133,56 @@ export class EcampusClient {
 
     async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
         this.ensureAuthenticated();
-        return this.session.get<T>(url, config);
+        try {
+            const response = await this.session.get<T>(url, config);
+            this.assertAuthenticatedResponse(response, url);
+            return response;
+        } catch (error) {
+            this.assertAuthenticatedError(error, url);
+            throw error;
+        }
     }
 
     async post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
         this.ensureAuthenticated();
-        return this.session.post<T>(url, data, config);
+        try {
+            const response = await this.session.post<T>(url, data, config);
+            this.assertAuthenticatedResponse(response, url);
+            return response;
+        } catch (error) {
+            this.assertAuthenticatedError(error, url);
+            throw error;
+        }
     }
 
     private ensureAuthenticated(): void {
         if (!this.authenticated) {
             throw new AuthenticationError('Sua sessao expirou. Entre novamente.');
         }
+    }
+
+    private assertAuthenticatedResponse(response: AxiosResponse<unknown>, fallbackUrl: string): void {
+        const responseUrl = this.getResponseUrl(response) || fallbackUrl;
+        const body = typeof response.data === 'string' ? response.data : '';
+        const redirectedToLogin = /\/home\/login(?:Valida)?/i.test(responseUrl);
+        const returnedLoginPage = body.includes('loginValida') || body.includes('Acesso ecampus');
+
+        if ([401, 403].includes(response.status) || redirectedToLogin || returnedLoginPage) {
+            this.authenticated = false;
+            throw new AuthenticationError('Sua sessao expirou. Entre novamente.');
+        }
+    }
+
+    private assertAuthenticatedError(error: unknown, fallbackUrl: string): void {
+        if (!(error instanceof AxiosError)) {
+            return;
+        }
+
+        if (!error.response) {
+            return;
+        }
+
+        this.assertAuthenticatedResponse(error.response, error.config?.url || fallbackUrl);
     }
 
     private async withExternalRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {
@@ -274,5 +280,10 @@ export class EcampusClient {
     private getStackLocation(stack?: string): string | undefined {
         if (!stack) return undefined;
         return stack.split('\n').find((line) => line.includes('src\\') || line.includes('src/'))?.trim();
+    }
+
+    private getResponseUrl(response: AxiosResponse<unknown>): string | undefined {
+        const request = response.request as { res?: { responseUrl?: string } } | undefined;
+        return request?.res?.responseUrl;
     }
 }

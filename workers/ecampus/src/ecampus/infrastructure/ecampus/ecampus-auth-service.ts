@@ -31,14 +31,8 @@ export class EcampusAuthService {
             throw new AuthenticationError('Sua sessao nao foi encontrada. Entre novamente.');
         }
 
-        let client = new EcampusClient();
+        const client = new EcampusClient();
         client.importCookies(credentials.session);
-
-        if (await client.isSessionAlive()) {
-            return client;
-        }
-
-        logger.info("Session expired. User must authenticate again.");
-        throw new AuthenticationError('Sua sessao expirou. Entre novamente.');
+        return client;
     }
 }

@@ -75,8 +75,8 @@ import { ValidateAcademicSessionUseCase } from '@academic/application/use-cases/
         },
         {
             provide: ValidateAcademicSessionUseCase,
-            useFactory: (jobs: ScrapingJobService, cache: AcademicDataRepository, sessions: AcademicSessionRegistry) => new ValidateAcademicSessionUseCase(jobs, cache, sessions),
-            inject: [ScrapingJobService, AcademicDataRepository, AcademicSessionRegistry]
+            useFactory: (cache: AcademicDataRepository, sessions: AcademicSessionRegistry) => new ValidateAcademicSessionUseCase(cache, sessions),
+            inject: [AcademicDataRepository, AcademicSessionRegistry]
         }
     ]
 })

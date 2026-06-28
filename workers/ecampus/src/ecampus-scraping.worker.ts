@@ -12,12 +12,14 @@ import {
 import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from './ecampus-cache';
 import { ECAMPUS_SCRAPE_RESULT_CHANNEL, type EcampusResourceFailedEvent, type EcampusResourceReadyEvent } from './ecampus-scrape-events';
 import { getCurrentAcademicPeriod } from '@ecampus/domain/services/current-academic-period';
+import { EcampusSessionCoordinator } from './ecampus-session-coordinator';
 
 type AuthenticatedScrapeJobData = Extract<EcampusScrapeJobData, { credentials: unknown }>;
 
 export class EcampusScrapingWorker {
     private readonly repository = new EcampusHttpRepository(new EcampusAuthService());
     private readonly redis = new Redis(createRedisConnectionOptions());
+    private readonly sessions = new EcampusSessionCoordinator(this.redis);
     private readonly publishedFailedJobIds = new Set<string>();
     private readonly worker: Worker<EcampusScrapeJobData>;
 
@@ -77,6 +79,7 @@ export class EcampusScrapingWorker {
             const { cpf, password } = data as { cpf: string; password: string };
             const authService = new EcampusAuthService();
             const session = await authService.authenticate({ cpf }, password);
+            await this.sessions.markActive(cpf);
             return { session };
         }
 
@@ -84,25 +87,27 @@ export class EcampusScrapingWorker {
 
         try {
             switch (name) {
-                case 'session-check':
-                    await new EcampusAuthService().getAuthenticatedClient(authenticatedData.credentials);
-                    return { status: 'ok' };
                 case 'logout':
                     return this.logoutAndClearCache(authenticatedData.credentials);
                 case 'profile': {
+                    await this.sessions.assertActive(authenticatedData.credentials.cpf);
                     return this.cacheAndPublish('profile', authenticatedData.credentials, this.repository.getStudentProfile(authenticatedData.credentials));
                 }
                 case 'schedule': {
+                    await this.sessions.assertActive(authenticatedData.credentials.cpf);
                     return this.cacheAndPublish('schedule', authenticatedData.credentials, this.repository.getSchedule(authenticatedData.credentials));
                 }
                 case 'grades': {
+                    await this.sessions.assertActive(authenticatedData.credentials.cpf);
                     const { year, period } = this.resolveGradesPeriod(authenticatedData);
                     return this.cacheAndPublish('grades', authenticatedData.credentials, this.repository.getGrades(authenticatedData.credentials, year, period), { year, period });
                 }
                 case 'lesson-plan-subjects': {
+                    await this.sessions.assertActive(authenticatedData.credentials.cpf);
                     return this.cacheAndPublish('lesson-plan-subjects', authenticatedData.credentials, this.repository.getLessonPlanSubjects(authenticatedData.credentials));
                 }
                 case 'lesson-plan': {
+                    await this.sessions.assertActive(authenticatedData.credentials.cpf);
                     const planId = this.requireField(authenticatedData, 'planId');
                     return this.cacheAndPublish('lesson-plan', authenticatedData.credentials, this.repository.getLessonPlan(authenticatedData.credentials, planId), { planId });
                 }
@@ -130,6 +135,7 @@ export class EcampusScrapingWorker {
         }
 
         const cacheDeletedKeys = await this.clearUserCache(credentials.cpf);
+        await this.sessions.markInvalid(credentials.cpf, 'logout');
         appLogger.info('Cleared eCampus cached data after logout.', {
             cacheDeletedKeys
         });
@@ -182,6 +188,7 @@ export class EcampusScrapingWorker {
         parameters: Pick<EcampusResourceReadyEvent, 'year' | 'period' | 'planId'> = {}
     ): Promise<T> {
         const result = await resultPromise;
+        await this.sessions.assertActive(credentials.cpf);
         const extra = resource === 'grades'
             ? `${parameters.year}-${parameters.period}`
             : resource === 'lesson-plan'
@@ -259,7 +266,7 @@ export class EcampusScrapingWorker {
     private async invalidateLocalSessionAfterAuthenticationFailure(cpf: string): Promise<void> {
         const [cacheDeletedKeys] = await Promise.all([
             this.clearUserCache(cpf),
-            this.redis.del(`ecampus:session:${cpf}`)
+            this.sessions.markInvalid(cpf, 'authentication-failure')
         ]);
 
         appLogger.warning('Invalidated eCampus session after authentication failure.', {
