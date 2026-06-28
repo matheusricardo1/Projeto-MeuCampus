@@ -3,6 +3,7 @@ import Redis from 'ioredis';
 import { AcademicNotificationService } from '@realtime/application/ports/academic-notification-service';
 import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
+import { AcademicBootstrapTracker, type AcademicBootstrapState } from '@academic/application/ports/academic-bootstrap-tracker';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 import {
@@ -18,7 +19,8 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
     constructor(
         private readonly notifier: AcademicNotificationService,
         private readonly academicDataRepository: AcademicDataRepository,
-        private readonly sessionRegistry: AcademicSessionRegistry
+        private readonly sessionRegistry: AcademicSessionRegistry,
+        private readonly bootstrapTracker: AcademicBootstrapTracker
     ) {}
 
     async onModuleInit(): Promise<void> {
@@ -75,11 +77,20 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
                     await this.invalidateExpiredSession(event.cpf);
                 }
 
+                const bootstrapState = await this.bootstrapTracker.markFailed(event.cpf, event.resource);
+                if (bootstrapState?.status === 'failed') {
+                    this.notifier.emitBootstrapFailed(this.toBootstrapNotification(bootstrapState));
+                }
+
                 this.notifier.emitResourceFailed(event);
                 return;
             }
 
             this.notifier.emitResourceReady(event);
+            const bootstrapState = await this.bootstrapTracker.markReady(event.cpf, event.resource);
+            if (bootstrapState?.status === 'ready') {
+                this.notifier.emitBootstrapReady(this.toBootstrapNotification(bootstrapState));
+            }
         } catch (error) {
             logger.error('Failed to send eCampus scrape notification through WebSocket.', {
                 errorName: error instanceof Error ? error.name : 'UnknownError',
@@ -105,5 +116,14 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
         logger.warning('Invalidated academic session after worker authentication failure.', {
             cacheDeletedKeys
         });
+    }
+
+    private toBootstrapNotification(state: AcademicBootstrapState) {
+        return {
+            cpf: state.cpf,
+            requiredResources: state.requiredResources,
+            readyResources: state.readyResources,
+            failedResources: state.failedResources
+        };
     }
 }

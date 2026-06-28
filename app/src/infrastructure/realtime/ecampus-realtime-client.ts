@@ -4,12 +4,16 @@ const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3001';
 const RESOURCE_READY_EVENT = 'ecampus:resource-ready';
 const RESOURCE_FAILED_EVENT = 'ecampus:resource-failed';
 const AUTH_REJECTED_EVENT = 'ecampus:auth-rejected';
+const BOOTSTRAP_READY_EVENT = 'ecampus:bootstrap-ready';
+const BOOTSTRAP_FAILED_EVENT = 'ecampus:bootstrap-failed';
 
 type RealtimeSubscriber = {
     onResourceReady: (event: EcampusResourceReadyEvent) => void;
     onConnected: () => void;
     onAuthRejected?: (event?: EcampusAuthRejectedEvent) => void;
     onResourceFailed?: (event: EcampusResourceFailedEvent) => void;
+    onBootstrapReady?: (event: EcampusBootstrapEvent) => void;
+    onBootstrapFailed?: (event: EcampusBootstrapEvent) => void;
 };
 
 export interface EcampusResourceReadyEvent {
@@ -29,6 +33,12 @@ export interface EcampusAuthRejectedEvent {
     message?: string;
 }
 
+export interface EcampusBootstrapEvent {
+    requiredResources: EcampusResourceReadyEvent['resource'][];
+    readyResources: EcampusResourceReadyEvent['resource'][];
+    failedResources: EcampusResourceReadyEvent['resource'][];
+}
+
 let activeToken: string | null = null;
 let activeSocket: Socket | null = null;
 const subscribers = new Set<RealtimeSubscriber>();
@@ -38,14 +48,16 @@ export function connectEcampusRealtime(
     onResourceReady: (event: EcampusResourceReadyEvent) => void,
     onConnected: () => void,
     onAuthRejected?: (event?: EcampusAuthRejectedEvent) => void,
-    onResourceFailed?: (event: EcampusResourceFailedEvent) => void
+    onResourceFailed?: (event: EcampusResourceFailedEvent) => void,
+    onBootstrapReady?: (event: EcampusBootstrapEvent) => void,
+    onBootstrapFailed?: (event: EcampusBootstrapEvent) => void
 ): () => void {
     if (!isJwtLike(accessToken)) {
         onAuthRejected?.();
         return () => undefined;
     }
 
-    const subscriber = { onResourceReady, onConnected, onAuthRejected, onResourceFailed };
+    const subscriber = { onResourceReady, onConnected, onAuthRejected, onResourceFailed, onBootstrapReady, onBootstrapFailed };
     subscribers.add(subscriber);
     ensureSocket(accessToken);
 
@@ -84,6 +96,18 @@ function ensureSocket(accessToken: string): void {
     activeSocket.on(RESOURCE_FAILED_EVENT, (event: EcampusResourceFailedEvent) => {
         for (const subscriber of subscribers) {
             subscriber.onResourceFailed?.(event);
+        }
+    });
+
+    activeSocket.on(BOOTSTRAP_READY_EVENT, (event: EcampusBootstrapEvent) => {
+        for (const subscriber of subscribers) {
+            subscriber.onBootstrapReady?.(event);
+        }
+    });
+
+    activeSocket.on(BOOTSTRAP_FAILED_EVENT, (event: EcampusBootstrapEvent) => {
+        for (const subscriber of subscribers) {
+            subscriber.onBootstrapFailed?.(event);
         }
     });
 

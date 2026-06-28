@@ -6,6 +6,7 @@ import { AcademicSessionRegistry } from '@auth/application/ports/academic-sessio
 import { AcademicAuthGuard } from '@auth/presentation/http/guards/academic-auth.guard';
 import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { ScrapingJobService } from '@academic/application/ports/scraping-job-service';
+import { AcademicBootstrapTracker } from '@academic/application/ports/academic-bootstrap-tracker';
 import { AcademicController } from '@academic/presentation/http/academic.controller';
 import { GetAcademicSubjectsUseCase } from '@academic/application/use-cases/get-academic-subjects.usecase';
 import { GetGradesUseCase } from '@academic/application/use-cases/get-grades.usecase';
@@ -65,8 +66,8 @@ import { ValidateAcademicSessionUseCase } from '@academic/application/use-cases/
         },
         {
             provide: PrefetchAcademicDataUseCase,
-            useFactory: (jobs: ScrapingJobService) => new PrefetchAcademicDataUseCase(jobs),
-            inject: [ScrapingJobService]
+            useFactory: (jobs: ScrapingJobService, bootstrap: AcademicBootstrapTracker) => new PrefetchAcademicDataUseCase(jobs, bootstrap),
+            inject: [ScrapingJobService, AcademicBootstrapTracker]
         },
         {
             provide: LogoutAcademicSessionUseCase,

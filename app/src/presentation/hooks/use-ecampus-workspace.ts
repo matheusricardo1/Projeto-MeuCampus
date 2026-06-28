@@ -8,7 +8,7 @@ import type { StudentProfile } from '@/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
 import { EcampusResourcePendingError } from '@/domain/errors/ecampus-resource-pending.error';
 import { createEcampusUseCases } from '@/presentation/composition/create-ecampus-use-cases';
-import { connectEcampusRealtime, type EcampusResourceFailedEvent, type EcampusResourceReadyEvent } from '@/infrastructure/realtime/ecampus-realtime-client';
+import { connectEcampusRealtime, type EcampusBootstrapEvent, type EcampusResourceFailedEvent, type EcampusResourceReadyEvent } from '@/infrastructure/realtime/ecampus-realtime-client';
 import { useLanguage } from '@/presentation/i18n/language-provider';
 import type { TranslationKey, TranslationValues } from '@/presentation/i18n/languages';
 
@@ -79,9 +79,10 @@ export function useEcampusWorkspace() {
     const initialEventsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const inFlightRequests = useRef(new Map<ResourceKey, Promise<unknown>>());
     const pendingInitialResourcesRef = useRef(new Set<InitialResourceKey>());
-    const readyInitialResourcesRef = useRef(new Set<BootstrapResourceKey>());
     const realtimeHandlerRef = useRef<(event: EcampusResourceReadyEvent) => void>(() => undefined);
     const realtimeFailureHandlerRef = useRef<(event: EcampusResourceFailedEvent) => void>(() => undefined);
+    const realtimeBootstrapReadyHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
+    const realtimeBootstrapFailedHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [loadingRequests, setLoadingRequests] = useState(0);
@@ -115,7 +116,6 @@ export function useEcampusWorkspace() {
         setLessonPlanSubjects([]);
         setSelectedLessonPlanSubjectCode('');
         pendingInitialResourcesRef.current.clear();
-        readyInitialResourcesRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
         setPendingInitialResources(new Set());
@@ -125,7 +125,6 @@ export function useEcampusWorkspace() {
         sessionGeneration.current += 1;
         inFlightRequests.current.clear();
         pendingInitialResourcesRef.current.clear();
-        readyInitialResourcesRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
         setLoadingRequests(0);
@@ -164,20 +163,7 @@ export function useEcampusWorkspace() {
         }
     };
 
-    const getBootstrapResourceKey = (resource: EcampusResourceReadyEvent['resource']): BootstrapResourceKey | null => {
-        const resourceMap = {
-            profile: 'profile',
-            schedule: 'schedule',
-            grades: 'grades',
-            'lesson-plan-subjects': 'lessonPlanSubjects',
-            'lesson-plan': null
-        } satisfies Record<EcampusResourceReadyEvent['resource'], BootstrapResourceKey | null>;
-
-        return resourceMap[resource];
-    };
-
     const waitForInitialScrapingEvents = () => {
-        readyInitialResourcesRef.current.clear();
         isWaitingForInitialEventsRef.current = true;
         markInitialResourcesPending([...BOOTSTRAP_RESOURCES, 'lessonPlan']);
         clearInitialEventsTimeout();
@@ -187,19 +173,9 @@ export function useEcampusWorkspace() {
             }
 
             isWaitingForInitialEventsRef.current = false;
-            readyInitialResourcesRef.current.clear();
             setTranslatedError('errors.generic');
             setPendingInitialResources(new Set());
         }, 30000);
-    };
-
-    const markBootstrapResourceReady = (resource: BootstrapResourceKey) => {
-        if (!isWaitingForInitialEventsRef.current) {
-            return false;
-        }
-
-        readyInitialResourcesRef.current.add(resource);
-        return BOOTSTRAP_RESOURCES.every((item) => readyInitialResourcesRef.current.has(item));
     };
 
     const finishInitialScrapingEvents = async () => {
@@ -209,7 +185,6 @@ export function useEcampusWorkspace() {
 
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
-        readyInitialResourcesRef.current.clear();
         await loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
     };
 
@@ -429,18 +404,6 @@ export function useEcampusWorkspace() {
         const silentOptions: RequestOptions = { reportError: false, showGlobalLoading: false };
 
         if (event.resource !== 'lesson-plan' && isWaitingForInitialEventsRef.current) {
-            const bootstrapResource = getBootstrapResourceKey(event.resource);
-            if (!bootstrapResource) {
-                return;
-            }
-
-            if (event.resource === 'grades' && (event.year !== gradesInput.year || event.period !== gradesInput.period)) {
-                return;
-            }
-
-            if (markBootstrapResourceReady(bootstrapResource)) {
-                void finishInitialScrapingEvents();
-            }
             return;
         }
 
@@ -478,21 +441,27 @@ export function useEcampusWorkspace() {
         }
 
         if (isWaitingForInitialEventsRef.current) {
-            const bootstrapResource = getBootstrapResourceKey(event.resource);
-            if (!bootstrapResource) {
-                return;
-            }
-
-            markInitialResourceReady(bootstrapResource);
-            if (bootstrapResource === 'grades') {
-                markInitialResourceReady('lessonPlan');
-            }
-
             setRawError(event.message || 'Nao foi possivel carregar todos os dados agora.');
-            if (markBootstrapResourceReady(bootstrapResource)) {
-                void finishInitialScrapingEvents();
-            }
         }
+    };
+
+    realtimeBootstrapReadyHandlerRef.current = () => {
+        if (isWaitingForInitialEventsRef.current) {
+            void finishInitialScrapingEvents();
+        }
+    };
+
+    realtimeBootstrapFailedHandlerRef.current = (event: EcampusBootstrapEvent) => {
+        if (!isWaitingForInitialEventsRef.current) {
+            return;
+        }
+
+        isWaitingForInitialEventsRef.current = false;
+        clearInitialEventsTimeout();
+        setPendingInitialResources(new Set());
+        setRawError(event.failedResources.length > 0
+            ? `Nao foi possivel carregar: ${event.failedResources.join(', ')}.`
+            : 'Nao foi possivel carregar todos os dados agora.');
     };
 
     const prefetchWorkspace = async (options?: PrefetchOptions) => {
@@ -593,6 +562,16 @@ export function useEcampusWorkspace() {
                 (event) => {
                     if (!disposed) {
                         realtimeFailureHandlerRef.current(event);
+                    }
+                },
+                (event) => {
+                    if (!disposed) {
+                        realtimeBootstrapReadyHandlerRef.current(event);
+                    }
+                },
+                (event) => {
+                    if (!disposed) {
+                        realtimeBootstrapFailedHandlerRef.current(event);
                     }
                 }
             );

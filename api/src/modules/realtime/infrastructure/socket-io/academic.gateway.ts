@@ -4,9 +4,12 @@ import { AccessTokenService } from '@auth/application/ports/access-token-service
 import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
 import {
     ACADEMIC_AUTH_REJECTED_EVENT,
+    ACADEMIC_BOOTSTRAP_FAILED_EVENT,
+    ACADEMIC_BOOTSTRAP_READY_EVENT,
     ACADEMIC_RESOURCE_FAILED_EVENT,
     ACADEMIC_RESOURCE_READY_EVENT,
     AcademicNotificationService,
+    type AcademicBootstrapNotification,
     type AcademicResourceFailedNotification,
     type AcademicResourceNotification
 } from '@realtime/application/ports/academic-notification-service';
@@ -107,6 +110,30 @@ export class AcademicGateway extends AcademicNotificationService {
             period: event.period,
             planId: event.planId,
             errorName: event.errorName,
+            roomClients
+        });
+    }
+
+    emitBootstrapReady(event: AcademicBootstrapNotification): void {
+        const { cpf: _cpf, ...payload } = event;
+        const room = this.roomFor(event.cpf);
+        const roomClients = this.getRoomClientCount(room);
+        this.server.to(room).emit(ACADEMIC_BOOTSTRAP_READY_EVENT, payload);
+        appLogger.info('Sent academic bootstrap-ready notification through WebSocket.', {
+            event: ACADEMIC_BOOTSTRAP_READY_EVENT,
+            readyResources: event.readyResources,
+            roomClients
+        });
+    }
+
+    emitBootstrapFailed(event: AcademicBootstrapNotification): void {
+        const { cpf: _cpf, ...payload } = event;
+        const room = this.roomFor(event.cpf);
+        const roomClients = this.getRoomClientCount(room);
+        this.server.to(room).emit(ACADEMIC_BOOTSTRAP_FAILED_EVENT, payload);
+        appLogger.warning('Sent academic bootstrap-failed notification through WebSocket.', {
+            event: ACADEMIC_BOOTSTRAP_FAILED_EVENT,
+            failedResources: event.failedResources,
             roomClients
         });
     }
