@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
-import type { AiAuthenticatedUser } from '@ai/domain/models/ai-authenticated-user';
+import type { AiAuthenticatedUser } from '@ai/domain/entities/ai-authenticated-user.entity';
 import { SendAiChatMessageUseCase } from '@ai/application/use-cases/send-ai-chat-message.usecase';
 import { CurrentAiUser } from '@ai/presentation/http/decorators/current-ai-user.decorator';
 import { SendAiChatMessageRequest } from '@ai/presentation/http/dto/send-ai-chat-message.request';

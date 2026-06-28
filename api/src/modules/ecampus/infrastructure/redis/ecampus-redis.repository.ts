@@ -1,14 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
-import { AcademicDataRepository } from '@/modules/academic/application/ports/academic-data-repository';
+import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
+import { AcademicResourceNotFoundException } from '@academic/domain/exceptions/academic-resource-not-found.exception';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from '@ecampus/infrastructure/redis/ecampus-cache';
-import type { AcademicSubject } from '@academic/domain/models/academic-subject';
-import type { Grade } from '@academic/domain/models/grade';
-import type { LessonPlanItem } from '@academic/domain/models/lesson-plan-item';
-import type { LessonPlanSubject } from '@academic/domain/models/lesson-plan-subject';
-import type { ScheduleClass } from '@academic/domain/models/schedule-class';
-import type { StudentProfile } from '@academic/domain/models/student-profile';
+import type { AcademicSubject } from '@academic/domain/entities/academic-subject.entity';
+import type { Grade } from '@academic/domain/entities/grade.entity';
+import type { LessonPlanItem } from '@academic/domain/value-objects/lesson-plan-item.value-object';
+import type { LessonPlanSubject } from '@academic/domain/entities/lesson-plan-subject.entity';
+import type { ScheduleClass } from '@academic/domain/value-objects/schedule-class.value-object';
+import type { StudentProfile } from '@academic/domain/entities/student-profile.entity';
 import {
   normalizeAcademicSubjects,
   normalizeGrades,
@@ -109,7 +110,7 @@ export class EcampusRedisRepository extends AcademicDataRepository {
   private async getRequired<T = unknown>(resource: EcampusCachedResource, cpf: string, extra?: string): Promise<T> {
     const raw = await this.redis.get(getEcampusCacheKey(resource, cpf, extra));
     if (!raw) {
-      throw new NotFoundException(`No cached result for ${resource}`);
+      throw new AcademicResourceNotFoundException(resource);
     }
 
     return JSON.parse(raw) as T;

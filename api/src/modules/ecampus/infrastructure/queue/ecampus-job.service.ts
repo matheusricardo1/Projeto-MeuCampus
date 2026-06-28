@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { Queue, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents, type Job } from 'bullmq';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 import { ECAMPUS_SCRAPE_QUEUE_NAME } from '@ecampus/infrastructure/queue/ecampus-scrape-job';
-import { ScrapingJobService } from '@academic/application/ports/scraping-job-service';
+import { ScrapingJobService, type EnqueueJobOptions, type QueuedJob } from '@academic/application/ports/scraping-job-service';
+
+const reusableJobStates = new Set(['waiting', 'active', 'delayed', 'prioritized', 'waiting-children', 'paused']);
 
 @Injectable()
 export class EcampusScrapingJobService extends ScrapingJobService {
@@ -24,17 +26,39 @@ export class EcampusScrapingJobService extends ScrapingJobService {
    * The caller is responsible for providing the correct shape of `data`
    * matching the job type.
    */
-  async enqueue(name: string, data: Record<string, unknown>) {
-    return this.queue.add(name, data);
+  async enqueue<Result = unknown>(name: string, data: Record<string, unknown>, options: EnqueueJobOptions = {}): Promise<QueuedJob<Result>> {
+    const jobId = options.dedupeKey ? this.toJobId(options.dedupeKey) : undefined;
+    if (jobId) {
+      const existingJob = await this.queue.getJob(jobId);
+      if (existingJob) {
+        const state = await existingJob.getState();
+        if (reusableJobStates.has(state)) {
+          return this.toQueuedJob(existingJob);
+        }
+
+        await existingJob.remove().catch(() => undefined);
+      }
+    }
+
+    return this.toQueuedJob(await this.queue.add(name, data, jobId ? { jobId } : undefined));
   }
 
-  /** Expose the underlying BullMQ Queue (needed to enqueue jobs). */
-  getQueue(): Queue {
-    return this.queue;
+  private toQueuedJob<Result>(job: Job): QueuedJob<Result> {
+    const queuedJob: QueuedJob<Result> = {
+      waitUntilFinished: (timeoutMs?: number) => job.waitUntilFinished(this.queueEvents, timeoutMs) as Promise<Result>
+    };
+
+    if (job.id !== undefined) {
+      queuedJob.id = job.id;
+    }
+
+    return queuedJob;
   }
 
-  /** Expose QueueEvents for awaiting job completion. */
-  getQueueEvents(): QueueEvents {
-    return this.queueEvents;
+  private toJobId(dedupeKey: string): string {
+    return `ecampus-scrape-${dedupeKey}`
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 }

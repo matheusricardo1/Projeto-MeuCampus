@@ -1,4 +1,4 @@
-import type { AcademicResource } from '@academic/domain/models/academic-resource';
+import type { AcademicResource } from '@academic/domain/value-objects/academic-resource.value-object';
 
 export type EcampusCachedResource = AcademicResource;
 

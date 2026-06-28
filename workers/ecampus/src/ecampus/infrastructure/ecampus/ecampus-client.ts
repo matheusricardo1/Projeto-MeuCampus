@@ -2,6 +2,7 @@ import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig, type Ax
 import { wrapper } from 'axios-cookiejar-support';
 import { CookieJar } from 'tough-cookie';
 import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
+import { ExternalServiceError } from '@ecampus/domain/errors/external-service.error';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 
 export class EcampusClient {
@@ -55,10 +56,14 @@ export class EcampusClient {
 
     async isSessionAlive(): Promise<boolean> {
         try {
-            const response = await this.session.get('/home/index', {
-                maxRedirects: 0,
-                validateStatus: (status) => status < 400
-            });
+            const response = await this.withExternalRetry(
+                'session check',
+                () => this.session.get('/home/index', {
+                    maxRedirects: 0,
+                    timeout: EcampusClient.DEFAULT_TIMEOUT_MS,
+                    validateStatus: (status) => status < 400
+                })
+            );
 
             this.authenticated = response.status === 200 && !String(response.data).includes('loginValida');
 
@@ -71,8 +76,13 @@ export class EcampusClient {
             return false;
         } catch (error) {
             this.authenticated = false;
-            logger.warning("Session check failed or expired.", this.toErrorContext(error, '/home/index'));
-            return false;
+            if (error instanceof AxiosError && [401, 403].includes(error.response?.status ?? 0)) {
+                logger.warning("Session has expired or is invalid.", this.toErrorContext(error, '/home/index'));
+                return false;
+            }
+
+            logger.warning("Session check failed due to eCampus instability.", this.toErrorContext(error, '/home/index'));
+            throw new ExternalServiceError('O eCampus falhou ao validar a sessao. Tente novamente em instantes.');
         }
     }
 

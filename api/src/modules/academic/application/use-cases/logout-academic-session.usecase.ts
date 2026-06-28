@@ -1,6 +1,6 @@
-import type { AcademicCredentials } from '@academic/domain/models/academic-credentials';
-import { AcademicDataRepository } from '@/modules/academic/application/ports/academic-data-repository';
-import { AcademicSessionRegistry } from '@/modules/academic/application/ports/academic-session-registry';
+import type { AcademicCredentials } from '@auth/domain/entities/academic-session.entity';
+import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
+import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
 import { ScrapingJobService } from '@/modules/academic/application/ports/scraping-job-service';
 import { appLogger } from '@/shared/logging/app-logger';
 
@@ -15,7 +15,7 @@ export class LogoutAcademicSessionUseCase {
         const job = await this.scrapingJobService.enqueue('logout', { credentials });
 
         try {
-            await job.waitUntilFinished(this.scrapingJobService.getQueueEvents(), 10000);
+            await job.waitUntilFinished(10000);
         } catch (error) {
             appLogger.warning('Logout worker job failed or timed out; clearing academic cache from API.', {
                 errorName: error instanceof Error ? error.name : 'UnknownError',

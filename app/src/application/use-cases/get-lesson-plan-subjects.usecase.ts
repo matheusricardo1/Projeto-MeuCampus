@@ -9,7 +9,7 @@ export class GetLessonPlanSubjectsUseCase {
         private readonly sessionStore: AuthSessionStore
     ) {}
 
-    async execute(year: string, period: string): Promise<LessonPlanSubject[]> {
+    async execute(year?: string, period?: string): Promise<LessonPlanSubject[]> {
         const session = await this.sessionStore.get();
         if (!session) throw new AuthSessionExpiredError();
         return this.repository.getAcademicSubjects(session.accessToken, year, period);

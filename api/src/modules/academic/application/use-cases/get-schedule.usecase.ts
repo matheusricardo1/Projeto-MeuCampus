@@ -1,12 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { AcademicDataRepository } from '@/modules/academic/application/ports/academic-data-repository';
+import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { ScrapingJobService } from '@/modules/academic/application/ports/scraping-job-service';
-import { AcademicCredentials } from '@academic/domain/models/academic-credentials';
-import type { ScheduleClass } from '@academic/domain/models/schedule-class';
+import { AcademicCredentials } from '@auth/domain/entities/academic-session.entity';
+import { AcademicResourceNotFoundException } from '@academic/domain/exceptions/academic-resource-not-found.exception';
+import type { ScheduleClass } from '@academic/domain/value-objects/schedule-class.value-object';
 import { pendingScrapeJob } from '@/modules/academic/application/services/pending-scrape-job';
 import type { PendingScrapeJob } from '@/modules/academic/application/services/pending-scrape-job';
+import { scrapingJobDedupeKey } from '@academic/application/services/scraping-job-dedupe-key';
 
-@Injectable()
 export class GetScheduleUseCase {
   constructor(
     private readonly cache: AcademicDataRepository,
@@ -17,11 +17,13 @@ export class GetScheduleUseCase {
     try {
       return await this.cache.getSchedule(credentials.cpf);
     } catch (error) {
-      if (!(error instanceof NotFoundException)) {
+      if (!(error instanceof AcademicResourceNotFoundException)) {
         throw error;
       }
 
-      const job = await this.scrapingJobService.enqueue('schedule', { credentials });
+      await this.scrapingJobService.enqueue('schedule', { credentials }, {
+        dedupeKey: scrapingJobDedupeKey(credentials, 'schedule'),
+      });
       return pendingScrapeJob('schedule');
     }
   }

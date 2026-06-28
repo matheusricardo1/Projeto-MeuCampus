@@ -9,6 +9,7 @@ import { GetStudentProfileUseCase } from '@/application/use-cases/get-student-pr
 import { LoginEcampusUseCase } from '@/application/use-cases/login-ecampus.usecase';
 import { LogoutUseCase } from '@/application/use-cases/logout.usecase';
 import { SendAiChatMessageUseCase } from '@/application/use-cases/send-ai-chat-message.usecase';
+import { ValidateAuthSessionUseCase } from '@/application/use-cases/validate-auth-session.usecase';
 import { AsyncAuthSessionStore } from '@/infrastructure/auth/async-auth-session-store';
 import { EcampusHttpRepository } from '@/infrastructure/http/ecampus-http-repository';
 
@@ -27,6 +28,7 @@ export function createEcampusUseCases() {
         getStudentProfile: new GetStudentProfileUseCase(repository, sessionStore),
         login: new LoginEcampusUseCase(repository, sessionStore),
         logout: new LogoutUseCase(repository, sessionStore),
-        sendAiChatMessage: new SendAiChatMessageUseCase(repository, sessionStore)
+        sendAiChatMessage: new SendAiChatMessageUseCase(repository, sessionStore),
+        validateAuthSession: new ValidateAuthSessionUseCase(repository, sessionStore)
     };
 }

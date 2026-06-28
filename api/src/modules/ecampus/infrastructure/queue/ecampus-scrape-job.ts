@@ -2,6 +2,7 @@ export const ECAMPUS_SCRAPE_QUEUE_NAME = process.env.ECAMPUS_SCRAPE_QUEUE || 'ec
 
 export type EcampusScrapeJobName =
   | 'login'
+  | 'session-check'
   | 'logout'
   | 'profile'
   | 'schedule'
@@ -13,6 +14,6 @@ export type EcampusScrapeJobData =
   // login job – receives CPF and password, returns session data
   | { cpf: string; password: string }
   // generic jobs – always carry already‑authenticated credentials
-  | { credentials: import('@academic/domain/models/academic-credentials').AcademicCredentials }
-  | { credentials: import('@academic/domain/models/academic-credentials').AcademicCredentials; year: string; period: string }
-  | { credentials: import('@academic/domain/models/academic-credentials').AcademicCredentials; planId: string };
+  | { credentials: import('@auth/domain/entities/academic-session.entity').AcademicCredentials }
+  | { credentials: import('@auth/domain/entities/academic-session.entity').AcademicCredentials; year?: string; period?: string }
+  | { credentials: import('@auth/domain/entities/academic-session.entity').AcademicCredentials; planId: string };

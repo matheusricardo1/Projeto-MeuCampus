@@ -1,8 +1,17 @@
-import type { Job, Queue, QueueEvents } from 'bullmq';
-import type { AiChatJobData } from '@ai/application/services/ai-chat-job';
+import type { AiChatMessage } from '@ai/domain/entities/ai-chat-message.entity';
+
+export interface AiChatJobData {
+    conversationId?: string;
+    userId: string;
+    message: string;
+    history: AiChatMessage[];
+}
+
+export interface QueuedAiJob<Result = unknown> {
+    id?: string | number;
+    waitUntilFinished(timeoutMs?: number): Promise<Result>;
+}
 
 export abstract class AiJobService {
-    abstract enqueue(data: AiChatJobData): Promise<Job<AiChatJobData>>;
-    abstract getQueue(): Queue<AiChatJobData>;
-    abstract getQueueEvents(): QueueEvents;
+    abstract enqueue<Result = unknown>(data: AiChatJobData): Promise<QueuedAiJob<Result>>;
 }

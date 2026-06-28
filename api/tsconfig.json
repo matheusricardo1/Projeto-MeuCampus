@@ -16,7 +16,10 @@
       "@/*": ["src/*"],
       "@ai/*": ["src/modules/ai/*"],
       "@academic/*": ["src/modules/academic/*"],
-      "@ecampus/*": ["src/modules/ecampus/*"]
+      "@auth/*": ["src/modules/auth/*"],
+      "@ecampus/*": ["src/modules/ecampus/*"],
+      "@health/*": ["src/modules/health/*"],
+      "@realtime/*": ["src/modules/realtime/*"]
     },
     "types": ["node"],
     // For nodejs:

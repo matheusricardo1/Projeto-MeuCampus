@@ -1,8 +1,9 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { AccessTokenService } from '@academic/application/ports/access-token-service';
-import { AcademicSessionRegistry } from '@academic/application/ports/academic-session-registry';
+import { AccessTokenService } from '@auth/application/ports/access-token-service';
+import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
 import { ScrapingJobService } from '@academic/application/ports/scraping-job-service';
-import type { AcademicCredentials } from '@academic/domain/models/academic-credentials';
+import type { AcademicCredentials } from '@auth/domain/entities/academic-session.entity';
+import { AcademicLoginFailedException } from '@academic/domain/exceptions/academic-login-failed.exception';
+import { PrefetchAcademicDataUseCase } from '@academic/application/use-cases/prefetch-academic-data.usecase';
 
 export interface LoginInput {
   cpf: string;
@@ -14,30 +15,31 @@ export interface LoginOutput {
   tokenType: 'Bearer';
 }
 
-@Injectable()
 export class LoginUseCase {
   constructor(
     private readonly scrapingJobService: ScrapingJobService,
     private readonly accessTokenService: AccessTokenService,
     private readonly sessionRegistry: AcademicSessionRegistry,
+    private readonly prefetchAcademicDataUseCase: PrefetchAcademicDataUseCase,
   ) {}
 
   async execute(input: LoginInput): Promise<LoginOutput> {
-    const job = await this.scrapingJobService.enqueue('login', {
+    const job = await this.scrapingJobService.enqueue<{ session: Record<string, unknown> }>('login', {
       cpf: input.cpf,
       password: input.password,
     });
 
-    const result = await job.waitUntilFinished(this.scrapingJobService.getQueueEvents());
+    const result = await job.waitUntilFinished();
     if (!result || typeof result !== 'object' || !('session' in result)) {
-      throw new BadRequestException('Login failed');
+      throw new AcademicLoginFailedException();
     }
 
     const credentials: AcademicCredentials = {
       cpf: input.cpf,
-      session: (result as { session: Record<string, unknown> }).session,
+      session: result.session,
     };
     await this.sessionRegistry.activate(credentials);
+    await this.prefetchAcademicDataUseCase.execute(credentials);
     const token = this.accessTokenService.sign(credentials);
 
     return { accessToken: token, tokenType: 'Bearer' };

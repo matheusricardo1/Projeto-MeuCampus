@@ -1,4 +1,5 @@
 import { InvalidAcademicRequestError } from '@academic/presentation/http/errors/invalid-academic-request.error';
+import { getCurrentAcademicPeriod } from '@academic/application/services/current-academic-period';
 
 const acceptedPeriods = new Set(['1', '1o', '201', '2', '2o', '202', 'ferias1', 'ferias-1', '203', 'ferias2', 'ferias-2', '204', 'especial', '5', '401']);
 
@@ -21,7 +22,7 @@ export class AcademicRequestValidator {
     }
 
     static parseYear(value?: string): string {
-        const year = value?.trim() || '';
+        const year = value?.trim() || getCurrentAcademicPeriod().year;
         if (!/^\d{4}$/.test(year)) {
             throw new InvalidAcademicRequestError('Informe um ano com 4 digitos.');
         }
@@ -36,7 +37,7 @@ export class AcademicRequestValidator {
     }
 
     static parsePeriod(value?: string): string {
-        const period = value?.trim().toLowerCase() || '';
+        const period = value?.trim().toLowerCase() || getCurrentAcademicPeriod().period;
         if (!acceptedPeriods.has(period)) {
             throw new InvalidAcademicRequestError('Informe um periodo valido.');
         }

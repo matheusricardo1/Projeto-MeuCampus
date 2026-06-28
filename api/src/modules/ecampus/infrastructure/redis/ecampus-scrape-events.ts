@@ -1,4 +1,4 @@
-import type { AcademicResource } from '@academic/domain/models/academic-resource';
+import type { AcademicResource } from '@academic/domain/value-objects/academic-resource.value-object';
 
 export const ACADEMIC_SCRAPE_RESULT_CHANNEL = 'ecampus:scrape:result';
 export const ACADEMIC_RESOURCE_READY_EVENT = 'ecampus:resource-ready';

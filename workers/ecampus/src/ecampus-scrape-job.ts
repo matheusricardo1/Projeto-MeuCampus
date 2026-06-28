@@ -4,6 +4,7 @@ export const ECAMPUS_SCRAPE_QUEUE_NAME = process.env.ECAMPUS_SCRAPE_QUEUE || 'ec
 
 export type EcampusScrapeJobName =
     | 'login'
+    | 'session-check'
     | 'logout'
     | 'profile'
     | 'schedule'
@@ -21,8 +22,8 @@ export type EcampusScrapeJobData =
       }
     | {
         credentials: EcampusCredentials;
-        year: string;
-        period: string;
+        year?: string;
+        period?: string;
       }
     | {
         credentials: EcampusCredentials;

@@ -31,6 +31,12 @@ export class EcampusHttpRepository implements EcampusRepository {
         });
     }
 
+    async validateSession(accessToken: string): Promise<void> {
+        await this.request<{ status: string }>('/ecampus/session', {
+            headers: this.authHeaders(accessToken)
+        });
+    }
+
     async logout(accessToken: string): Promise<void> {
         await this.request<{ status: string }>('/ecampus/logout', {
             method: 'POST',
@@ -60,9 +66,8 @@ export class EcampusHttpRepository implements EcampusRepository {
         };
     }
 
-    getGrades(accessToken: string, year: string, period: string): Promise<Grade[]> {
-        const params = new URLSearchParams({ year, period });
-        return this.request<Grade[]>(`/ecampus/grades?${params.toString()}`, {
+    getGrades(accessToken: string, year?: string, period?: string): Promise<Grade[]> {
+        return this.requestWithCurrentPeriodFallback<Grade[]>('/ecampus/grades', year, period, {
             headers: this.authHeaders(accessToken)
         });
     }
@@ -73,9 +78,8 @@ export class EcampusHttpRepository implements EcampusRepository {
         });
     }
 
-    getAcademicSubjects(accessToken: string, year: string, period: string): Promise<LessonPlanSubject[]> {
-        const params = new URLSearchParams({ year, period });
-        return this.request<LessonPlanSubject[]>(`/ecampus/subjects?${params.toString()}`, {
+    getAcademicSubjects(accessToken: string, year?: string, period?: string): Promise<LessonPlanSubject[]> {
+        return this.requestWithCurrentPeriodFallback<LessonPlanSubject[]>('/ecampus/subjects', year, period, {
             headers: this.authHeaders(accessToken)
         });
     }
@@ -104,6 +108,31 @@ export class EcampusHttpRepository implements EcampusRepository {
         return {
             Authorization: `Bearer ${accessToken}`
         };
+    }
+
+    private withOptionalAcademicPeriod(path: string, year?: string, period?: string): string {
+        if (!year || !period || isCurrentAcademicPeriod(year, period)) {
+            return path;
+        }
+
+        const params = new URLSearchParams({ year, period });
+        return `${path}?${params.toString()}`;
+    }
+
+    private async requestWithCurrentPeriodFallback<T>(path: string, year: string | undefined, period: string | undefined, init: RequestInit): Promise<T> {
+        const requestPath = this.withOptionalAcademicPeriod(path, year, period);
+
+        try {
+            return await this.request<T>(requestPath, init);
+        } catch (error) {
+            if (requestPath !== path || !isMissingAcademicPeriodError(error)) {
+                throw error;
+            }
+
+            const current = getCurrentAcademicPeriod();
+            const params = new URLSearchParams(current);
+            return this.request<T>(`${path}?${params.toString()}`, init);
+        }
     }
 
     private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -159,6 +188,28 @@ function getAppEnv(): 'development' | 'production' {
     return process.env.EXPO_PUBLIC_APP_ENV === 'development'
         ? 'development'
         : DEFAULT_APP_ENV;
+}
+
+function isCurrentAcademicPeriod(year: string, period: string): boolean {
+    const current = getCurrentAcademicPeriod();
+    return year === current.year && period === current.period;
+}
+
+function getCurrentAcademicPeriod(): { year: string; period: string } {
+    const now = new Date();
+    return {
+        year: now.getFullYear().toString(),
+        period: now.getMonth() >= 6 ? '2' : '1'
+    };
+}
+
+function isMissingAcademicPeriodError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+        return false;
+    }
+
+    const message = error.message.toLocaleLowerCase('pt-BR');
+    return message.includes('ano com 4 digitos') || message.includes('periodo valido');
 }
 
 function toTitleName(value: string): string {

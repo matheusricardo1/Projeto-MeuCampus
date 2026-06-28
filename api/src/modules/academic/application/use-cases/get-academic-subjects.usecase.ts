@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { AcademicDataRepository } from '@/modules/academic/application/ports/academic-data-repository';
+import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { ScrapingJobService } from '@/modules/academic/application/ports/scraping-job-service';
-import type { AcademicSubject } from '@academic/domain/models/academic-subject';
-import type { AcademicCredentials } from '@academic/domain/models/academic-credentials';
+import type { AcademicSubject } from '@academic/domain/entities/academic-subject.entity';
+import type { AcademicCredentials } from '@auth/domain/entities/academic-session.entity';
+import { AcademicResourceNotFoundException } from '@academic/domain/exceptions/academic-resource-not-found.exception';
 import { pendingScrapeJob, type PendingScrapeJob } from '@/modules/academic/application/services/pending-scrape-job';
+import { scrapingJobDedupeKey } from '@academic/application/services/scraping-job-dedupe-key';
 
 export interface AcademicSubjectsInput {
   credentials: AcademicCredentials;
@@ -11,7 +12,6 @@ export interface AcademicSubjectsInput {
   period: string;
 }
 
-@Injectable()
 export class GetAcademicSubjectsUseCase {
   constructor(
     private readonly cache: AcademicDataRepository,
@@ -22,21 +22,31 @@ export class GetAcademicSubjectsUseCase {
     try {
       return await this.cache.getAcademicSubjects(input.credentials.cpf, input.year, input.period);
     } catch (error) {
-      if (!(error instanceof NotFoundException)) {
+      if (!(error instanceof AcademicResourceNotFoundException)) {
         throw error;
       }
 
-      await Promise.all([
-        this.scrapingJobService.enqueue('grades', {
-          credentials: input.credentials,
-          year: input.year,
-          period: input.period,
-        }),
-        this.scrapingJobService.enqueue('schedule', { credentials: input.credentials }),
-        this.scrapingJobService.enqueue('lesson-plan-subjects', { credentials: input.credentials }),
-      ]);
+      await this.enqueueMissingResource(error.resource, input);
+      return pendingScrapeJob(error.resource);
+    }
+  }
 
-      return pendingScrapeJob('grades');
+  private async enqueueMissingResource(resource: AcademicResourceNotFoundException['resource'], input: AcademicSubjectsInput): Promise<void> {
+    if (resource === 'grades') {
+      await this.scrapingJobService.enqueue('grades', {
+        credentials: input.credentials,
+        year: input.year,
+        period: input.period,
+      }, {
+        dedupeKey: scrapingJobDedupeKey(input.credentials, 'grades', `${input.year}-${input.period}`),
+      });
+      return;
+    }
+
+    if (resource === 'schedule' || resource === 'lesson-plan-subjects') {
+      await this.scrapingJobService.enqueue(resource, { credentials: input.credentials }, {
+        dedupeKey: scrapingJobDedupeKey(input.credentials, resource),
+      });
     }
   }
 }

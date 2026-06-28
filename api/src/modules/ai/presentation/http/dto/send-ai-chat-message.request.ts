@@ -1,4 +1,4 @@
-import type { AiChatMessage } from '@ai/domain/models/ai-chat-message';
+import type { AiChatMessage } from '@ai/domain/entities/ai-chat-message.entity';
 import type { SendAiChatMessageInput } from '@ai/application/use-cases/send-ai-chat-message.usecase';
 
 export class SendAiChatMessageRequest {

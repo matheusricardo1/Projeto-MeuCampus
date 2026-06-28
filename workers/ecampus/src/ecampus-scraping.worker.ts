@@ -11,6 +11,7 @@ import {
 } from './ecampus-scrape-job';
 import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from './ecampus-cache';
 import { ECAMPUS_SCRAPE_RESULT_CHANNEL, type EcampusResourceFailedEvent, type EcampusResourceReadyEvent } from './ecampus-scrape-events';
+import { getCurrentAcademicPeriod } from '@ecampus/domain/services/current-academic-period';
 
 type AuthenticatedScrapeJobData = Extract<EcampusScrapeJobData, { credentials: unknown }>;
 
@@ -83,6 +84,9 @@ export class EcampusScrapingWorker {
 
         try {
             switch (name) {
+                case 'session-check':
+                    await new EcampusAuthService().getAuthenticatedClient(authenticatedData.credentials);
+                    return { status: 'ok' };
                 case 'logout':
                     return this.logoutAndClearCache(authenticatedData.credentials);
                 case 'profile': {
@@ -92,8 +96,7 @@ export class EcampusScrapingWorker {
                     return this.cacheAndPublish('schedule', authenticatedData.credentials, this.repository.getSchedule(authenticatedData.credentials));
                 }
                 case 'grades': {
-                    const year = this.requireField(authenticatedData, 'year');
-                    const period = this.requireField(authenticatedData, 'period');
+                    const { year, period } = this.resolveGradesPeriod(authenticatedData);
                     return this.cacheAndPublish('grades', authenticatedData.credentials, this.repository.getGrades(authenticatedData.credentials, year, period), { year, period });
                 }
                 case 'lesson-plan-subjects': {
@@ -141,6 +144,18 @@ export class EcampusScrapingWorker {
         }
 
         return value;
+    }
+
+    private resolveGradesPeriod(data: Record<string, unknown>): { year: string; period: string } {
+        const fallback = getCurrentAcademicPeriod();
+        const year = typeof data.year === 'string' && data.year.trim()
+            ? data.year.trim()
+            : fallback.year;
+        const period = typeof data.period === 'string' && data.period.trim()
+            ? data.period.trim()
+            : fallback.period;
+
+        return { year, period };
     }
 
     private async clearUserCache(cpf: string): Promise<number> {
@@ -266,8 +281,8 @@ export class EcampusScrapingWorker {
         resource: EcampusCachedResource,
         data: EcampusScrapeJobData
     ): Pick<EcampusResourceReadyEvent, 'year' | 'period' | 'planId'> {
-        if (resource === 'grades' && 'year' in data && 'period' in data) {
-            return { year: data.year, period: data.period };
+        if (resource === 'grades') {
+            return this.resolveGradesPeriod(data);
         }
 
         if (resource === 'lesson-plan' && 'planId' in data) {

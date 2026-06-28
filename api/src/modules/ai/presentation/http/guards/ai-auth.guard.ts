@@ -1,7 +1,7 @@
 import { Injectable, type CanActivate, type ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import type { AiAuthenticatedUser } from '@ai/domain/models/ai-authenticated-user';
-import { JwtAccessTokenService } from '@ecampus/infrastructure/security/jwt-access-token-service';
-import { AcademicSessionRegistry } from '@academic/application/ports/academic-session-registry';
+import type { AiAuthenticatedUser } from '@ai/domain/entities/ai-authenticated-user.entity';
+import { AccessTokenService } from '@auth/application/ports/access-token-service';
+import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
 
 interface RequestWithAiUser {
     headers: {
@@ -13,7 +13,7 @@ interface RequestWithAiUser {
 @Injectable()
 export class AiAuthGuard implements CanActivate {
     constructor(
-        private readonly accessTokenService: JwtAccessTokenService,
+        private readonly accessTokenService: AccessTokenService,
         private readonly sessionRegistry: AcademicSessionRegistry
     ) {}
 

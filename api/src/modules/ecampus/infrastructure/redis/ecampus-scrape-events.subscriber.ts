@@ -1,8 +1,8 @@
 import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
-import { AcademicGateway } from '@academic/presentation/ws/academic.gateway';
-import { AcademicDataRepository } from '@academic/application/ports/academic-data-repository';
-import { AcademicSessionRegistry } from '@academic/application/ports/academic-session-registry';
+import { AcademicNotificationService } from '@realtime/application/ports/academic-notification-service';
+import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
+import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 import {
@@ -16,7 +16,7 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
     private readonly subscriber = new Redis(createRedisConnectionOptions());
 
     constructor(
-        private readonly gateway: AcademicGateway,
+        private readonly notifier: AcademicNotificationService,
         private readonly academicDataRepository: AcademicDataRepository,
         private readonly sessionRegistry: AcademicSessionRegistry
     ) {}
@@ -75,11 +75,11 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
                     await this.invalidateExpiredSession(event.cpf);
                 }
 
-                this.gateway.emitResourceFailed(event);
+                this.notifier.emitResourceFailed(event);
                 return;
             }
 
-            this.gateway.emitResourceReady(event);
+            this.notifier.emitResourceReady(event);
         } catch (error) {
             logger.error('Failed to send eCampus scrape notification through WebSocket.', {
                 errorName: error instanceof Error ? error.name : 'UnknownError',

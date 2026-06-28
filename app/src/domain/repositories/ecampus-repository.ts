@@ -22,12 +22,13 @@ export type EcampusScrapeJobType = 'profile' | 'schedule' | 'grades' | 'lesson-p
 
 export interface EcampusRepository {
     login(credentials: LoginCredentials): Promise<AuthSession>;
+    validateSession(accessToken: string): Promise<void>;
     logout(accessToken: string): Promise<void>;
     enqueueScrapeJob(accessToken: string, type: EcampusScrapeJobType, data?: Record<string, unknown>): Promise<void>;
     getProfile(accessToken: string): Promise<StudentProfile>;
-    getGrades(accessToken: string, year: string, period: string): Promise<Grade[]>;
+    getGrades(accessToken: string, year?: string, period?: string): Promise<Grade[]>;
     getSchedule(accessToken: string): Promise<ScheduleClass[]>;
-    getAcademicSubjects(accessToken: string, year: string, period: string): Promise<LessonPlanSubject[]>;
+    getAcademicSubjects(accessToken: string, year?: string, period?: string): Promise<LessonPlanSubject[]>;
     getLessonPlanSubjects(accessToken: string): Promise<LessonPlanSubject[]>;
     getLessonPlan(accessToken: string, planId: string): Promise<LessonPlanItem[]>;
     sendAiChatMessage(accessToken: string, input: SendAiChatMessageRequest): Promise<AiChatReply>;

@@ -1,7 +1,7 @@
-import type { AcademicSubject } from '@academic/domain/models/academic-subject';
-import type { AttendanceSummary, Grade, GradeEvaluation } from '@academic/domain/models/grade';
-import type { LessonPlanSubject } from '@academic/domain/models/lesson-plan-subject';
-import type { ScheduleClass } from '@academic/domain/models/schedule-class';
+import type { AcademicSubject } from '@academic/domain/entities/academic-subject.entity';
+import type { AttendanceSummary, Grade, GradeEvaluation } from '@academic/domain/entities/grade.entity';
+import type { LessonPlanSubject } from '@academic/domain/entities/lesson-plan-subject.entity';
+import type { ScheduleClass } from '@academic/domain/value-objects/schedule-class.value-object';
 
 type UnknownRecord = Record<string, unknown>;
 

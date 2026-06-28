@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards, BadRequestException, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards, BadRequestException, Res, UnauthorizedException } from '@nestjs/common';
 import type { Response } from 'express';
 import { GetAcademicSubjectsUseCase } from '@academic/application/use-cases/get-academic-subjects.usecase';
 import { GetGradesUseCase } from '@academic/application/use-cases/get-grades.usecase';
@@ -8,14 +8,16 @@ import { GetScheduleUseCase } from '@academic/application/use-cases/get-schedule
 import { GetProfileUseCase } from '@academic/application/use-cases/get-profile.usecase';
 import { LoginUseCase } from '@academic/application/use-cases/login.usecase';
 import { LogoutAcademicSessionUseCase } from '@academic/application/use-cases/logout-academic-session.usecase';
-import type { AcademicCredentials } from '@academic/domain/models/academic-credentials';
-import { CurrentAcademicCredentials } from '@academic/presentation/http/decorators/current-academic-credentials.decorator';
+import { AcademicSessionExpiredException, ValidateAcademicSessionUseCase } from '@academic/application/use-cases/validate-academic-session.usecase';
+import type { AcademicCredentials } from '@auth/domain/entities/academic-session.entity';
+import { CurrentAcademicCredentials } from '@auth/presentation/http/decorators/current-academic-credentials.decorator';
 import { GetGradesQuery } from '@academic/presentation/http/dto/get-grades.query';
 import type { LoginAcademicRequest } from '@academic/presentation/http/dto/login-academic.request';
-import { AcademicJwtGuard } from '@academic/presentation/http/guards/academic-jwt.guard';
-import type { AcademicResource } from '@academic/domain/models/academic-resource';
+import { AcademicAuthGuard } from '@auth/presentation/http/guards/academic-auth.guard';
+import type { AcademicResource } from '@academic/domain/value-objects/academic-resource.value-object';
 import { ScrapingJobService } from '@/modules/academic/application/ports/scraping-job-service';
 import { isPendingScrapeJob } from '@/modules/academic/application/services/pending-scrape-job';
+import { getCurrentAcademicPeriod } from '@academic/application/services/current-academic-period';
 
 @Controller('ecampus')
 export class AcademicController {
@@ -28,6 +30,7 @@ export class AcademicController {
     private readonly getGradesUseCase: GetGradesUseCase,
     private readonly getLessonPlanUseCase: GetLessonPlanUseCase,
     private readonly getLessonPlanSubjectsUseCase: GetLessonPlanSubjectsUseCase,
+    private readonly validateAcademicSessionUseCase: ValidateAcademicSessionUseCase,
     private readonly scrapingJobService: ScrapingJobService,
   ) {}
 
@@ -49,7 +52,7 @@ export class AcademicController {
 
   @Post('logout')
   @HttpCode(200)
-  @UseGuards(AcademicJwtGuard)
+  @UseGuards(AcademicAuthGuard)
   async logout(@CurrentAcademicCredentials() credentials: AcademicCredentials, @Res({ passthrough: true }) response: Response) {
     response.locals.academicDataSource = 'worker';
     response.locals.academicResource = 'logout';
@@ -57,20 +60,34 @@ export class AcademicController {
     return { status: 'ok' };
   }
 
+  @Get('session')
+  @UseGuards(AcademicAuthGuard)
+  async validateSession(@CurrentAcademicCredentials() credentials: AcademicCredentials) {
+    try {
+      return await this.validateAcademicSessionUseCase.execute(credentials);
+    } catch (error) {
+      if (error instanceof AcademicSessionExpiredException) {
+        throw new UnauthorizedException(error.message);
+      }
+
+      throw error;
+    }
+  }
+
   @Get('profile')
-  @UseGuards(AcademicJwtGuard)
+  @UseGuards(AcademicAuthGuard)
   async getStudentProfile(@CurrentAcademicCredentials() credentials: AcademicCredentials, @Res({ passthrough: true }) response: Response) {
     return this.respondWithResourceStatus(response, 'profile', await this.getProfileUseCase.execute(credentials));
   }
 
   @Get('schedule')
-  @UseGuards(AcademicJwtGuard)
+  @UseGuards(AcademicAuthGuard)
   async getSchedule(@CurrentAcademicCredentials() credentials: AcademicCredentials, @Res({ passthrough: true }) response: Response) {
     return this.respondWithResourceStatus(response, 'schedule', await this.getScheduleUseCase.execute(credentials));
   }
 
   @Get('grades')
-  @UseGuards(AcademicJwtGuard)
+  @UseGuards(AcademicAuthGuard)
   async getGrades(
     @CurrentAcademicCredentials() credentials: AcademicCredentials,
     @Res({ passthrough: true }) response: Response,
@@ -86,7 +103,7 @@ export class AcademicController {
   }
 
   @Get('lesson-plans/:planId')
-  @UseGuards(AcademicJwtGuard)
+  @UseGuards(AcademicAuthGuard)
   async getLessonPlan(
     @CurrentAcademicCredentials() credentials: AcademicCredentials,
     @Param('planId') planId: string,
@@ -96,7 +113,7 @@ export class AcademicController {
   }
 
   @Get('subjects')
-  @UseGuards(AcademicJwtGuard)
+  @UseGuards(AcademicAuthGuard)
   async getAcademicSubjects(
     @CurrentAcademicCredentials() credentials: AcademicCredentials,
     @Res({ passthrough: true }) response: Response,
@@ -104,15 +121,17 @@ export class AcademicController {
     @Query('period') period?: string,
   ) {
     const input = new GetGradesQuery(year, period).toUseCaseInput();
-    return this.respondWithResourceStatus(response, 'academic-subjects', await this.getAcademicSubjectsUseCase.execute({
+    const result = await this.getAcademicSubjectsUseCase.execute({
       credentials,
       year: input.year,
       period: input.period,
-    }));
+    });
+
+    return this.respondWithResourceStatus(response, 'academic-subjects', result, 'academic-subjects');
   }
 
   @Get('lesson-plans')
-  @UseGuards(AcademicJwtGuard)
+  @UseGuards(AcademicAuthGuard)
   async getLessonPlanSubjects(@CurrentAcademicCredentials() credentials: AcademicCredentials, @Res({ passthrough: true }) response: Response) {
     return this.respondWithResourceStatus(response, 'lesson-plan-subjects', await this.getLessonPlanSubjectsUseCase.execute(credentials));
   }
@@ -120,7 +139,7 @@ export class AcademicController {
   // Endpoint para enfileirar jobs manualmente (útil para depuração)
   // -----------------------------------------------------------------
   @Post('jobs/:type')
-  @UseGuards(AcademicJwtGuard)
+  @UseGuards(AcademicAuthGuard)
   async enqueueJob(
     @Param('type') type: string,
     @CurrentAcademicCredentials() credentials: AcademicCredentials,
@@ -133,12 +152,10 @@ export class AcademicController {
     }
     const data: Record<string, unknown> = { credentials };
     if (type === 'grades') {
+      const fallbackPeriod = getCurrentAcademicPeriod();
       const { year, period } = body;
-      if (!year || !period) {
-        throw new BadRequestException('year and period are required for grades job');
-      }
-      data.year = year;
-      data.period = period;
+      data.year = year || fallbackPeriod.year;
+      data.period = period || fallbackPeriod.period;
     }
     if (type === 'lesson-plan') {
       const { planId } = body;
@@ -153,11 +170,16 @@ export class AcademicController {
     return { jobId: job.id };
   }
 
-  private respondWithResourceStatus<T>(response: Response, resource: AcademicResource | 'academic-subjects', result: T): T {
+  private respondWithResourceStatus<T>(
+    response: Response,
+    resource: AcademicResource | 'academic-subjects',
+    result: T,
+    pendingResource: AcademicResource | 'academic-subjects' = resource
+  ): T {
     if (isPendingScrapeJob(result)) {
       response.status(202);
       response.locals.academicDataSource = 'worker';
-      response.locals.academicResource = result.resource;
+      response.locals.academicResource = pendingResource;
       return result;
     }
 

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { InvalidAiMessageError } from '@ai/domain/errors/invalid-ai-message.error';
-import type { AiChatMessage } from '@ai/domain/models/ai-chat-message';
-import type { AiChatReply } from '@ai/domain/models/ai-chat-reply';
+import { InvalidAiMessageException } from '@ai/domain/exceptions/invalid-ai-message.exception';
+import type { AiChatMessage } from '@ai/domain/entities/ai-chat-message.entity';
+import type { AiChatReply } from '@ai/domain/value-objects/ai-chat-reply.value-object';
 import { AiJobService } from '@ai/application/ports/ai-job-service';
 
 export interface SendAiChatMessageInput {
@@ -16,28 +16,28 @@ export class SendAiChatMessageUseCase {
     async execute(userId: string, input: SendAiChatMessageInput): Promise<AiChatReply> {
         const history = this.parseHistory(input.history);
         const message = this.parseMessage(input.message, history);
-        const job = await this.aiJobService.enqueue({
+        const job = await this.aiJobService.enqueue<AiChatReply>({
             userId,
             message,
             history,
             ...(input.conversationId ? { conversationId: input.conversationId } : {})
         });
 
-        return job.waitUntilFinished(this.aiJobService.getQueueEvents(), 30000) as Promise<AiChatReply>;
+        return job.waitUntilFinished(30000);
     }
 
     private parseMessage(value: string, history: AiChatMessage[]): string {
         const message = value?.trim();
         if (!message || message.length > 2000) {
-            throw new InvalidAiMessageError('Informe uma mensagem entre 1 e 2000 caracteres.');
+            throw new InvalidAiMessageException('Informe uma mensagem entre 1 e 2000 caracteres.');
         }
 
         if (this.hasPromptInjection(message)) {
-            throw new InvalidAiMessageError('Nao posso processar pedidos para ignorar regras, revelar prompts ou burlar protecoes.');
+            throw new InvalidAiMessageException('Nao posso processar pedidos para ignorar regras, revelar prompts ou burlar protecoes.');
         }
 
         if (this.isClearlyOutOfScope(message) && !this.hasAcademicContext(history)) {
-            throw new InvalidAiMessageError('A IA responde apenas perguntas relacionadas a estudos, vida academica, notas, faltas, horarios e planejamento.');
+            throw new InvalidAiMessageException('A IA responde apenas perguntas relacionadas a estudos, vida academica, notas, faltas, horarios e planejamento.');
         }
 
         return message;
