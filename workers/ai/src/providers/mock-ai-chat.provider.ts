@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { AiChatReply } from '@/models/ai-chat-reply';
 import type { AiChatRequest } from '@/models/ai-chat-request';
+import type { AiChatProvider } from '@/application/ports/ai-chat-provider';
 
-export class MockAiChatProvider {
+export class MockAiChatProvider implements AiChatProvider {
     async generateReply(request: AiChatRequest): Promise<AiChatReply> {
         const conversationId = request.conversationId?.trim() || randomUUID();
 
@@ -14,6 +15,12 @@ export class MockAiChatProvider {
                 content: `Ainda estou em modo mock, mas ja recebi sua pergunta academica: "${request.message}".`,
                 createdAt: new Date().toISOString()
             }
+        };
+    }
+
+    getProviderInfo(): Record<string, unknown> {
+        return {
+            provider: 'mock'
         };
     }
 }

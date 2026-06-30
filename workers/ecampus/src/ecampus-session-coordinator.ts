@@ -1,5 +1,6 @@
 import type Redis from 'ioredis';
 import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
+import type { EcampusSessionStore } from '@/application/ports/ecampus-session-store';
 
 const SESSION_TTL_SECONDS = 60 * 60 * 2;
 
@@ -11,7 +12,7 @@ interface EcampusSessionState {
     reason?: string;
 }
 
-export class EcampusSessionCoordinator {
+export class EcampusSessionCoordinator implements EcampusSessionStore {
     constructor(private readonly redis: Redis) {}
 
     async markActive(cpf: string): Promise<void> {

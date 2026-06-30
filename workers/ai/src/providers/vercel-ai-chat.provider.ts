@@ -7,6 +7,7 @@ import type { AiChatReply } from '@/models/ai-chat-reply';
 import type { AiChatRequest } from '@/models/ai-chat-request';
 import { MockAiChatProvider } from '@/providers/mock-ai-chat.provider';
 import { appLogger } from '@/logging/app-logger';
+import type { AiChatProvider } from '@/application/ports/ai-chat-provider';
 
 type ProviderResolution =
     | { kind: 'gemini'; model: LanguageModel; modelName: string }
@@ -14,7 +15,7 @@ type ProviderResolution =
     | { kind: 'openai'; model: LanguageModel; modelName: string }
     | { kind: 'mock'; reason: 'missing_api_keys' };
 
-export class VercelAiChatProvider {
+export class VercelAiChatProvider implements AiChatProvider {
     private readonly fallbackProvider = new MockAiChatProvider();
     private readonly safeFailureMessage = 'Nao consegui responder agora. Tente novamente em instantes.';
     private readonly providerResolution: ProviderResolution;

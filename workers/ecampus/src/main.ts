@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { register } from 'tsconfig-paths';
-import { EcampusScrapingWorker } from './ecampus-scraping.worker';
+import { EcampusScrapingWorker } from '@/infrastructure/queue/bullmq-ecampus-scraping.worker';
 import { appLogger } from './logging/app-logger';
 
 register({
@@ -31,4 +31,3 @@ bootstrap().catch((error: unknown) => {
     appLogger.critical(`eCampus scraping worker failed to start: ${message}`);
     process.exitCode = 1;
 });
-

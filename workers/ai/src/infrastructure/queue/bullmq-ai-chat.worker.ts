@@ -1,13 +1,14 @@
 import { Worker, type Job } from 'bullmq';
 import type { ConnectionOptions } from 'bullmq';
-import { VercelAiChatProvider } from '@/providers/vercel-ai-chat.provider';
 import { appLogger } from '@/logging/app-logger';
 import { createRedisConnectionOptions } from '@/redis-connection';
 import { AI_CHAT_QUEUE_NAME, type AiChatJobData } from '@/ai-chat-job';
 import type { AiChatReply } from '@/models/ai-chat-reply';
+import { ProcessAiChatJobUseCase } from '@/application/use-cases/process-ai-chat-job.usecase';
+import { VercelAiChatProvider } from '@/providers/vercel-ai-chat.provider';
 
 export class AiChatWorker {
-    private readonly provider = new VercelAiChatProvider();
+    private readonly processJob = new ProcessAiChatJobUseCase(new VercelAiChatProvider());
     private readonly worker: Worker<AiChatJobData, AiChatReply>;
 
     constructor() {
@@ -41,7 +42,7 @@ export class AiChatWorker {
         appLogger.info('AI chat worker started.', {
             queue: AI_CHAT_QUEUE_NAME,
             concurrency: Number(process.env.AI_CHAT_WORKER_CONCURRENCY || 2),
-            ...this.provider.getProviderInfo()
+            ...this.processJob.getProviderInfo()
         });
     }
 
@@ -56,6 +57,6 @@ export class AiChatWorker {
             historyLength: job.data.history.length
         });
 
-        return this.provider.generateReply(job.data);
+        return this.processJob.execute(job.data);
     }
 }
