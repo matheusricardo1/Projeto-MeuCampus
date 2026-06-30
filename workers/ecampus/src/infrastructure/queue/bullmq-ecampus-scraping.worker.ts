@@ -1,4 +1,5 @@
 import { Worker, type Job } from 'bullmq';
+import type { ConnectionOptions } from 'bullmq';
 import Redis from 'ioredis';
 import { EcampusAuthService } from '@ecampus/infrastructure/ecampus/ecampus-auth-service';
 import { EcampusHttpRepository } from '@ecampus/infrastructure/ecampus/ecampus-http.repository';
@@ -39,7 +40,7 @@ export class EcampusScrapingWorker {
             ECAMPUS_SCRAPE_QUEUE_NAME,
             (job) => this.process(job),
             {
-                connection: createRedisConnectionOptions(),
+                connection: createRedisConnectionOptions() as ConnectionOptions,
                 concurrency: Number(process.env.ECAMPUS_SCRAPE_WORKER_CONCURRENCY || 4)
             }
         );
