@@ -3,14 +3,14 @@ import { Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
 import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
 import type { AcademicCredentials } from '@auth/domain/entities/academic-session.entity';
-import { createRedisConnectionOptions } from '@/shared/redis-connection';
+import { createApiRedisConnectionOptions } from '@/shared/redis-connection';
 
 const SESSION_TTL_SECONDS = 60 * 30;
 type SessionState = { status: 'active' | 'invalid'; updatedAt: string; reason?: string };
 
 @Injectable()
 export class RedisAcademicSessionRegistry extends AcademicSessionRegistry {
-    private readonly redis = new Redis(createRedisConnectionOptions());
+    private readonly redis = new Redis(createApiRedisConnectionOptions());
 
     async activate(credentials: AcademicCredentials): Promise<void> {
         await Promise.all([

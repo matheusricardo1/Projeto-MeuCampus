@@ -5,13 +5,13 @@ import {
     type AcademicBootstrapState
 } from '@academic/application/ports/academic-bootstrap-tracker';
 import type { AcademicResource } from '@academic/domain/value-objects/academic-resource.value-object';
-import { createRedisConnectionOptions } from '@/shared/redis-connection';
+import { createApiRedisConnectionOptions } from '@/shared/redis-connection';
 
 const BOOTSTRAP_TTL_SECONDS = 60 * 30;
 
 @Injectable()
 export class EcampusBootstrapTracker extends AcademicBootstrapTracker {
-    private readonly redis = new Redis(createRedisConnectionOptions());
+    private readonly redis = new Redis(createApiRedisConnectionOptions());
 
     async start(cpf: string, requiredResources: AcademicResource[]): Promise<AcademicBootstrapState> {
         const now = new Date().toISOString();

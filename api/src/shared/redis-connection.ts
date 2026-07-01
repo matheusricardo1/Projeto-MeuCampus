@@ -13,6 +13,14 @@ export function createRedisConnectionOptions(): RedisOptions {
   };
 }
 
+export function createApiRedisConnectionOptions(): RedisOptions {
+  return {
+    ...createRedisConnectionOptions(),
+    maxRetriesPerRequest: 3,
+    commandTimeout: 5000,
+  };
+}
+
 function parseRedisUrl(value: string): RedisOptions {
   const url = new URL(value);
   

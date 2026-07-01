@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
 import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { AcademicResourceNotFoundException } from '@academic/domain/exceptions/academic-resource-not-found.exception';
-import { createRedisConnectionOptions } from '@/shared/redis-connection';
+import { createApiRedisConnectionOptions } from '@/shared/redis-connection';
 import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from '@ecampus/infrastructure/redis/ecampus-cache';
 import type { AcademicSubject } from '@academic/domain/entities/academic-subject.entity';
 import type { Grade } from '@academic/domain/entities/grade.entity';
@@ -28,7 +28,7 @@ export class EcampusRedisRepository extends AcademicDataRepository {
 
   constructor() {
     super();
-    this.redis = new Redis(createRedisConnectionOptions());
+    this.redis = new Redis(createApiRedisConnectionOptions());
   }
 
   async getProfile(cpf: string): Promise<StudentProfile> {
