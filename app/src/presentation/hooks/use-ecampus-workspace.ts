@@ -76,6 +76,7 @@ export function useEcampusWorkspace() {
     const sessionGeneration = useRef(0);
     const isExpiringSessionRef = useRef(false);
     const isWaitingForInitialEventsRef = useRef(false);
+    const hasRealtimeConnectedRef = useRef(false);
     const initialEventsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const initialHydrationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const inFlightRequests = useRef(new Map<ResourceKey, Promise<unknown>>());
@@ -130,6 +131,7 @@ export function useEcampusWorkspace() {
         inFlightRequests.current.clear();
         pendingInitialResourcesRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
+        hasRealtimeConnectedRef.current = false;
         clearInitialEventsTimeout();
         clearInitialHydrationInterval();
         setLoadingRequests(0);
@@ -184,7 +186,7 @@ export function useEcampusWorkspace() {
             }
 
             void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
-        }, 1200);
+        }, 8000);
     };
 
     const waitForInitialScrapingEvents = () => {
@@ -589,9 +591,10 @@ export function useEcampusWorkspace() {
                 session.accessToken,
                 (event) => realtimeHandlerRef.current(event),
                 () => {
-                    if (!disposed && isWaitingForInitialEventsRef.current) {
+                    if (!disposed && isWaitingForInitialEventsRef.current && hasRealtimeConnectedRef.current) {
                         void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
                     }
+                    hasRealtimeConnectedRef.current = true;
                 },
                 (event) => {
                     if (!disposed) {
