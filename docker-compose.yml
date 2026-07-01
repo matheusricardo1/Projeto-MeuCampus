@@ -8,8 +8,8 @@ services:
 
   api:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/Dockerfile
     container_name: ufam-academics-api
     env_file:
       - ./api/.env
@@ -24,8 +24,8 @@ services:
 
   ai-worker:
     build:
-      context: ./workers/ai
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: workers/ai/Dockerfile
     container_name: ufam-academics-ai-worker
     env_file:
       - ./workers/ai/.env
@@ -35,8 +35,8 @@ services:
 
   ecampus-worker:
     build:
-      context: ./workers/ecampus
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: workers/ecampus/Dockerfile
     container_name: ufam-academics-ecampus-worker
     env_file:
       - ./workers/ecampus/.env
