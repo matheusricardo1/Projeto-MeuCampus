@@ -3,6 +3,7 @@ import { AcademicSessionRegistry } from '@auth/application/ports/academic-sessio
 import { ScrapingJobService } from '@academic/application/ports/scraping-job-service';
 import type { AcademicCredentials } from '@auth/domain/entities/academic-session.entity';
 import { AcademicLoginFailedException } from '@academic/domain/exceptions/academic-login-failed.exception';
+import { AcademicWorkerUnavailableException } from '@academic/domain/exceptions/academic-worker-unavailable.exception';
 import { PrefetchAcademicDataUseCase } from '@academic/application/use-cases/prefetch-academic-data.usecase';
 
 export interface LoginInput {
@@ -29,7 +30,13 @@ export class LoginUseCase {
       password: input.password,
     });
 
-    const result = await job.waitUntilFinished();
+    let result: { session: Record<string, unknown> } | null;
+    try {
+      result = await job.waitUntilFinished(30_000) as { session: Record<string, unknown> } | null;
+    } catch {
+      throw new AcademicWorkerUnavailableException();
+    }
+
     if (!result || typeof result !== 'object' || !('session' in result)) {
       throw new AcademicLoginFailedException();
     }
