@@ -437,6 +437,15 @@ export function useEcampusWorkspace() {
     };
 
     realtimeHandlerRef.current = (event: EcampusResourceReadyEvent) => {
+        // During bootstrap wait, only track the lesson-plan planId (A3).
+        // All data loading happens in batch when bootstrap-ready fires.
+        if (isWaitingForInitialEventsRef.current) {
+            if (event.resource === 'lesson-plan' && event.planId) {
+                pendingLessonPlanPlanIdRef.current = event.planId;
+            }
+            return;
+        }
+
         const silentOptions: RequestOptions = { reportError: false, showGlobalLoading: false };
 
         switch (event.resource) {
