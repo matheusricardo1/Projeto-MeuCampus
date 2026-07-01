@@ -16,6 +16,7 @@ import {
   normalizeLessonPlanSubjects,
   normalizeSchedule
 } from '@academic/domain/services/academic-subject-normalizer';
+import { getCurrentAcademicPeriod } from '@academic/application/services/current-academic-period';
 
 /**
  * Reads the raw page-level results saved by workers and maps them into the
@@ -39,9 +40,12 @@ export class EcampusRedisRepository extends AcademicDataRepository {
   }
 
   async getGrades(cpf: string, year: string, period: string): Promise<Grade[]> {
+    const current = getCurrentAcademicPeriod();
+    const isCurrentPeriod = year === current.year && period === current.period;
+
     const [grades, lessonPlanSubjects] = await Promise.all([
       this.getRequired('grades', cpf, `${year}-${period}`),
-      this.getOptional('lesson-plan-subjects', cpf)
+      isCurrentPeriod ? this.getOptional('lesson-plan-subjects', cpf) : Promise.resolve(null)
     ]);
 
     return normalizeGrades(grades, lessonPlanSubjects);
@@ -77,10 +81,13 @@ export class EcampusRedisRepository extends AcademicDataRepository {
   }
 
   async getAcademicSubjects(cpf: string, year: string, period: string): Promise<AcademicSubject[]> {
+    const current = getCurrentAcademicPeriod();
+    const isCurrentPeriod = year === current.year && period === current.period;
+
     const [grades, lessonPlanSubjects, schedule] = await Promise.all([
       this.getRequired('grades', cpf, `${year}-${period}`),
-      this.getOptional('lesson-plan-subjects', cpf),
-      this.getOptional('schedule', cpf)
+      isCurrentPeriod ? this.getOptional('lesson-plan-subjects', cpf) : Promise.resolve(null),
+      isCurrentPeriod ? this.getOptional('schedule', cpf) : Promise.resolve(null)
     ]);
 
     return normalizeAcademicSubjects({

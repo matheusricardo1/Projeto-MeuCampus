@@ -346,16 +346,37 @@ export function useEcampusWorkspace() {
     const changeGradesInputAndLoad = async (input: GradesInput) => {
         setGradesInput(input);
         setGrades([]);
+        setLessonPlanSubjects([]);
+        setLessonPlan([]);
+        setSelectedLessonPlanSubjectCode('');
+        loadedResourcesRef.current.delete('lessonPlanSubjects');
+        loadedResourcesRef.current.delete('lessonPlan');
+        pendingLessonPlanPlanIdRef.current = null;
 
         const generation = sessionGeneration.current;
-        const data = await run(() => useCases.getGrades.execute(input.year, input.period), {
-            reportError: true,
-            showGlobalLoading: true,
-            sessionGeneration: generation
-        });
+        const [gradesData] = await Promise.all([
+            run(() => useCases.getGrades.execute(input.year, input.period), {
+                reportError: true,
+                showGlobalLoading: true,
+                sessionGeneration: generation
+            }),
+            run(() => useCases.getLessonPlanSubjects.execute(input.year, input.period), {
+                reportError: false,
+                showGlobalLoading: false,
+                sessionGeneration: generation
+            }).then((subjectsData) => {
+                if (subjectsData !== null && generation === sessionGeneration.current) {
+                    const selected = pickLessonPlanSubject(subjectsData, '');
+                    setLessonPlanSubjects(subjectsData);
+                    setSelectedLessonPlanSubjectCode(selected?.code || '');
+                    loadedResourcesRef.current.add('lessonPlanSubjects');
+                }
+            })
+        ]);
 
-        if (data && generation === sessionGeneration.current) {
-            setGrades(data);
+        if (gradesData !== null && generation === sessionGeneration.current) {
+            setGrades(gradesData);
+            loadedResourcesRef.current.add('grades');
         }
     };
 
