@@ -1,4 +1,3 @@
-import type { AuthSession } from '@/domain/entities/auth-session';
 import type { AiChatMessage } from '@/domain/entities/ai-chat-message';
 import type { AiChatReply } from '@/domain/entities/ai-chat-reply';
 import type { Grade } from '@/domain/entities/grade';
@@ -21,7 +20,7 @@ export interface SendAiChatMessageRequest {
 export type EcampusScrapeJobType = 'profile' | 'schedule' | 'grades' | 'lesson-plan-subjects' | 'lesson-plan';
 
 export interface EcampusRepository {
-    login(credentials: LoginCredentials): Promise<AuthSession>;
+    login(credentials: LoginCredentials): Promise<{ jobId: string }>;
     validateSession(accessToken: string): Promise<void>;
     logout(accessToken: string): Promise<void>;
     enqueueScrapeJob(accessToken: string, type: EcampusScrapeJobType, data?: Record<string, unknown>): Promise<void>;

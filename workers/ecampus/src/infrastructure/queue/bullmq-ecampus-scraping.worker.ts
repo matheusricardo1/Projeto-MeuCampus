@@ -97,7 +97,7 @@ export class EcampusScrapingWorker {
         });
 
         try {
-            return await this.processJob.execute(name, job.data);
+            return await this.processJob.execute(name, job.data, job.id);
         } catch (error) {
             throw this.toError(error);
         }

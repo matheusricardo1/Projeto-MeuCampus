@@ -1,4 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
+import type { AuthSession } from '@/domain/entities/auth-session';
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3001';
 const RESOURCE_READY_EVENT = 'ecampus:resource-ready';
@@ -6,6 +7,9 @@ const RESOURCE_FAILED_EVENT = 'ecampus:resource-failed';
 const AUTH_REJECTED_EVENT = 'ecampus:auth-rejected';
 const BOOTSTRAP_READY_EVENT = 'ecampus:bootstrap-ready';
 const BOOTSTRAP_FAILED_EVENT = 'ecampus:bootstrap-failed';
+const LOGIN_READY_EVENT = 'ecampus:login-ready';
+const LOGIN_FAILED_EVENT = 'ecampus:login-failed';
+const LOGIN_TIMEOUT_MS = 35_000;
 
 type RealtimeSubscriber = {
     onResourceReady: (event: EcampusResourceReadyEvent) => void;
@@ -135,6 +139,44 @@ function disconnectSocket(): void {
 
 function isJwtLike(value: string): boolean {
     return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
+}
+
+export function waitForLoginResult(jobId: string): Promise<AuthSession> {
+    return new Promise((resolve, reject) => {
+        const socket = io(`${getApiOrigin()}/ecampus`, {
+            auth: { loginJobId: jobId },
+            transports: ['websocket'],
+            reconnection: false
+        });
+
+        const cleanup = () => {
+            socket.removeAllListeners();
+            socket.disconnect();
+        };
+
+        const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error('O serviço está temporariamente indisponível. Tente novamente em instantes.'));
+        }, LOGIN_TIMEOUT_MS);
+
+        socket.on(LOGIN_READY_EVENT, (event: { accessToken: string }) => {
+            clearTimeout(timeout);
+            cleanup();
+            resolve({ accessToken: event.accessToken, tokenType: 'Bearer' });
+        });
+
+        socket.on(LOGIN_FAILED_EVENT, (event: { message: string }) => {
+            clearTimeout(timeout);
+            cleanup();
+            reject(new Error(event.message));
+        });
+
+        socket.on('connect_error', (error: Error) => {
+            clearTimeout(timeout);
+            cleanup();
+            reject(error);
+        });
+    });
 }
 
 function getApiOrigin(): string {

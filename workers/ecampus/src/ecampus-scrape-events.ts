@@ -16,4 +16,24 @@ export interface EcampusResourceFailedEvent extends EcampusResourceReadyEvent {
     message: string;
 }
 
-export type EcampusScrapeResultEvent = EcampusResourceReadyEvent | EcampusResourceFailedEvent;
+export interface EcampusLoginReadyEvent {
+    type: 'login';
+    jobId: string;
+    cpf: string;
+    session: Record<string, unknown>;
+}
+
+export interface EcampusLoginFailedEvent {
+    type: 'login';
+    status: 'failed';
+    jobId: string;
+    cpf: string;
+    errorName: string;
+    message: string;
+}
+
+export type EcampusScrapeResultEvent =
+    | EcampusResourceReadyEvent
+    | EcampusResourceFailedEvent
+    | EcampusLoginReadyEvent
+    | EcampusLoginFailedEvent;

@@ -3,11 +3,15 @@ import Redis from 'ioredis';
 import { AcademicNotificationService } from '@realtime/application/ports/academic-notification-service';
 import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
+import { AccessTokenService } from '@auth/application/ports/access-token-service';
 import { AcademicBootstrapTracker, type AcademicBootstrapState } from '@academic/application/ports/academic-bootstrap-tracker';
+import { PrefetchAcademicDataUseCase } from '@academic/application/use-cases/prefetch-academic-data.usecase';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 import {
     ACADEMIC_SCRAPE_RESULT_CHANNEL,
+    type AcademicLoginFailedEvent,
+    type AcademicLoginReadyEvent,
     type AcademicResourceFailedEvent,
     type AcademicScrapeResultEvent
 } from '@ecampus/infrastructure/redis/ecampus-scrape-events';
@@ -20,7 +24,9 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
         private readonly notifier: AcademicNotificationService,
         private readonly academicDataRepository: AcademicDataRepository,
         private readonly sessionRegistry: AcademicSessionRegistry,
-        private readonly bootstrapTracker: AcademicBootstrapTracker
+        private readonly bootstrapTracker: AcademicBootstrapTracker,
+        private readonly accessTokenService: AccessTokenService,
+        private readonly prefetchUseCase: PrefetchAcademicDataUseCase
     ) {}
 
     async onModuleInit(): Promise<void> {
@@ -83,6 +89,11 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
         });
 
         try {
+            if (this.isLoginEvent(event)) {
+                await this.handleLoginEvent(event);
+                return;
+            }
+
             if (this.isFailedEvent(event)) {
                 if (event.errorName === 'AuthenticationError') {
                     await this.invalidateExpiredSession(event.cpf);
@@ -114,8 +125,31 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
         }
     }
 
+    private isLoginEvent(event: AcademicScrapeResultEvent): event is AcademicLoginReadyEvent | AcademicLoginFailedEvent {
+        return 'type' in event && event.type === 'login';
+    }
+
     private isFailedEvent(event: AcademicScrapeResultEvent): event is AcademicResourceFailedEvent {
-        return 'status' in event && event.status === 'failed';
+        return !('type' in event) && 'status' in event && (event as AcademicResourceFailedEvent).status === 'failed';
+    }
+
+    private async handleLoginEvent(event: AcademicLoginReadyEvent | AcademicLoginFailedEvent): Promise<void> {
+        if (event.status === 'failed') {
+            this.notifier.emitLoginFailed({ jobId: event.jobId, message: event.message });
+            return;
+        }
+
+        const credentials = { cpf: event.cpf, session: event.session };
+        await this.sessionRegistry.activate(credentials);
+        const accessToken = this.accessTokenService.sign(credentials);
+        this.notifier.emitLoginReady({ jobId: event.jobId, accessToken });
+        void this.prefetchUseCase.execute(credentials).catch((error: unknown) => {
+            logger.error('Failed to prefetch academic data after login.', {
+                cpf: event.cpf,
+                errorName: error instanceof Error ? error.name : 'UnknownError',
+                message: error instanceof Error ? error.message : String(error)
+            });
+        });
     }
 
     private async invalidateExpiredSession(cpf: string): Promise<void> {

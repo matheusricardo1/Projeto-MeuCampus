@@ -40,6 +40,7 @@ export class AcademicController {
   }
 
   @Post('login')
+  @HttpCode(202)
   async login(@Body() body: LoginAcademicRequest, @Res({ passthrough: true }) response: Response) {
     const { user, password } = body as any;
     if (!user || !password) {

@@ -19,4 +19,24 @@ export interface AcademicResourceFailedEvent extends AcademicResourceReadyEvent 
     message: string;
 }
 
-export type AcademicScrapeResultEvent = AcademicResourceReadyEvent | AcademicResourceFailedEvent;
+export interface AcademicLoginReadyEvent {
+    type: 'login';
+    jobId: string;
+    cpf: string;
+    session: Record<string, unknown>;
+}
+
+export interface AcademicLoginFailedEvent {
+    type: 'login';
+    status: 'failed';
+    jobId: string;
+    cpf: string;
+    errorName: string;
+    message: string;
+}
+
+export type AcademicScrapeResultEvent =
+    | AcademicResourceReadyEvent
+    | AcademicResourceFailedEvent
+    | AcademicLoginReadyEvent
+    | AcademicLoginFailedEvent;

@@ -16,7 +16,6 @@ import { GetScheduleUseCase } from '@academic/application/use-cases/get-schedule
 import { GetProfileUseCase } from '@academic/application/use-cases/get-profile.usecase';
 import { LoginUseCase } from '@academic/application/use-cases/login.usecase';
 import { LogoutAcademicSessionUseCase } from '@academic/application/use-cases/logout-academic-session.usecase';
-import { PrefetchAcademicDataUseCase } from '@academic/application/use-cases/prefetch-academic-data.usecase';
 import { ValidateAcademicSessionUseCase } from '@academic/application/use-cases/validate-academic-session.usecase';
 
 @Module({
@@ -56,18 +55,8 @@ import { ValidateAcademicSessionUseCase } from '@academic/application/use-cases/
         },
         {
             provide: LoginUseCase,
-            useFactory: (
-                jobs: ScrapingJobService,
-                tokens: AccessTokenService,
-                sessions: AcademicSessionRegistry,
-                prefetch: PrefetchAcademicDataUseCase
-            ) => new LoginUseCase(jobs, tokens, sessions, prefetch),
-            inject: [ScrapingJobService, AccessTokenService, AcademicSessionRegistry, PrefetchAcademicDataUseCase]
-        },
-        {
-            provide: PrefetchAcademicDataUseCase,
-            useFactory: (jobs: ScrapingJobService, bootstrap: AcademicBootstrapTracker) => new PrefetchAcademicDataUseCase(jobs, bootstrap),
-            inject: [ScrapingJobService, AcademicBootstrapTracker]
+            useFactory: (jobs: ScrapingJobService) => new LoginUseCase(jobs),
+            inject: [ScrapingJobService]
         },
         {
             provide: LogoutAcademicSessionUseCase,

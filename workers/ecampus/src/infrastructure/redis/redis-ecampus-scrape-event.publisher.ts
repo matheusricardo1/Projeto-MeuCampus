@@ -2,6 +2,8 @@ import type Redis from 'ioredis';
 import type { EcampusScrapeEventPublisher } from '@/application/ports/ecampus-scrape-event-publisher';
 import {
     ECAMPUS_SCRAPE_RESULT_CHANNEL,
+    type EcampusLoginFailedEvent,
+    type EcampusLoginReadyEvent,
     type EcampusResourceFailedEvent,
     type EcampusResourceReadyEvent
 } from '@/ecampus-scrape-events';
@@ -17,7 +19,15 @@ export class RedisEcampusScrapeEventPublisher implements EcampusScrapeEventPubli
         await this.publish(event);
     }
 
-    private async publish(event: EcampusResourceReadyEvent | EcampusResourceFailedEvent): Promise<void> {
+    async publishLoginReady(event: EcampusLoginReadyEvent): Promise<void> {
+        await this.publish(event);
+    }
+
+    async publishLoginFailed(event: EcampusLoginFailedEvent): Promise<void> {
+        await this.publish(event);
+    }
+
+    private async publish(event: object): Promise<void> {
         await this.redis.publish(ECAMPUS_SCRAPE_RESULT_CHANNEL, JSON.stringify(event));
     }
 }

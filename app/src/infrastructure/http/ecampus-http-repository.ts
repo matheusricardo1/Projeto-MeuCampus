@@ -24,8 +24,8 @@ export class EcampusHttpRepository implements EcampusRepository {
         this.baseUrl = this.normalizeBaseUrl(baseUrl);
     }
 
-    login(credentials: LoginCredentials): Promise<AuthSession> {
-        return this.request<AuthSession>('/ecampus/login', {
+    login(credentials: LoginCredentials): Promise<{ jobId: string }> {
+        return this.request<{ jobId: string }>('/ecampus/login', {
             method: 'POST',
             body: JSON.stringify(credentials)
         });

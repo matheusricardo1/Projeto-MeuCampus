@@ -6,10 +6,14 @@ import {
     ACADEMIC_AUTH_REJECTED_EVENT,
     ACADEMIC_BOOTSTRAP_FAILED_EVENT,
     ACADEMIC_BOOTSTRAP_READY_EVENT,
+    ACADEMIC_LOGIN_FAILED_EVENT,
+    ACADEMIC_LOGIN_READY_EVENT,
     ACADEMIC_RESOURCE_FAILED_EVENT,
     ACADEMIC_RESOURCE_READY_EVENT,
     AcademicNotificationService,
     type AcademicBootstrapNotification,
+    type AcademicLoginFailedNotification,
+    type AcademicLoginReadyNotification,
     type AcademicResourceFailedNotification,
     type AcademicResourceNotification
 } from '@realtime/application/ports/academic-notification-service';
@@ -36,6 +40,16 @@ export class AcademicGateway extends AcademicNotificationService {
     }
 
     async handleConnection(client: Socket): Promise<void> {
+        const loginJobId = client.handshake.auth?.loginJobId;
+        if (typeof loginJobId === 'string' && loginJobId) {
+            client.join(this.loginRoomFor(loginJobId));
+            appLogger.info('Accepted temporary login WebSocket connection.', {
+                socketId: client.id,
+                loginJobId
+            });
+            return;
+        }
+
         const token = client.handshake.auth?.token;
         if (typeof token !== 'string') {
             appLogger.warning('Rejected academic WebSocket connection without token.', {
@@ -168,8 +182,24 @@ export class AcademicGateway extends AcademicNotificationService {
         });
     }
 
+    emitLoginReady(event: AcademicLoginReadyNotification): void {
+        const room = this.loginRoomFor(event.jobId);
+        this.server.to(room).emit(ACADEMIC_LOGIN_READY_EVENT, { accessToken: event.accessToken });
+        appLogger.info('Sent login-ready notification through WebSocket.', { jobId: event.jobId });
+    }
+
+    emitLoginFailed(event: AcademicLoginFailedNotification): void {
+        const room = this.loginRoomFor(event.jobId);
+        this.server.to(room).emit(ACADEMIC_LOGIN_FAILED_EVENT, { message: event.message });
+        appLogger.warning('Sent login-failed notification through WebSocket.', { jobId: event.jobId });
+    }
+
     private roomFor(cpf: string): string {
         return `ecampus-user-${cpf}`;
+    }
+
+    private loginRoomFor(jobId: string): string {
+        return `ecampus-login-${jobId}`;
     }
 
     private getRoomClientCount(room: string): number {

@@ -19,12 +19,30 @@ export class ProcessEcampusScrapeJobUseCase {
         private readonly events: EcampusScrapeEventPublisher
     ) {}
 
-    async execute(name: EcampusScrapeJobName, data: EcampusScrapeJobData): Promise<unknown> {
+    async execute(name: EcampusScrapeJobName, data: EcampusScrapeJobData, jobId?: string): Promise<unknown> {
         if (name === 'login') {
             const { cpf, password } = data as { cpf: string; password: string };
-            const session = await this.authenticator.authenticate({ cpf }, password);
-            await this.sessions.markActive(cpf);
-            return { session };
+            try {
+                const session = await this.authenticator.authenticate({ cpf }, password);
+                await this.sessions.markActive(cpf);
+                if (jobId) {
+                    await this.events.publishLoginReady({ type: 'login', jobId, cpf, session: session as Record<string, unknown> });
+                }
+                return { session };
+            } catch (error) {
+                if (jobId) {
+                    const err = error instanceof Error ? error : new Error(String(error));
+                    await this.events.publishLoginFailed({
+                        type: 'login',
+                        status: 'failed',
+                        jobId,
+                        cpf,
+                        errorName: err.name,
+                        message: err.message
+                    }).catch(() => undefined);
+                }
+                throw error;
+            }
         }
 
         const authenticatedData = data as AuthenticatedScrapeJobData;
