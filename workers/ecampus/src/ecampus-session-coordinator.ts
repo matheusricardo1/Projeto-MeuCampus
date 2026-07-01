@@ -2,7 +2,7 @@ import type Redis from 'ioredis';
 import { AuthenticationError } from '@ecampus/domain/errors/authentication.error';
 import type { EcampusSessionStore } from '@/application/ports/ecampus-session-store';
 
-const SESSION_TTL_SECONDS = 60 * 60 * 2;
+const SESSION_TTL_SECONDS = 60 * 30;
 
 type EcampusSessionStatus = 'active' | 'invalid';
 

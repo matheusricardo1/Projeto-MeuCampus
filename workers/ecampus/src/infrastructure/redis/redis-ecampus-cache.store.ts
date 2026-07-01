@@ -6,7 +6,7 @@ export class RedisEcampusCacheStore implements EcampusCacheStore {
     constructor(private readonly redis: Redis) {}
 
     async save<T>(resource: EcampusCachedResource, cpf: string, value: T, extra?: string): Promise<void> {
-        await this.redis.set(getEcampusCacheKey(resource, cpf, extra), JSON.stringify(value), 'EX', 3600);
+        await this.redis.set(getEcampusCacheKey(resource, cpf, extra), JSON.stringify(value), 'EX', 1800);
     }
 
     async clearUserCache(cpf: string): Promise<number> {

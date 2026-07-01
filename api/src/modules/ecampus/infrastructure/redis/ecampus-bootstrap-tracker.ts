@@ -7,7 +7,7 @@ import {
 import type { AcademicResource } from '@academic/domain/value-objects/academic-resource.value-object';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 
-const BOOTSTRAP_TTL_SECONDS = 60 * 60 * 2;
+const BOOTSTRAP_TTL_SECONDS = 60 * 30;
 
 @Injectable()
 export class EcampusBootstrapTracker extends AcademicBootstrapTracker {

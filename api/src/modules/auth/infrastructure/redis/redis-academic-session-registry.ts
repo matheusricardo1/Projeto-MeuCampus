@@ -5,7 +5,7 @@ import { AcademicSessionRegistry } from '@auth/application/ports/academic-sessio
 import type { AcademicCredentials } from '@auth/domain/entities/academic-session.entity';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 
-const SESSION_TTL_SECONDS = 60 * 60 * 2;
+const SESSION_TTL_SECONDS = 60 * 30;
 type SessionState = { status: 'active' | 'invalid'; updatedAt: string; reason?: string };
 
 @Injectable()
