@@ -86,6 +86,7 @@ export function useEcampusWorkspace() {
     const realtimeBootstrapReadyHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
     const realtimeBootstrapFailedHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
     const pendingLessonPlanPlanIdRef = useRef<string | null>(null);
+    const loadedResourcesRef = useRef(new Set<InitialResourceKey>());
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [loadingRequests, setLoadingRequests] = useState(0);
@@ -119,6 +120,7 @@ export function useEcampusWorkspace() {
         setLessonPlanSubjects([]);
         setSelectedLessonPlanSubjectCode('');
         pendingLessonPlanPlanIdRef.current = null;
+        loadedResourcesRef.current.clear();
         pendingInitialResourcesRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
@@ -129,6 +131,7 @@ export function useEcampusWorkspace() {
     const startNewSessionGeneration = () => {
         sessionGeneration.current += 1;
         inFlightRequests.current.clear();
+        loadedResourcesRef.current.clear();
         pendingInitialResourcesRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
         hasRealtimeConnectedRef.current = false;
@@ -307,6 +310,7 @@ export function useEcampusWorkspace() {
         if (data && generation === sessionGeneration.current) {
             setProfile(data);
             setIsAuthenticated(true);
+            loadedResourcesRef.current.add('profile');
             markInitialResourceReady('profile');
         }
     };
@@ -318,8 +322,9 @@ export function useEcampusWorkspace() {
             sessionGeneration: generation
         }));
 
-        if (data && generation === sessionGeneration.current) {
+        if (data !== null && generation === sessionGeneration.current) {
             setSchedule(data);
+            loadedResourcesRef.current.add('schedule');
             markInitialResourceReady('schedule');
         }
     };
@@ -331,8 +336,9 @@ export function useEcampusWorkspace() {
             sessionGeneration: generation
         }));
 
-        if (data && generation === sessionGeneration.current) {
+        if (data !== null && generation === sessionGeneration.current) {
             setGrades(data);
+            loadedResourcesRef.current.add('grades');
             markInitialResourceReady('grades');
         }
     };
@@ -374,6 +380,7 @@ export function useEcampusWorkspace() {
         const selectedSubject = pickLessonPlanSubject(data, selectedLessonPlanSubjectCode);
         setLessonPlanSubjects(data);
         setSelectedLessonPlanSubjectCode(selectedSubject?.code || '');
+        loadedResourcesRef.current.add('lessonPlanSubjects');
         markInitialResourceReady('lessonPlanSubjects');
 
         const pendingPlanId = pendingLessonPlanPlanIdRef.current;
@@ -413,8 +420,9 @@ export function useEcampusWorkspace() {
             sessionGeneration: generation
         }));
 
-        if (data && generation === sessionGeneration.current) {
+        if (data !== null && generation === sessionGeneration.current) {
             setLessonPlan(data);
+            loadedResourcesRef.current.add('lessonPlan');
             markInitialResourceReady('lessonPlan');
         }
     };
@@ -774,27 +782,28 @@ export function useEcampusWorkspace() {
         setActiveTab(tab);
 
         if (tab === 'home') void prefetchWorkspace();
-        if (tab === 'profile' && !profile && !isInitialResourcePending('profile')) {
+        const isLoaded = (r: InitialResourceKey) => loadedResourcesRef.current.has(r);
+        if (tab === 'profile' && !isLoaded('profile') && !isInitialResourcePending('profile')) {
             markInitialResourcesPending(['profile']);
             void run(() => useCases.enqueueScrapeJob.execute('profile'), { reportError: false, showGlobalLoading: false });
         }
-        if (tab === 'schedule' && schedule.length === 0 && !isInitialResourcePending('schedule')) {
+        if (tab === 'schedule' && !isLoaded('schedule') && !isInitialResourcePending('schedule')) {
             markInitialResourcesPending(['schedule']);
             void run(() => useCases.enqueueScrapeJob.execute('schedule'), { reportError: false, showGlobalLoading: false });
         }
-        if (tab === 'grades' && grades.length === 0 && !isInitialResourcePending('grades')) {
+        if (tab === 'grades' && !isLoaded('grades') && !isInitialResourcePending('grades')) {
             markInitialResourcesPending(['grades']);
             void run(() => useCases.enqueueScrapeJob.execute('grades', getGradesJobData(gradesInput, currentGradesInput)), { reportError: false, showGlobalLoading: false });
         }
-        if (tab === 'lessonPlan' && grades.length === 0 && !isInitialResourcePending('grades')) {
+        if (tab === 'lessonPlan' && !isLoaded('grades') && !isInitialResourcePending('grades')) {
             markInitialResourcesPending(['grades']);
             void run(() => useCases.enqueueScrapeJob.execute('grades', getGradesJobData(gradesInput, currentGradesInput)), { reportError: false, showGlobalLoading: false });
         }
-        if (tab === 'lessonPlan' && lessonPlanSubjects.length === 0 && !isInitialResourcePending('lessonPlanSubjects')) {
+        if (tab === 'lessonPlan' && !isLoaded('lessonPlanSubjects') && !isInitialResourcePending('lessonPlanSubjects')) {
             markInitialResourcesPending(['lessonPlanSubjects', 'lessonPlan']);
             void run(() => useCases.enqueueScrapeJob.execute('lesson-plan-subjects'), { reportError: false, showGlobalLoading: false });
         }
-        if (tab === 'lessonPlan' && lessonPlanSubjects.length > 0 && lessonPlan.length === 0 && !isInitialResourcePending('lessonPlan')) {
+        if (tab === 'lessonPlan' && isLoaded('lessonPlanSubjects') && !isLoaded('lessonPlan') && !isInitialResourcePending('lessonPlan')) {
             const selectedSubject = pickLessonPlanSubject(lessonPlanSubjects, selectedLessonPlanSubjectCode);
             if (selectedSubject?.planId) {
                 markInitialResourcesPending(['lessonPlan']);
