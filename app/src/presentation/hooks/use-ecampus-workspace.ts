@@ -77,12 +77,14 @@ export function useEcampusWorkspace() {
     const isExpiringSessionRef = useRef(false);
     const isWaitingForInitialEventsRef = useRef(false);
     const initialEventsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const initialHydrationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const inFlightRequests = useRef(new Map<ResourceKey, Promise<unknown>>());
     const pendingInitialResourcesRef = useRef(new Set<InitialResourceKey>());
     const realtimeHandlerRef = useRef<(event: EcampusResourceReadyEvent) => void>(() => undefined);
     const realtimeFailureHandlerRef = useRef<(event: EcampusResourceFailedEvent) => void>(() => undefined);
     const realtimeBootstrapReadyHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
     const realtimeBootstrapFailedHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
+    const pendingLessonPlanPlanIdRef = useRef<string | null>(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [loadingRequests, setLoadingRequests] = useState(0);
@@ -115,9 +117,11 @@ export function useEcampusWorkspace() {
         setLessonPlan([]);
         setLessonPlanSubjects([]);
         setSelectedLessonPlanSubjectCode('');
+        pendingLessonPlanPlanIdRef.current = null;
         pendingInitialResourcesRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
+        clearInitialHydrationInterval();
         setPendingInitialResources(new Set());
     };
 
@@ -127,6 +131,7 @@ export function useEcampusWorkspace() {
         pendingInitialResourcesRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
+        clearInitialHydrationInterval();
         setLoadingRequests(0);
         setPendingInitialResources(new Set());
         return sessionGeneration.current;
@@ -163,16 +168,37 @@ export function useEcampusWorkspace() {
         }
     };
 
+    const clearInitialHydrationInterval = () => {
+        if (initialHydrationIntervalRef.current) {
+            clearInterval(initialHydrationIntervalRef.current);
+            initialHydrationIntervalRef.current = null;
+        }
+    };
+
+    const startInitialHydrationFallback = () => {
+        clearInitialHydrationInterval();
+        initialHydrationIntervalRef.current = setInterval(() => {
+            if (!isWaitingForInitialEventsRef.current) {
+                clearInitialHydrationInterval();
+                return;
+            }
+
+            void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
+        }, 1200);
+    };
+
     const waitForInitialScrapingEvents = () => {
         isWaitingForInitialEventsRef.current = true;
         markInitialResourcesPending([...BOOTSTRAP_RESOURCES, 'lessonPlan']);
         clearInitialEventsTimeout();
+        startInitialHydrationFallback();
         initialEventsTimeoutRef.current = setTimeout(() => {
             if (!isWaitingForInitialEventsRef.current) {
                 return;
             }
 
             isWaitingForInitialEventsRef.current = false;
+            clearInitialHydrationInterval();
             setTranslatedError('errors.generic');
             setPendingInitialResources(new Set());
         }, 30000);
@@ -185,6 +211,7 @@ export function useEcampusWorkspace() {
 
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
+        clearInitialHydrationInterval();
         await loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
     };
 
@@ -347,6 +374,13 @@ export function useEcampusWorkspace() {
         setSelectedLessonPlanSubjectCode(selectedSubject?.code || '');
         markInitialResourceReady('lessonPlanSubjects');
 
+        const pendingPlanId = pendingLessonPlanPlanIdRef.current;
+        if (pendingPlanId && selectedSubject?.planId === pendingPlanId) {
+            pendingLessonPlanPlanIdRef.current = null;
+            await loadLessonPlan(options);
+            return;
+        }
+
         if (selectedSubject?.planId) {
             await enqueueLessonPlanScrape(selectedSubject.planId, { reportError: false, showGlobalLoading: false });
         } else {
@@ -403,10 +437,6 @@ export function useEcampusWorkspace() {
     realtimeHandlerRef.current = (event: EcampusResourceReadyEvent) => {
         const silentOptions: RequestOptions = { reportError: false, showGlobalLoading: false };
 
-        if (event.resource !== 'lesson-plan' && isWaitingForInitialEventsRef.current) {
-            return;
-        }
-
         switch (event.resource) {
             case 'profile':
                 void loadProfile(silentOptions);
@@ -429,7 +459,10 @@ export function useEcampusWorkspace() {
                 const selectedSubject = pickLessonPlanSubject(lessonPlanSubjects, selectedLessonPlanSubjectCode);
                 if (!event.planId || event.planId === selectedSubject?.planId) {
                     void loadLessonPlan(silentOptions);
+                    return;
                 }
+
+                pendingLessonPlanPlanIdRef.current = event.planId || null;
             }
         }
     };
@@ -440,7 +473,7 @@ export function useEcampusWorkspace() {
             return;
         }
 
-        if (isWaitingForInitialEventsRef.current) {
+        if (!isWaitingForInitialEventsRef.current) {
             setRawError(event.message || 'Nao foi possivel carregar todos os dados agora.');
         }
     };
@@ -458,10 +491,12 @@ export function useEcampusWorkspace() {
 
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
+        clearInitialHydrationInterval();
         setPendingInitialResources(new Set());
         setRawError(event.failedResources.length > 0
             ? `Nao foi possivel carregar: ${event.failedResources.join(', ')}.`
             : 'Nao foi possivel carregar todos os dados agora.');
+        void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
     };
 
     const prefetchWorkspace = async (options?: PrefetchOptions) => {
@@ -553,7 +588,11 @@ export function useEcampusWorkspace() {
             disconnect = connectEcampusRealtime(
                 session.accessToken,
                 (event) => realtimeHandlerRef.current(event),
-                () => undefined,
+                () => {
+                    if (!disposed && isWaitingForInitialEventsRef.current) {
+                        void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
+                    }
+                },
                 (event) => {
                     if (!disposed) {
                         void expireSession(event?.message);

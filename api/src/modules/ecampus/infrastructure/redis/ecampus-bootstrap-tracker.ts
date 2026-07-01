@@ -158,7 +158,13 @@ export class EcampusBootstrapTracker extends AcademicBootstrapTracker {
             state.status = 'failed'
             state.updatedAt = updatedAt
             redis.call('SET', key, cjson.encode(state), 'EX', ttl)
-            return cjson.encode(state)
+
+            local totalResolved = #state.readyResources + #state.failedResources
+            if totalResolved >= #state.requiredResources then
+              return cjson.encode(state)
+            end
+
+            return nil
             `,
             1,
             this.getKey(cpf),

@@ -138,12 +138,21 @@ export class EcampusHttpRepository implements EcampusRepository {
     private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
         this.assertSecureBaseUrl();
 
-        const response = await fetch(`${this.baseUrl}${path}`, {
+        const requestInit: RequestInit = {
             ...init,
             headers: {
                 'Content-Type': 'application/json',
                 ...init.headers
             }
+        };
+
+        // Web pode responder 304 sem payload para GET cacheado; forca bypass do cache HTTP.
+        if (typeof window !== 'undefined') {
+            requestInit.cache = 'no-store';
+        }
+
+        const response = await fetch(`${this.baseUrl}${path}`, {
+            ...requestInit
         });
 
         const body = await response.text();

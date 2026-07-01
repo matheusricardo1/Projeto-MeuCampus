@@ -33,6 +33,17 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
                 message: error.message
             });
         });
+        this.subscriber.on('reconnecting', (delay: number) => {
+            logger.warning('Redis Pub/Sub subscriber reconnecting — scrape events published during this gap will be lost.', {
+                delayMs: delay,
+                channel: ACADEMIC_SCRAPE_RESULT_CHANNEL
+            });
+        });
+        this.subscriber.on('ready', () => {
+            logger.info('Redis Pub/Sub subscriber reconnected and re-subscribed.', {
+                channel: ACADEMIC_SCRAPE_RESULT_CHANNEL
+            });
+        });
         await this.subscriber.subscribe(ACADEMIC_SCRAPE_RESULT_CHANNEL);
         logger.info('Subscribed to eCampus scrape notifications.', {
             channel: ACADEMIC_SCRAPE_RESULT_CHANNEL
