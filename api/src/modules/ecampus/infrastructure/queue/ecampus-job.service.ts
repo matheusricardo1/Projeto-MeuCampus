@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Queue, QueueEvents, type Job } from 'bullmq';
+import { Queue, QueueEvents, type Job, type JobsOptions } from 'bullmq';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 import { ECAMPUS_SCRAPE_QUEUE_NAME } from '@ecampus/infrastructure/queue/ecampus-scrape-job';
 import { ScrapingJobService, type EnqueueJobOptions, type QueuedJob } from '@academic/application/ports/scraping-job-service';
@@ -40,7 +40,12 @@ export class EcampusScrapingJobService extends ScrapingJobService {
       }
     }
 
-    return this.toQueuedJob(await this.queue.add(name, data, jobId ? { jobId } : undefined));
+    const jobOptions: JobsOptions = {
+      ...this.getRetryOptions(name),
+      ...(jobId ? { jobId } : {})
+    };
+
+    return this.toQueuedJob(await this.queue.add(name, data, jobOptions));
   }
 
   private toQueuedJob<Result>(job: Job): QueuedJob<Result> {
@@ -60,5 +65,19 @@ export class EcampusScrapingJobService extends ScrapingJobService {
       .toLowerCase()
       .replace(/[^a-z0-9_-]+/g, '-')
       .replace(/^-+|-+$/g, '');
+  }
+
+  private getRetryOptions(name: string): JobsOptions {
+    if (!['profile', 'schedule', 'grades', 'lesson-plan-subjects', 'lesson-plan'].includes(name)) {
+      return {};
+    }
+
+    return {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 1500
+      }
+    };
   }
 }

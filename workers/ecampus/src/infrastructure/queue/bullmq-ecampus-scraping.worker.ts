@@ -60,8 +60,18 @@ export class EcampusScrapingWorker {
                 message: error.message
             });
 
-            if (job) {
+            if (job && this.isTerminalFailure(job)) {
                 void this.publishFailedJob(job, error, 'worker-failed-listener');
+                return;
+            }
+
+            if (job) {
+                appLogger.warning('Transient eCampus scraping failure. Waiting for retry before notifying API.', {
+                    jobId: job.id,
+                    jobName: job.name,
+                    attemptsMade: job.attemptsMade,
+                    attempts: this.getConfiguredAttempts(job)
+                });
             }
         });
     }
@@ -89,10 +99,17 @@ export class EcampusScrapingWorker {
         try {
             return await this.processJob.execute(name, job.data);
         } catch (error) {
-            const normalizedError = this.toError(error);
-            await this.publishFailedJob(job, normalizedError, 'processor-catch');
-            throw normalizedError;
+            throw this.toError(error);
         }
+    }
+
+    private isTerminalFailure(job: Job<EcampusScrapeJobData>): boolean {
+        return job.attemptsMade >= this.getConfiguredAttempts(job);
+    }
+
+    private getConfiguredAttempts(job: Job<EcampusScrapeJobData>): number {
+        const attempts = Number(job.opts.attempts ?? 1);
+        return Number.isFinite(attempts) && attempts > 0 ? attempts : 1;
     }
 
     private async publishFailedJob(job: Job<EcampusScrapeJobData>, error: Error, origin: 'processor-catch' | 'worker-failed-listener'): Promise<void> {

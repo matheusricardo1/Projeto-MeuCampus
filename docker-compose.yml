@@ -1,4 +1,27 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: ufam-academics-redis
+    ports:
+      - '6379:6379'
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: ufam-academics-api
+    env_file:
+      - ./api/.env
+    environment:
+      - NODE_ENV=development
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    ports:
+      - '3001:3001'
+    restart: unless-stopped
+
   ai-worker:
     build:
       context: ./workers/ai
@@ -6,6 +29,8 @@ services:
     container_name: ufam-academics-ai-worker
     env_file:
       - ./workers/ai/.env
+    depends_on:
+      - redis
     restart: unless-stopped
 
   ecampus-worker:
@@ -15,13 +40,6 @@ services:
     container_name: ufam-academics-ecampus-worker
     env_file:
       - ./workers/ecampus/.env
+    depends_on:
+      - redis
     restart: unless-stopped
-
-  # api:
-  #   build:
-  #     context: ./api
-  #     dockerfile: Dockerfile
-  #   container_name: ufam-academics-api
-  #   env_file:
-  #     - ./api/.env
-  #   restart: unless-stopped

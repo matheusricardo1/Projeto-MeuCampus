@@ -74,6 +74,7 @@ Variaveis disponiveis:
 
 ```bash
 PORT=3001
+REDIS_URL=redis://127.0.0.1:6379/0
 FRONTEND_ORIGIN=http://localhost:8081
 ECAMPUS_JWT_SECRET=replace-with-another-long-random-secret
 ECAMPUS_JWT_EXPIRES_IN=2h
@@ -86,6 +87,7 @@ LOGIN_RATE_LIMIT_WINDOW_MS=60000
 Descricoes:
 
 - `PORT`: porta HTTP da API. Padrao: `3001`.
+- `REDIS_URL`: URL de conexao com Redis para sessoes e filas. Exemplo local: `redis://127.0.0.1:6379/0`.
 - `FRONTEND_ORIGIN`: origens permitidas no CORS. Use virgula para multiplas origens.
 - `ECAMPUS_JWT_SECRET`: chave usada para assinar tokens do app.
 - `ECAMPUS_JWT_EXPIRES_IN`: tempo de validade do JWT. Padrao: `2h`.
