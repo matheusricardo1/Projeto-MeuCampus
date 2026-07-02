@@ -13,6 +13,7 @@ import {
     type AcademicLoginFailedEvent,
     type AcademicLoginReadyEvent,
     type AcademicResourceFailedEvent,
+    type AcademicResourceReadyEvent,
     type AcademicScrapeResultEvent
 } from '@ecampus/infrastructure/redis/ecampus-scrape-events';
 
