@@ -79,38 +79,34 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
             return;
         }
 
-        const isLogin = this.isLoginEvent(event);
         logger.info('Received eCampus scrape notification from Redis.', {
             channel: ACADEMIC_SCRAPE_RESULT_CHANNEL,
-            type: isLogin ? 'login' : 'resource',
-            ...(!isLogin && { resource: (event as AcademicResourceFailedEvent).resource }),
+            type: 'type' in event ? event.type : 'resource',
             status: 'status' in event ? event.status : 'ready'
         });
 
         try {
-            if (isLogin) {
+            if (this.isLoginEvent(event)) {
                 await this.handleLoginEvent(event);
                 return;
             }
 
-            const resourceEvent = event as AcademicResourceFailedEvent;
-
-            if (this.isFailedEvent(resourceEvent)) {
-                if (resourceEvent.errorName === 'AuthenticationError') {
-                    await this.invalidateExpiredSession(resourceEvent.cpf);
+            if (this.isResourceFailedEvent(event)) {
+                if (event.errorName === 'AuthenticationError') {
+                    await this.invalidateExpiredSession(event.cpf);
                 }
 
-                const bootstrapState = await this.bootstrapTracker.markFailed(resourceEvent.cpf, resourceEvent.resource);
+                const bootstrapState = await this.bootstrapTracker.markFailed(event.cpf, event.resource);
                 if (bootstrapState?.status === 'failed') {
                     this.notifier.emitBootstrapFailed(this.toBootstrapNotification(bootstrapState));
                 }
 
-                this.notifier.emitResourceFailed(resourceEvent);
+                this.notifier.emitResourceFailed(event);
                 return;
             }
 
-            this.notifier.emitResourceReady(resourceEvent);
-            const bootstrapState = await this.bootstrapTracker.markReady(resourceEvent.cpf, resourceEvent.resource);
+            this.notifier.emitResourceReady(event);
+            const bootstrapState = await this.bootstrapTracker.markReady(event.cpf, event.resource);
             if (bootstrapState?.status === 'ready') {
                 this.notifier.emitBootstrapReady(this.toBootstrapNotification(bootstrapState));
             }
@@ -123,10 +119,10 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
     }
 
     private isLoginEvent(event: AcademicScrapeResultEvent): event is AcademicLoginReadyEvent | AcademicLoginFailedEvent {
-        return 'type' in event && event.type === 'login';
+        return 'type' in event && (event as AcademicLoginReadyEvent).type === 'login';
     }
 
-    private isFailedEvent(event: AcademicResourceFailedEvent | AcademicLoginReadyEvent): event is AcademicResourceFailedEvent {
+    private isResourceFailedEvent(event: AcademicResourceReadyEvent | AcademicResourceFailedEvent): event is AcademicResourceFailedEvent {
         return 'status' in event && (event as AcademicResourceFailedEvent).status === 'failed';
     }
 
