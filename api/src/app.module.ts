@@ -4,6 +4,7 @@ import { AiModule } from '@ai/ai.module';
 import { AuthModule } from '@auth/auth.module';
 import { EcampusModule } from '@ecampus/ecampus.module';
 import { HealthModule } from '@health/health.module';
+import { McpModule } from '@mcp/mcp.module';
 import { RealtimeModule } from '@realtime/realtime.module';
 
 @Module({
@@ -13,7 +14,8 @@ import { RealtimeModule } from '@realtime/realtime.module';
         RealtimeModule,
         EcampusModule,
         AcademicModule,
-        AiModule
+        AiModule,
+        McpModule
     ]
 })
 export class AppModule {}

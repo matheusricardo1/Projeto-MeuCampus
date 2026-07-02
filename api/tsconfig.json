@@ -19,7 +19,8 @@
       "@auth/*": ["src/modules/auth/*"],
       "@ecampus/*": ["src/modules/ecampus/*"],
       "@health/*": ["src/modules/health/*"],
-      "@realtime/*": ["src/modules/realtime/*"]
+      "@realtime/*": ["src/modules/realtime/*"],
+      "@mcp/*": ["src/modules/mcp/*"]
     },
     "types": ["node"],
     // For nodejs:
