@@ -7,11 +7,6 @@ export interface AiChatJobData {
     history: AiChatMessage[];
 }
 
-export interface QueuedAiJob<Result = unknown> {
-    id?: string | number;
-    waitUntilFinished(timeoutMs?: number): Promise<Result>;
-}
-
 export abstract class AiJobService {
-    abstract enqueue<Result = unknown>(data: AiChatJobData): Promise<QueuedAiJob<Result>>;
+    abstract enqueue(data: AiChatJobData): Promise<{ id: string }>;
 }

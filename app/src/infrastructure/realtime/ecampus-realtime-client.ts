@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { AuthSession } from '@/domain/entities/auth-session';
+import type { AiChatReply } from '@/domain/entities/ai-chat-reply';
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3001';
 const RESOURCE_READY_EVENT = 'ecampus:resource-ready';
@@ -9,7 +10,10 @@ const BOOTSTRAP_READY_EVENT = 'ecampus:bootstrap-ready';
 const BOOTSTRAP_FAILED_EVENT = 'ecampus:bootstrap-failed';
 const LOGIN_READY_EVENT = 'ecampus:login-ready';
 const LOGIN_FAILED_EVENT = 'ecampus:login-failed';
+const AI_REPLY_EVENT = 'ecampus:ai-reply';
+const AI_FAILED_EVENT = 'ecampus:ai-failed';
 const LOGIN_TIMEOUT_MS = 35_000;
+const AI_REPLY_TIMEOUT_MS = 60_000;
 
 type RealtimeSubscriber = {
     onResourceReady: (event: EcampusResourceReadyEvent) => void;
@@ -176,6 +180,43 @@ export function waitForLoginResult(jobId: string): Promise<AuthSession> {
             cleanup();
             reject(error);
         });
+    });
+}
+
+export function waitForAiReply(jobId: string): Promise<AiChatReply> {
+    return new Promise((resolve, reject) => {
+        const socket = activeSocket;
+        if (!socket) {
+            reject(new Error('Sem conexão com o servidor. Tente novamente.'));
+            return;
+        }
+
+        const timeout = setTimeout(() => {
+            socket.off(AI_REPLY_EVENT, onReply);
+            socket.off(AI_FAILED_EVENT, onFailed);
+            reject(new Error('A IA demorou demais para responder. Tente novamente.'));
+        }, AI_REPLY_TIMEOUT_MS);
+
+        const cleanup = () => {
+            clearTimeout(timeout);
+            socket.off(AI_REPLY_EVENT, onReply);
+            socket.off(AI_FAILED_EVENT, onFailed);
+        };
+
+        const onReply = (event: { jobId: string; conversationId: string; message: AiChatReply['message'] }) => {
+            if (event.jobId !== jobId) return;
+            cleanup();
+            resolve({ conversationId: event.conversationId, message: event.message });
+        };
+
+        const onFailed = (event: { jobId: string; message: string }) => {
+            if (event.jobId !== jobId) return;
+            cleanup();
+            reject(new Error(event.message));
+        };
+
+        socket.on(AI_REPLY_EVENT, onReply);
+        socket.on(AI_FAILED_EVENT, onFailed);
     });
 }
 

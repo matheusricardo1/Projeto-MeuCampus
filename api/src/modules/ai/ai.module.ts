@@ -1,13 +1,16 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@auth/auth.module';
+import { RealtimeModule } from '@realtime/realtime.module';
 import { SendAiChatMessageUseCase } from '@ai/application/use-cases/send-ai-chat-message.usecase';
 import { AiJobService } from '@ai/application/ports/ai-job-service';
 import { AiChatJobService } from '@ai/infrastructure/queue/ai-chat-job.service';
+import { AiChatEventsSubscriber } from '@ai/infrastructure/redis/ai-chat-events.subscriber';
 import { AiController } from '@ai/presentation/http/ai.controller';
 import { AiAuthGuard } from '@ai/presentation/http/guards/ai-auth.guard';
+import { AcademicNotificationService } from '@realtime/application/ports/academic-notification-service';
 
 @Module({
-    imports: [AuthModule],
+    imports: [AuthModule, RealtimeModule],
     controllers: [AiController],
     providers: [
         AiAuthGuard,
@@ -19,6 +22,13 @@ import { AiAuthGuard } from '@ai/presentation/http/guards/ai-auth.guard';
                 return new SendAiChatMessageUseCase(aiJobService);
             },
             inject: [AiJobService]
+        },
+        {
+            provide: AiChatEventsSubscriber,
+            useFactory: (notifier: AcademicNotificationService) => {
+                return new AiChatEventsSubscriber(notifier);
+            },
+            inject: [AcademicNotificationService]
         }
     ]
 })

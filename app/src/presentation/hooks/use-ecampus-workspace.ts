@@ -52,7 +52,7 @@ const DEFAULT_REQUEST_OPTIONS: Required<Pick<RequestOptions, 'reportError' | 'sh
     reportError: true,
     showGlobalLoading: true
 };
-const IS_AI_FEATURE_ENABLED = process.env.EXPO_PUBLIC_APP_ENV === 'development';
+const IS_AI_FEATURE_ENABLED = true;
 const BOOTSTRAP_RESOURCES: BootstrapResourceKey[] = ['profile', 'schedule', 'grades', 'lessonPlanSubjects'];
 
 function getCurrentGradesInput(): GradesInput {

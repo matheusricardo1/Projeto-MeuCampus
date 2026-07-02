@@ -39,6 +39,22 @@ export interface AcademicLoginFailedNotification {
     message: string;
 }
 
+export const ACADEMIC_AI_REPLY_EVENT = 'ecampus:ai-reply';
+export const ACADEMIC_AI_FAILED_EVENT = 'ecampus:ai-failed';
+
+export interface AcademicAiChatReplyNotification {
+    userId: string;
+    jobId: string;
+    conversationId: string;
+    message: { id: string; role: string; content: string; createdAt: string };
+}
+
+export interface AcademicAiChatFailedNotification {
+    userId: string;
+    jobId: string;
+    message: string;
+}
+
 export abstract class AcademicNotificationService {
     abstract emitResourceReady(event: AcademicResourceNotification): void;
     abstract emitResourceFailed(event: AcademicResourceFailedNotification): void;
@@ -46,4 +62,6 @@ export abstract class AcademicNotificationService {
     abstract emitBootstrapFailed(event: AcademicBootstrapNotification): void;
     abstract emitLoginReady(event: AcademicLoginReadyNotification): void;
     abstract emitLoginFailed(event: AcademicLoginFailedNotification): void;
+    abstract emitAiChatReply(event: AcademicAiChatReplyNotification): void;
+    abstract emitAiChatFailed(event: AcademicAiChatFailedNotification): void;
 }

@@ -1,6 +1,5 @@
 import { Platform } from 'react-native';
 import type { AuthSession } from '@/domain/entities/auth-session';
-import type { AiChatReply } from '@/domain/entities/ai-chat-reply';
 import type { Grade } from '@/domain/entities/grade';
 import type { LessonPlanItem } from '@/domain/entities/lesson-plan-item';
 import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
@@ -96,8 +95,8 @@ export class EcampusHttpRepository implements EcampusRepository {
         });
     }
 
-    sendAiChatMessage(accessToken: string, input: SendAiChatMessageRequest): Promise<AiChatReply> {
-        return this.request<AiChatReply>('/ai/chat/messages', {
+    sendAiChatMessage(accessToken: string, input: SendAiChatMessageRequest): Promise<{ jobId: string }> {
+        return this.request<{ jobId: string }>('/ai/chat/messages', {
             method: 'POST',
             headers: this.authHeaders(accessToken),
             body: JSON.stringify(input)

@@ -6,9 +6,11 @@ import { AI_CHAT_QUEUE_NAME, type AiChatJobData } from '@/ai-chat-job';
 import type { AiChatReply } from '@/models/ai-chat-reply';
 import { ProcessAiChatJobUseCase } from '@/application/use-cases/process-ai-chat-job.usecase';
 import { VercelAiChatProvider } from '@/providers/vercel-ai-chat.provider';
+import { RedisAiChatEventPublisher } from '@/infrastructure/redis/redis-ai-chat-event.publisher';
 
 export class AiChatWorker {
-    private readonly processJob = new ProcessAiChatJobUseCase(new VercelAiChatProvider());
+    private readonly eventPublisher = new RedisAiChatEventPublisher();
+    private readonly processJob = new ProcessAiChatJobUseCase(new VercelAiChatProvider(), this.eventPublisher);
     private readonly worker: Worker<AiChatJobData, AiChatReply>;
 
     constructor() {
@@ -47,7 +49,10 @@ export class AiChatWorker {
     }
 
     async close(): Promise<void> {
-        await this.worker.close();
+        await Promise.all([
+            this.worker.close(),
+            this.eventPublisher.close()
+        ]);
     }
 
     private async process(job: Job<AiChatJobData>): Promise<AiChatReply> {
@@ -57,6 +62,6 @@ export class AiChatWorker {
             historyLength: job.data.history.length
         });
 
-        return this.processJob.execute(job.data);
+        return this.processJob.execute(job.data, job.id ?? '');
     }
 }

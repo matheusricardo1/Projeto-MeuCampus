@@ -1,5 +1,4 @@
 import type { AiChatMessage } from '@/domain/entities/ai-chat-message';
-import type { AiChatReply } from '@/domain/entities/ai-chat-reply';
 import type { Grade } from '@/domain/entities/grade';
 import type { LessonPlanItem } from '@/domain/entities/lesson-plan-item';
 import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
@@ -30,5 +29,5 @@ export interface EcampusRepository {
     getAcademicSubjects(accessToken: string, year?: string, period?: string): Promise<LessonPlanSubject[]>;
     getLessonPlanSubjects(accessToken: string): Promise<LessonPlanSubject[]>;
     getLessonPlan(accessToken: string, planId: string): Promise<LessonPlanItem[]>;
-    sendAiChatMessage(accessToken: string, input: SendAiChatMessageRequest): Promise<AiChatReply>;
+    sendAiChatMessage(accessToken: string, input: SendAiChatMessageRequest): Promise<{ jobId: string }>;
 }

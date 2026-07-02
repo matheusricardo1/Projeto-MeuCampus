@@ -3,6 +3,8 @@ import type { Namespace, Socket } from 'socket.io';
 import { AccessTokenService } from '@auth/application/ports/access-token-service';
 import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
 import {
+    ACADEMIC_AI_FAILED_EVENT,
+    ACADEMIC_AI_REPLY_EVENT,
     ACADEMIC_AUTH_REJECTED_EVENT,
     ACADEMIC_BOOTSTRAP_FAILED_EVENT,
     ACADEMIC_BOOTSTRAP_READY_EVENT,
@@ -11,6 +13,8 @@ import {
     ACADEMIC_RESOURCE_FAILED_EVENT,
     ACADEMIC_RESOURCE_READY_EVENT,
     AcademicNotificationService,
+    type AcademicAiChatFailedNotification,
+    type AcademicAiChatReplyNotification,
     type AcademicBootstrapNotification,
     type AcademicLoginFailedNotification,
     type AcademicLoginReadyNotification,
@@ -192,6 +196,20 @@ export class AcademicGateway extends AcademicNotificationService {
         const room = this.loginRoomFor(event.jobId);
         this.server.to(room).emit(ACADEMIC_LOGIN_FAILED_EVENT, { message: event.message });
         appLogger.warning('Sent login-failed notification through WebSocket.', { jobId: event.jobId });
+    }
+
+    emitAiChatReply(event: AcademicAiChatReplyNotification): void {
+        const room = this.roomFor(event.userId);
+        const { userId: _userId, ...payload } = event;
+        this.server.to(room).emit(ACADEMIC_AI_REPLY_EVENT, payload);
+        appLogger.info('Sent AI chat reply through WebSocket.', { jobId: event.jobId, userId: event.userId });
+    }
+
+    emitAiChatFailed(event: AcademicAiChatFailedNotification): void {
+        const room = this.roomFor(event.userId);
+        const { userId: _userId, ...payload } = event;
+        this.server.to(room).emit(ACADEMIC_AI_FAILED_EVENT, payload);
+        appLogger.warning('Sent AI chat failure through WebSocket.', { jobId: event.jobId, userId: event.userId });
     }
 
     private roomFor(cpf: string): string {

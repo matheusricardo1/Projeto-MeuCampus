@@ -11,7 +11,7 @@ export class AiController {
     constructor(private readonly sendAiChatMessageUseCase: SendAiChatMessageUseCase) {}
 
     @Post('chat/messages')
-    @HttpCode(200)
+    @HttpCode(202)
     async sendMessage(
         @CurrentAiUser() user: AiAuthenticatedUser,
         @Body() body: SendAiChatMessageRequest

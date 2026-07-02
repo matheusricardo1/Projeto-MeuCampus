@@ -1,8 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { InvalidAiMessageException } from '@ai/domain/exceptions/invalid-ai-message.exception';
 import type { AiChatMessage } from '@ai/domain/entities/ai-chat-message.entity';
-import type { AiChatReply } from '@ai/domain/value-objects/ai-chat-reply.value-object';
 import { AiJobService } from '@ai/application/ports/ai-job-service';
+import { randomUUID } from 'node:crypto';
 
 export interface SendAiChatMessageInput {
     conversationId?: string;
@@ -13,17 +12,17 @@ export interface SendAiChatMessageInput {
 export class SendAiChatMessageUseCase {
     constructor(private readonly aiJobService: AiJobService) {}
 
-    async execute(userId: string, input: SendAiChatMessageInput): Promise<AiChatReply> {
+    async execute(userId: string, input: SendAiChatMessageInput): Promise<{ jobId: string }> {
         const history = this.parseHistory(input.history);
         const message = this.parseMessage(input.message, history);
-        const job = await this.aiJobService.enqueue<AiChatReply>({
+        const job = await this.aiJobService.enqueue({
             userId,
             message,
             history,
             ...(input.conversationId ? { conversationId: input.conversationId } : {})
         });
 
-        return job.waitUntilFinished(30000);
+        return { jobId: job.id };
     }
 
     private parseMessage(value: string, history: AiChatMessage[]): string {
@@ -89,30 +88,10 @@ export class SendAiChatMessageUseCase {
     private isAcademicScope(message: string): boolean {
         const normalized = message.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
         const academicTerms = [
-            'nota',
-            'falt',
-            'frequencia',
-            'aula',
-            'horario',
-            'materia',
-            'disciplina',
-            'periodo',
-            'semestre',
-            'curso',
-            'professor',
-            'prova',
-            'trabalho',
-            'atividade',
-            'plano de ensino',
-            'estudo',
-            'estudar',
-            'academ',
-            'universidade',
-            'ufam',
-            'cra',
-            'media',
-            'reprov',
-            'aprov'
+            'nota', 'falt', 'frequencia', 'aula', 'horario', 'materia', 'disciplina',
+            'periodo', 'semestre', 'curso', 'professor', 'prova', 'trabalho', 'atividade',
+            'plano de ensino', 'estudo', 'estudar', 'academ', 'universidade', 'ufam',
+            'cra', 'media', 'reprov', 'aprov'
         ];
 
         return academicTerms.some((term) => normalized.includes(term));

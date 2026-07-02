@@ -3,6 +3,7 @@ import type { AiChatMessage } from '@/domain/entities/ai-chat-message';
 import type { AiChatReply } from '@/domain/entities/ai-chat-reply';
 import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
 import type { EcampusRepository } from '@/domain/repositories/ecampus-repository';
+import { waitForAiReply } from '@/infrastructure/realtime/ecampus-realtime-client';
 
 export interface SendAiChatMessageInput {
     conversationId?: string;
@@ -20,6 +21,7 @@ export class SendAiChatMessageUseCase {
         const session = await this.sessionStore.get();
         if (!session) throw new AuthSessionExpiredError();
 
-        return this.repository.sendAiChatMessage(session.accessToken, input);
+        const { jobId } = await this.repository.sendAiChatMessage(session.accessToken, input);
+        return waitForAiReply(jobId);
     }
 }
