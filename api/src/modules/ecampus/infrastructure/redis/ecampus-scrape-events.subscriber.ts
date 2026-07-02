@@ -68,7 +68,7 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
 
         try {
             event = JSON.parse(message) as AcademicScrapeResultEvent;
-            if (!event.cpf || !event.resource) {
+            if (!event.cpf) {
                 throw new Error('Invalid eCampus scrape event.');
             }
         } catch (error) {
@@ -79,48 +79,45 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
             return;
         }
 
+        const isLogin = this.isLoginEvent(event);
         logger.info('Received eCampus scrape notification from Redis.', {
             channel: ACADEMIC_SCRAPE_RESULT_CHANNEL,
-            resource: event.resource,
-            year: event.year,
-            period: event.period,
-            planId: event.planId,
+            type: isLogin ? 'login' : 'resource',
+            ...(!isLogin && { resource: (event as AcademicResourceFailedEvent).resource }),
             status: 'status' in event ? event.status : 'ready'
         });
 
         try {
-            if (this.isLoginEvent(event)) {
+            if (isLogin) {
                 await this.handleLoginEvent(event);
                 return;
             }
 
-            if (this.isFailedEvent(event)) {
-                if (event.errorName === 'AuthenticationError') {
-                    await this.invalidateExpiredSession(event.cpf);
+            const resourceEvent = event as AcademicResourceFailedEvent;
+
+            if (this.isFailedEvent(resourceEvent)) {
+                if (resourceEvent.errorName === 'AuthenticationError') {
+                    await this.invalidateExpiredSession(resourceEvent.cpf);
                 }
 
-                const bootstrapState = await this.bootstrapTracker.markFailed(event.cpf, event.resource);
+                const bootstrapState = await this.bootstrapTracker.markFailed(resourceEvent.cpf, resourceEvent.resource);
                 if (bootstrapState?.status === 'failed') {
                     this.notifier.emitBootstrapFailed(this.toBootstrapNotification(bootstrapState));
                 }
 
-                this.notifier.emitResourceFailed(event);
+                this.notifier.emitResourceFailed(resourceEvent);
                 return;
             }
 
-            this.notifier.emitResourceReady(event);
-            const bootstrapState = await this.bootstrapTracker.markReady(event.cpf, event.resource);
+            this.notifier.emitResourceReady(resourceEvent);
+            const bootstrapState = await this.bootstrapTracker.markReady(resourceEvent.cpf, resourceEvent.resource);
             if (bootstrapState?.status === 'ready') {
                 this.notifier.emitBootstrapReady(this.toBootstrapNotification(bootstrapState));
             }
         } catch (error) {
             logger.error('Failed to send eCampus scrape notification through WebSocket.', {
                 errorName: error instanceof Error ? error.name : 'UnknownError',
-                message: error instanceof Error ? error.message : String(error),
-                resource: event.resource,
-                year: event.year,
-                period: event.period,
-                planId: event.planId
+                message: error instanceof Error ? error.message : String(error)
             });
         }
     }
@@ -129,23 +126,24 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
         return 'type' in event && event.type === 'login';
     }
 
-    private isFailedEvent(event: AcademicScrapeResultEvent): event is AcademicResourceFailedEvent {
-        return !('type' in event) && 'status' in event && (event as AcademicResourceFailedEvent).status === 'failed';
+    private isFailedEvent(event: AcademicResourceFailedEvent | AcademicLoginReadyEvent): event is AcademicResourceFailedEvent {
+        return 'status' in event && (event as AcademicResourceFailedEvent).status === 'failed';
     }
 
     private async handleLoginEvent(event: AcademicLoginReadyEvent | AcademicLoginFailedEvent): Promise<void> {
-        if (event.status === 'failed') {
-            this.notifier.emitLoginFailed({ jobId: event.jobId, message: event.message });
+        if ('status' in event && event.status === 'failed') {
+            this.notifier.emitLoginFailed({ jobId: event.jobId, message: (event as AcademicLoginFailedEvent).message });
             return;
         }
 
-        const credentials = { cpf: event.cpf, session: event.session };
+        const ready = event as AcademicLoginReadyEvent;
+        const credentials = { cpf: ready.cpf, session: ready.session };
         await this.sessionRegistry.activate(credentials);
         const accessToken = this.accessTokenService.sign(credentials);
-        this.notifier.emitLoginReady({ jobId: event.jobId, accessToken });
+        this.notifier.emitLoginReady({ jobId: ready.jobId, accessToken });
         void this.prefetchUseCase.execute(credentials).catch((error: unknown) => {
             logger.error('Failed to prefetch academic data after login.', {
-                cpf: event.cpf,
+                cpf: ready.cpf,
                 errorName: error instanceof Error ? error.name : 'UnknownError',
                 message: error instanceof Error ? error.message : String(error)
             });
