@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -20,10 +19,13 @@ export class McpController {
         }
 
         const server = createAcademicMcpServer(userId, this.academicDataRepository);
-        // sessionIdGenerator generates a fresh ID per request (stateless — no stored session)
-        const transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => randomUUID()
-        });
+        // Stateless mode: a fresh McpServer/transport is created per HTTP request, so
+        // there is never a stored session to resume. Passing a sessionIdGenerator here
+        // would make the SDK require a prior "initialize" call on THIS SAME transport
+        // instance before accepting any other method — impossible when every request
+        // gets its own transport — and every non-initialize call (tools/list, tools/call)
+        // would fail with "Server not initialized".
+        const transport = new StreamableHTTPServerTransport({});
 
         try {
             // exactOptionalPropertyTypes workaround — SDK Transport type has optional fields

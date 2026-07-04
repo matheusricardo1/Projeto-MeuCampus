@@ -59,7 +59,7 @@ export class McpClientManager {
                 // jsonSchema() under exactOptionalPropertyTypes, so we construct directly.
                 target[toolName] = {
                     description: mcpTool.description ?? '',
-                    parameters: schema,
+                    inputSchema: schema,
                     execute: async (args: Record<string, unknown>): Promise<string> => {
                         const result = await capturedClient.callTool({
                             name: toolName,

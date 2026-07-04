@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { APICallError, LoadAPIKeyError, generateText } from 'ai';
+import { APICallError, LoadAPIKeyError, generateText, stepCountIs } from 'ai';
 import type { LanguageModel, ModelMessage } from 'ai';
 import type { ToolSet } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
@@ -132,7 +132,7 @@ export class VercelAiChatProvider implements AiChatProvider {
                 messages: this.buildMessages(request),
                 maxOutputTokens: 700,
                 temperature: 0.3,
-                ...(tools ? { tools, maxSteps: 5 } : {})
+                ...(tools ? { tools, stopWhen: stepCountIs(5) } : {})
             });
 
             return result.text;
