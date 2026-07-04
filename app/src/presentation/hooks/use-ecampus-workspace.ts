@@ -7,6 +7,7 @@ import type { ScheduleClass } from '@/domain/entities/schedule-class';
 import type { StudentProfile } from '@/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
 import { EcampusResourcePendingError } from '@/domain/errors/ecampus-resource-pending.error';
+import { AcademicPeriod } from '@/domain/value-objects/academic-period';
 import { createEcampusUseCases } from '@/presentation/composition/create-ecampus-use-cases';
 import { connectEcampusRealtime, type EcampusBootstrapEvent, type EcampusResourceFailedEvent, type EcampusResourceReadyEvent } from '@/infrastructure/realtime/ecampus-realtime-client';
 import { useLanguage } from '@/presentation/i18n/language-provider';
@@ -56,11 +57,8 @@ const IS_AI_FEATURE_ENABLED = true;
 const BOOTSTRAP_RESOURCES: BootstrapResourceKey[] = ['profile', 'schedule', 'grades', 'lessonPlanSubjects'];
 
 function getCurrentGradesInput(): GradesInput {
-    const now = new Date();
-    return {
-        year: now.getFullYear().toString(),
-        period: now.getMonth() >= 6 ? '2' : '1'
-    };
+    const current = AcademicPeriod.guessCurrent();
+    return { year: current.year, period: current.period };
 }
 
 function getGradesJobData(input: GradesInput, current: GradesInput): Record<string, unknown> {

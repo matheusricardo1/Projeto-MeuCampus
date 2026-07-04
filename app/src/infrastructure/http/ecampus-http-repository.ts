@@ -8,6 +8,7 @@ import type { StudentProfile } from '@/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/domain/errors/auth-session-expired.error';
 import { EcampusResourcePendingError } from '@/domain/errors/ecampus-resource-pending.error';
 import type { EcampusRepository, EcampusScrapeJobType, LoginCredentials, SendAiChatMessageRequest } from '@/domain/repositories/ecampus-repository';
+import { AcademicPeriod } from '@/domain/value-objects/academic-period';
 
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://127.0.0.1:3001';
 const DEFAULT_APP_ENV = 'production';
@@ -110,7 +111,7 @@ export class EcampusHttpRepository implements EcampusRepository {
     }
 
     private withOptionalAcademicPeriod(path: string, year?: string, period?: string): string {
-        if (!year || !period || isCurrentAcademicPeriod(year, period)) {
+        if (!year || !period || AcademicPeriod.guessCurrent().matches(year, period)) {
             return path;
         }
 
@@ -128,8 +129,8 @@ export class EcampusHttpRepository implements EcampusRepository {
                 throw error;
             }
 
-            const current = getCurrentAcademicPeriod();
-            const params = new URLSearchParams(current);
+            const current = AcademicPeriod.guessCurrent();
+            const params = new URLSearchParams({ year: current.year, period: current.period });
             return this.request<T>(`${path}?${params.toString()}`, init);
         }
     }
@@ -196,19 +197,6 @@ function getAppEnv(): 'development' | 'production' {
     return process.env.EXPO_PUBLIC_APP_ENV === 'development'
         ? 'development'
         : DEFAULT_APP_ENV;
-}
-
-function isCurrentAcademicPeriod(year: string, period: string): boolean {
-    const current = getCurrentAcademicPeriod();
-    return year === current.year && period === current.period;
-}
-
-function getCurrentAcademicPeriod(): { year: string; period: string } {
-    const now = new Date();
-    return {
-        year: now.getFullYear().toString(),
-        period: now.getMonth() >= 6 ? '2' : '1'
-    };
 }
 
 function isMissingAcademicPeriodError(error: unknown): boolean {

@@ -1,7 +1,7 @@
-import { getCurrentAcademicPeriod } from '@/domain/services/current-academic-period';
+import { AcademicPeriod } from '@/domain/value-objects/academic-period.value-object';
 
 export function resolveGradesPeriod(data: Record<string, unknown>): { year: string; period: string } {
-    const fallback = getCurrentAcademicPeriod();
+    const fallback = AcademicPeriod.guessCurrent();
     const year = typeof data.year === 'string' && data.year.trim()
         ? data.year.trim()
         : fallback.year;

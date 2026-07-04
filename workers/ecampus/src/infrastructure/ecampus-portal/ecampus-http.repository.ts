@@ -8,6 +8,7 @@ import { ResourceNotFoundError } from '@/domain/exceptions/resource-not-found.er
 import type { ScheduleClass } from '@/domain/value-objects/schedule-class';
 import type { StudentProfile } from '@/domain/entities/student-profile';
 import type { EcampusRepository } from '@/domain/repositories/ecampus.repository';
+import { AcademicPeriod } from '@/domain/value-objects/academic-period.value-object';
 import { EcampusAuthService } from '@/infrastructure/ecampus-portal/ecampus-auth-service';
 import { appLogger as logger } from '@/infrastructure/logging/app-logger';
 
@@ -59,7 +60,7 @@ export class EcampusHttpRepository implements EcampusRepository {
             const client = await this.authService.getAuthenticatedClient(credentials);
             const params = new URLSearchParams();
             params.append('ano', year);
-            params.append('periodo', this.normalizeGradePeriod(period));
+            params.append('periodo', AcademicPeriod.toEcampusCode(period));
 
             logger.info(`Fetching grades for year ${year}, period ${period}...`);
 
@@ -225,29 +226,6 @@ export class EcampusHttpRepository implements EcampusRepository {
 
             throw error;
         }
-    }
-
-    private normalizeGradePeriod(period: string): string {
-        const normalizedPeriod = period.trim().toLowerCase();
-        const periodMap: Record<string, string> = {
-            '1': '201',
-            '1o': '201',
-            '201': '201',
-            '2': '202',
-            '2o': '202',
-            '202': '202',
-            'ferias1': '203',
-            'ferias-1': '203',
-            '203': '203',
-            'ferias2': '204',
-            'ferias-2': '204',
-            '204': '204',
-            'especial': '401',
-            '5': '401',
-            '401': '401'
-        };
-
-        return periodMap[normalizedPeriod] || period;
     }
 
     async getSchedule(credentials: EcampusCredentials): Promise<ScheduleClass[]> {
