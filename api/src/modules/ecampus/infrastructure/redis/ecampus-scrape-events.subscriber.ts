@@ -8,6 +8,7 @@ import { AcademicBootstrapTracker, type AcademicBootstrapState } from '@academic
 import { PrefetchAcademicDataUseCase } from '@academic/application/use-cases/prefetch-academic-data.usecase';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
+import { decryptQueuePayload } from '@/shared/security/ecampus-queue-payload-cipher';
 import {
     ACADEMIC_SCRAPE_RESULT_CHANNEL,
     type AcademicLoginFailedEvent,
@@ -72,6 +73,9 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
             if (!event.cpf) {
                 throw new Error('Invalid eCampus scrape event.');
             }
+            if (this.isLoginReadyEvent(event)) {
+                event = { ...event, session: decryptQueuePayload<Record<string, unknown>>(event.session as unknown as string) };
+            }
         } catch (error) {
             logger.warning('Ignored invalid eCampus scrape notification.', {
                 errorName: error instanceof Error ? error.name : 'UnknownError',
@@ -123,6 +127,10 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
         return 'type' in event && (event as AcademicLoginReadyEvent).type === 'login';
     }
 
+    private isLoginReadyEvent(event: AcademicScrapeResultEvent): event is AcademicLoginReadyEvent {
+        return this.isLoginEvent(event) && !('status' in event);
+    }
+
     private isResourceFailedEvent(event: AcademicResourceReadyEvent | AcademicResourceFailedEvent): event is AcademicResourceFailedEvent {
         return 'status' in event && (event as AcademicResourceFailedEvent).status === 'failed';
     }
@@ -136,6 +144,9 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
         const ready = event as AcademicLoginReadyEvent;
         const credentials = { cpf: ready.cpf, session: ready.session };
         await this.sessionRegistry.activate(credentials);
+        // A previous session's fingerprint is now stale — kick any socket still
+        // connected under it instead of waiting for it to fail on its own.
+        this.notifier.revokeUserSessions(ready.cpf);
         const accessToken = this.accessTokenService.sign(credentials);
         this.notifier.emitLoginReady({ jobId: ready.jobId, accessToken });
         void this.prefetchUseCase.execute(credentials).catch((error: unknown) => {

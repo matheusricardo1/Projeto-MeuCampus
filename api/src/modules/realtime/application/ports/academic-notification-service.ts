@@ -64,4 +64,11 @@ export abstract class AcademicNotificationService {
     abstract emitLoginFailed(event: AcademicLoginFailedNotification): void;
     abstract emitAiChatReply(event: AcademicAiChatReplyNotification): void;
     abstract emitAiChatFailed(event: AcademicAiChatFailedNotification): void;
+    /**
+     * Forcibly disconnects any socket already connected under a previous
+     * session for this CPF. Called right after a new login invalidates the
+     * old session fingerprint, so a stale, already-open connection doesn't
+     * keep receiving events until it happens to reconnect on its own.
+     */
+    abstract revokeUserSessions(cpf: string): void;
 }

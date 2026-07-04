@@ -4,6 +4,7 @@ import { AcademicDataRepository } from '@academic/domain/repositories/academic-d
 import { AcademicResourceNotFoundException } from '@academic/domain/exceptions/academic-resource-not-found.exception';
 import { createApiRedisConnectionOptions } from '@/shared/redis-connection';
 import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from '@ecampus/infrastructure/redis/ecampus-cache';
+import { decryptCachePayload } from '@/shared/security/ecampus-cache-cipher';
 import type { AcademicSubject } from '@academic/domain/entities/academic-subject.entity';
 import type { Grade } from '@academic/domain/entities/grade.entity';
 import type { LessonPlanItem } from '@academic/domain/value-objects/lesson-plan-item.value-object';
@@ -120,11 +121,11 @@ export class EcampusRedisRepository extends AcademicDataRepository {
       throw new AcademicResourceNotFoundException(resource);
     }
 
-    return JSON.parse(raw) as T;
+    return decryptCachePayload<T>(raw);
   }
 
   private async getOptional<T = unknown>(resource: EcampusCachedResource, cpf: string, extra?: string): Promise<T | null> {
     const raw = await this.redis.get(getEcampusCacheKey(resource, cpf, extra));
-    return raw ? JSON.parse(raw) as T : null;
+    return raw ? decryptCachePayload<T>(raw) : null;
   }
 }

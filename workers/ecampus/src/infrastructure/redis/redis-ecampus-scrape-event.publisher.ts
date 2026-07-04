@@ -7,6 +7,7 @@ import {
     type EcampusResourceFailedEvent,
     type EcampusResourceReadyEvent
 } from '@/ecampus-scrape-events';
+import { encryptQueuePayload } from '@/infrastructure/crypto/ecampus-queue-payload-cipher';
 
 export class RedisEcampusScrapeEventPublisher implements EcampusScrapeEventPublisher {
     constructor(private readonly redis: Redis) {}
@@ -20,7 +21,10 @@ export class RedisEcampusScrapeEventPublisher implements EcampusScrapeEventPubli
     }
 
     async publishLoginReady(event: EcampusLoginReadyEvent): Promise<void> {
-        await this.publish(event);
+        // The session cookie jar is a live authentication artifact — never
+        // put it on the wire (Pub/Sub) in plain text.
+        const { session, ...rest } = event;
+        await this.publish({ ...rest, session: encryptQueuePayload(session) });
     }
 
     async publishLoginFailed(event: EcampusLoginFailedEvent): Promise<void> {

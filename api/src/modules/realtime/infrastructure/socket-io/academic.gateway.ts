@@ -22,6 +22,7 @@ import {
     type AcademicResourceNotification
 } from '@realtime/application/ports/academic-notification-service';
 import { appLogger } from '@/shared/logging/app-logger';
+import { pseudonymousUserId } from '@/shared/security/pseudonymous-user-id';
 
 type WebSocketLogLevel = 'info' | 'warning';
 
@@ -212,8 +213,22 @@ export class AcademicGateway extends AcademicNotificationService {
         appLogger.warning('Sent AI chat failure through WebSocket.', { jobId: event.jobId, userId: event.userId });
     }
 
+    revokeUserSessions(cpf: string): void {
+        const room = this.roomFor(cpf);
+        const roomClients = this.getRoomClientCount(room);
+        if (roomClients === 0) {
+            return;
+        }
+
+        void this.server.in(room).disconnectSockets(true);
+        appLogger.info('Revoked stale WebSocket sessions after new login.', {
+            room,
+            roomClients
+        });
+    }
+
     private roomFor(cpf: string): string {
-        return `ecampus-user-${cpf}`;
+        return `ecampus-user-${pseudonymousUserId(cpf)}`;
     }
 
     private loginRoomFor(jobId: string): string {

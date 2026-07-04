@@ -28,3 +28,12 @@ export type EcampusScrapeJobData =
         credentials: EcampusCredentials;
         planId: string;
       };
+
+/**
+ * Wire shape actually stored in BullMQ. Job data always carries a CPF/password
+ * or a session cookie jar — both sensitive — so the API encrypts it before
+ * enqueueing and the worker decrypts it back into EcampusScrapeJobData.
+ */
+export interface EncryptedEcampusScrapeJobData {
+    __enc: string;
+}
