@@ -14,7 +14,7 @@ import type { StudentProfile } from '@academic/domain/entities/student-profile.e
 import { isSameSubject } from '@academic/domain/services/academic-subject-identity';
 import { buildAttendanceSummary } from '@academic/domain/services/academic-attendance-policy';
 import { reconcileAcademicSubjects } from '@academic/domain/services/academic-subject-reconciler';
-import { getCurrentAcademicPeriod } from '@academic/application/services/current-academic-period';
+import { AcademicPeriod } from '@academic/domain/value-objects/academic-period.value-object';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -42,7 +42,7 @@ export class EcampusRedisRepository extends AcademicDataRepository {
   }
 
   async getGrades(cpf: string, year: string, period: string): Promise<Grade[]> {
-    const current = getCurrentAcademicPeriod();
+    const current = AcademicPeriod.guessCurrent();
     const isCurrentPeriod = year === current.year && period === current.period;
 
     const [gradesRaw, lessonPlanSubjectsRaw] = await Promise.all([
@@ -83,7 +83,7 @@ export class EcampusRedisRepository extends AcademicDataRepository {
   }
 
   async getAcademicSubjects(cpf: string, year: string, period: string): Promise<AcademicSubject[]> {
-    const current = getCurrentAcademicPeriod();
+    const current = AcademicPeriod.guessCurrent();
     const isCurrentPeriod = year === current.year && period === current.period;
 
     const [gradesRaw, lessonPlanSubjectsRaw, scheduleRaw] = await Promise.all([

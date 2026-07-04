@@ -1,7 +1,5 @@
 import { InvalidAcademicRequestError } from '@academic/presentation/http/errors/invalid-academic-request.error';
-import { getCurrentAcademicPeriod } from '@academic/application/services/current-academic-period';
-
-const acceptedPeriods = new Set(['1', '1o', '201', '2', '2o', '202', 'ferias1', 'ferias-1', '203', 'ferias2', 'ferias-2', '204', 'especial', '5', '401']);
+import { AcademicPeriod } from '@academic/domain/value-objects/academic-period.value-object';
 
 export class AcademicRequestValidator {
     static parseCpf(value?: string): string {
@@ -21,28 +19,20 @@ export class AcademicRequestValidator {
         return value;
     }
 
-    static parseYear(value?: string): string {
-        const year = value?.trim() || getCurrentAcademicPeriod().year;
-        if (!/^\d{4}$/.test(year)) {
-            throw new InvalidAcademicRequestError('Informe um ano com 4 digitos.');
-        }
-
-        const numericYear = Number(year);
-        const nextYear = new Date().getFullYear() + 1;
-        if (numericYear < 2000 || numericYear > nextYear) {
-            throw new InvalidAcademicRequestError('Informe um ano dentro do periodo aceito.');
-        }
-
-        return year;
+    /**
+     * Returns undefined when the caller didn't specify a year at all —
+     * distinct from an invalid one — so the use case can resolve "current"
+     * from cached data instead of a blind calendar guess. Format/range rules
+     * themselves live on AcademicPeriod, not here.
+     */
+    static parseYear(value?: string): string | undefined {
+        const year = value?.trim();
+        return year ? AcademicPeriod.validateYear(year) : undefined;
     }
 
-    static parsePeriod(value?: string): string {
-        const period = value?.trim().toLowerCase() || getCurrentAcademicPeriod().period;
-        if (!acceptedPeriods.has(period)) {
-            throw new InvalidAcademicRequestError('Informe um periodo valido.');
-        }
-
-        return period;
+    static parsePeriod(value?: string): string | undefined {
+        const period = value?.trim();
+        return period ? AcademicPeriod.validatePeriod(period) : undefined;
     }
 
     static parsePlanId(value: string): string {

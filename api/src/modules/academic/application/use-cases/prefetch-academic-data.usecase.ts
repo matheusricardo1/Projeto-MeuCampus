@@ -2,7 +2,7 @@ import type { AcademicCredentials } from '@auth/domain/entities/academic-session
 import { ScrapingJobService } from '@academic/application/ports/scraping-job-service';
 import { AcademicBootstrapTracker } from '@academic/application/ports/academic-bootstrap-tracker';
 import { scrapingJobDedupeKey } from '@academic/application/services/scraping-job-dedupe-key';
-import { getCurrentAcademicPeriod } from '@academic/application/services/current-academic-period';
+import { AcademicPeriod } from '@academic/domain/value-objects/academic-period.value-object';
 import type { AcademicResource } from '@academic/domain/value-objects/academic-resource.value-object';
 
 const BOOTSTRAP_RESOURCES: AcademicResource[] = ['profile', 'schedule', 'grades', 'lesson-plan-subjects'];
@@ -14,7 +14,7 @@ export class PrefetchAcademicDataUseCase {
   ) {}
 
   async execute(credentials: AcademicCredentials, now = new Date()): Promise<void> {
-    const period = getCurrentAcademicPeriod(now);
+    const period = AcademicPeriod.guessCurrent(now);
     await this.bootstrapTracker.start(credentials.cpf, BOOTSTRAP_RESOURCES);
 
     await Promise.all([
@@ -24,8 +24,8 @@ export class PrefetchAcademicDataUseCase {
       this.scrapingJobService.enqueue('schedule', { credentials }, {
         dedupeKey: scrapingJobDedupeKey(credentials, 'schedule'),
       }),
-      this.scrapingJobService.enqueue('grades', { credentials, ...period }, {
-        dedupeKey: scrapingJobDedupeKey(credentials, 'grades', `${period.year}-${period.period}`),
+      this.scrapingJobService.enqueue('grades', { credentials, year: period.year, period: period.period }, {
+        dedupeKey: scrapingJobDedupeKey(credentials, 'grades', period.cacheSuffix()),
       }),
       this.scrapingJobService.enqueue('lesson-plan-subjects', { credentials }, {
         dedupeKey: scrapingJobDedupeKey(credentials, 'lesson-plan-subjects'),

@@ -165,6 +165,10 @@ export function useEcampusWorkspace() {
     };
 
     const isInitialResourcePending = (resource: InitialResourceKey) => pendingInitialResourcesRef.current.has(resource);
+    // A resource can finish loading with a genuinely empty result (e.g. no
+    // grades posted yet this period) — use this, not `.length === 0`, to
+    // tell "never loaded" apart from "loaded, and there's nothing there".
+    const isLoaded = (resource: InitialResourceKey) => loadedResourcesRef.current.has(resource);
 
     const clearInitialEventsTimeout = () => {
         if (initialEventsTimeoutRef.current) {
@@ -491,7 +495,7 @@ export function useEcampusWorkspace() {
                 }
                 return;
             case 'lesson-plan-subjects':
-                if (grades.length > 0 || !isInitialResourcePending('grades')) {
+                if (isLoaded('grades') || !isInitialResourcePending('grades')) {
                     void loadLessonPlanSubjects(silentOptions);
                 }
                 return;
@@ -555,17 +559,17 @@ export function useEcampusWorkspace() {
                     taskFactories.push(() => loadProfile(silentOptions));
                 }
 
-                if (schedule.length === 0 && !isInitialResourcePending('schedule')) {
+                if (!isLoaded('schedule') && !isInitialResourcePending('schedule')) {
                     resourcesToWaitFor.push('schedule');
                     taskFactories.push(() => loadSchedule(silentOptions));
                 }
 
-                if (grades.length === 0 && !isInitialResourcePending('grades')) {
+                if (!isLoaded('grades') && !isInitialResourcePending('grades')) {
                     resourcesToWaitFor.push('grades');
                     taskFactories.push(() => loadGrades(silentOptions));
                 }
 
-                if (lessonPlanSubjects.length === 0 && !isInitialResourcePending('lessonPlanSubjects')) {
+                if (!isLoaded('lessonPlanSubjects') && !isInitialResourcePending('lessonPlanSubjects')) {
                     resourcesToWaitFor.push('lessonPlanSubjects', 'lessonPlan');
                     taskFactories.push(() => loadLessonPlanSubjects(silentOptions));
                 }
@@ -583,7 +587,7 @@ export function useEcampusWorkspace() {
                 }));
             }
 
-            if (options.force || (schedule.length === 0 && !isInitialResourcePending('schedule'))) {
+            if (options.force || (!isLoaded('schedule') && !isInitialResourcePending('schedule'))) {
                 resourcesToWaitFor.push('schedule');
                 tasks.push(run(() => useCases.enqueueScrapeJob.execute('schedule'), {
                     reportError: options?.reportError ?? false,
@@ -591,7 +595,7 @@ export function useEcampusWorkspace() {
                 }));
             }
 
-            if (options.force || (grades.length === 0 && !isInitialResourcePending('grades'))) {
+            if (options.force || (!isLoaded('grades') && !isInitialResourcePending('grades'))) {
                 resourcesToWaitFor.push('grades');
                 tasks.push(run(() => useCases.enqueueScrapeJob.execute('grades', getGradesJobData(gradesInput, currentGradesInput)), {
                     reportError: options?.reportError ?? false,
@@ -599,7 +603,7 @@ export function useEcampusWorkspace() {
                 }));
             }
 
-            if (options.force || (lessonPlanSubjects.length === 0 && !isInitialResourcePending('lessonPlanSubjects'))) {
+            if (options.force || (!isLoaded('lessonPlanSubjects') && !isInitialResourcePending('lessonPlanSubjects'))) {
                 resourcesToWaitFor.push('lessonPlanSubjects', 'lessonPlan');
                 tasks.push(run(() => useCases.enqueueScrapeJob.execute('lesson-plan-subjects'), {
                     reportError: options?.reportError ?? false,
@@ -803,7 +807,6 @@ export function useEcampusWorkspace() {
         setActiveTab(tab);
 
         if (tab === 'home') void prefetchWorkspace();
-        const isLoaded = (r: InitialResourceKey) => loadedResourcesRef.current.has(r);
         if (tab === 'profile' && !isLoaded('profile') && !isInitialResourcePending('profile')) {
             markInitialResourcesPending(['profile']);
             void run(() => useCases.enqueueScrapeJob.execute('profile'), { reportError: false, showGlobalLoading: false });

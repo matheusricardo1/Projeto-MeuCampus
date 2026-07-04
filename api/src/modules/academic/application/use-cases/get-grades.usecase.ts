@@ -6,11 +6,12 @@ import type { Grade } from '@academic/domain/entities/grade.entity';
 import { pendingScrapeJob } from '@/modules/academic/application/services/pending-scrape-job';
 import type { PendingScrapeJob } from '@/modules/academic/application/services/pending-scrape-job';
 import { scrapingJobDedupeKey } from '@academic/application/services/scraping-job-dedupe-key';
+import { resolveCurrentGradesPeriod } from '@academic/application/services/resolve-current-grades-period';
 
 export interface GradesInput {
   credentials: AcademicCredentials;
-  year: string;
-  period: string;
+  year?: string | undefined;
+  period?: string | undefined;
 }
 
 export class GetGradesUseCase {
@@ -20,22 +21,34 @@ export class GetGradesUseCase {
   ) {}
 
   async execute(input: GradesInput): Promise<Grade[] | PendingScrapeJob> {
+    const { year, period, needsScrape } = input.year && input.period
+      ? { year: input.year, period: input.period, needsScrape: false }
+      : await resolveCurrentGradesPeriod(this.cache, input.credentials.cpf);
+
+    if (needsScrape) {
+      return this.enqueueGradesScrape(input.credentials, year, period);
+    }
+
     try {
-      return await this.cache.getGrades(input.credentials.cpf, input.year, input.period);
+      return await this.cache.getGrades(input.credentials.cpf, year, period);
     } catch (error) {
       if (!(error instanceof AcademicResourceNotFoundException)) {
         throw error;
       }
 
-      await this.scrapingJobService.enqueue('grades', {
-        credentials: input.credentials,
-        year: input.year,
-        period: input.period,
-      }, {
-        dedupeKey: scrapingJobDedupeKey(input.credentials, 'grades', `${input.year}-${input.period}`),
-      });
-
-      return pendingScrapeJob('grades');
+      return this.enqueueGradesScrape(input.credentials, year, period);
     }
+  }
+
+  private async enqueueGradesScrape(credentials: AcademicCredentials, year: string, period: string): Promise<PendingScrapeJob> {
+    await this.scrapingJobService.enqueue('grades', {
+      credentials,
+      year,
+      period,
+    }, {
+      dedupeKey: scrapingJobDedupeKey(credentials, 'grades', `${year}-${period}`),
+    });
+
+    return pendingScrapeJob('grades');
   }
 }

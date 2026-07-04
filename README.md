@@ -89,19 +89,31 @@ A segurança foi priorizada em cada linha de código:
 
 O projeto está organizado em um monorepo com 4 serviços independentes: `app`, `api`, `workers/ecampus` e `workers/ai`, além de uma instância de Redis compartilhada.
 
+Cada serviço usa **apenas** um arquivo de dev e um de produção — sem `.env` puro. `api`, `workers/ai` e `workers/ecampus` usam `.env.local`/`.env.production`; `app` usa `.env.development`/`.env.production` (motivo na seção 4, abaixo). Todos são gitignored; use `.env.example` como referência de quais chaves preencher.
+
 ### Opção rápida: Docker Compose
-Sobe `redis`, `api`, `ai-worker` e `ecampus-worker` de uma vez (configure antes o `.env` de cada serviço a partir do respectivo `.env.example`):
+Sobe `redis`, `api`, `ai-worker` e `ecampus-worker` de uma vez (configure antes o `.env.local` de cada serviço a partir do respectivo `.env.example`):
 ```bash
 docker compose up --build
 ```
 O frontend (`app/`) continua rodando localmente via Expo (ver abaixo).
 
+**Quer testar como o sistema se comporta com config de produção, sem sair da sua máquina?** Preencha o `.env.production` de cada serviço (`api`, `workers/ai`, `workers/ecampus`) e suba com o arquivo de override:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.production-test.yml up --build
+```
+Isso troca o `env_file` de cada serviço para `.env.production` (então valores como rate limit, `FRONTEND_ORIGIN`, chaves de provedor de IA, etc. viram os de produção), mas mantém `REDIS_URL` fixo no container Redis local — você não está saindo da sua máquina, só testando a config de produção contra a infra local. Sobe containers com o mesmo nome do modo normal, então rode `docker compose down` (com o mesmo `-f -f` do modo que estava rodando) antes de trocar de modo.
+
+Não existe uma flag `--prod` no `docker compose` — a troca de arquivo de config é feita combinando os dois arquivos com `-f -f`, como acima.
+
+Sem Docker, dá pra fazer o mesmo por serviço com `npm run dev:prod-env` (usa `.env.production` em vez de `.env.local`, sem mudar `NODE_ENV`).
+
 ### 1. Backend (API)
 ```bash
 cd api
 npm install
-cp .env.example .env
-# Configure ECAMPUS_JWT_SECRET, FRONTEND_ORIGIN e REDIS_URL no .env
+cp .env.example .env.local
+# Configure ECAMPUS_JWT_SECRET, FRONTEND_ORIGIN e REDIS_URL no .env.local
 npm run dev
 ```
 
@@ -109,8 +121,8 @@ npm run dev
 ```bash
 cd workers/ecampus
 npm install
-cp .env.example .env
-# Configure REDIS_URL e ECAMPUS_SCRAPE_QUEUE no .env
+cp .env.example .env.local
+# Configure REDIS_URL e ECAMPUS_SCRAPE_QUEUE no .env.local
 npm run dev
 ```
 
@@ -118,18 +130,20 @@ npm run dev
 ```bash
 cd workers/ai
 npm install
-cp .env.example .env
-# Configure REDIS_URL, AI_CHAT_QUEUE, MCP_SERVER_URLS e as chaves do provedor de IA (ex.: GEMINI_API_KEY) no .env
+cp .env.example .env.local
+# Configure REDIS_URL, AI_CHAT_QUEUE, MCP_SERVER_URLS e as chaves do provedor de IA (ex.: GEMINI_API_KEY) no .env.local
 npm run dev
 ```
 
 ### 4. Frontend (App)
+> ⚠️ Único dos 4 projetos que usa `.env.development` em vez de `.env.local` — na convenção nativa do Expo (`@expo/env`), `.env.local` tem prioridade sobre `.env.production` **independente** do modo, então os dois nunca poderiam coexistir aqui sem quebrar o toggle. `.env.development`/`.env.production` são os arquivos por-modo de verdade.
 ```bash
 cd app
 npm install
-cp .env.example .env
-# Configure EXPO_PUBLIC_ECAMPUS_API_URL no .env
-npm run start
+cp .env.example .env.development
+# Configure EXPO_PUBLIC_ECAMPUS_API_URL no .env.development
+npm run start              # NODE_ENV=development → carrega .env.development
+npm run start:prod-env     # NODE_ENV=production  → carrega .env.production, sem sair da máquina
 ```
 
 ---

@@ -17,7 +17,7 @@ import { AcademicAuthGuard } from '@auth/presentation/http/guards/academic-auth.
 import type { AcademicResource } from '@academic/domain/value-objects/academic-resource.value-object';
 import { ScrapingJobService } from '@/modules/academic/application/ports/scraping-job-service';
 import { isPendingScrapeJob } from '@/modules/academic/application/services/pending-scrape-job';
-import { getCurrentAcademicPeriod } from '@academic/application/services/current-academic-period';
+import { AcademicPeriod } from '@academic/domain/value-objects/academic-period.value-object';
 
 @Controller('ecampus')
 export class AcademicController {
@@ -153,7 +153,7 @@ export class AcademicController {
     }
     const data: Record<string, unknown> = { credentials };
     if (type === 'grades') {
-      const fallbackPeriod = getCurrentAcademicPeriod();
+      const fallbackPeriod = AcademicPeriod.guessCurrent();
       const { year, period } = body;
       data.year = year || fallbackPeriod.year;
       data.period = period || fallbackPeriod.period;

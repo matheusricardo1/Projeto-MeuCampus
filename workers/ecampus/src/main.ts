@@ -1,4 +1,11 @@
-import 'dotenv/config';
+import { config as loadDotenv } from 'dotenv';
+
+// ENV_FILE picks which config to load (local | production), independent of
+// NODE_ENV — so you can test production-shaped config locally without
+// flipping framework runtime behavior. Defaults to NODE_ENV when unset.
+const envTarget = process.env.ENV_FILE || (process.env.NODE_ENV === 'production' ? 'production' : 'local');
+loadDotenv({ path: `.env.${envTarget}` });
+
 import { register } from 'tsconfig-paths';
 import { EcampusScrapingWorker } from '@/infrastructure/queue/bullmq-ecampus-scraping.worker';
 import { appLogger } from './infrastructure/logging/app-logger';

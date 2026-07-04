@@ -12,7 +12,7 @@ services:
       dockerfile: api/Dockerfile
     container_name: ufam-academics-api
     env_file:
-      - ./api/.env
+      - ./api/.env.local
     environment:
       - NODE_ENV=development
       - REDIS_URL=redis://redis:6379/0
@@ -28,7 +28,7 @@ services:
       dockerfile: workers/ai/Dockerfile
     container_name: ufam-academics-ai-worker
     env_file:
-      - ./workers/ai/.env
+      - ./workers/ai/.env.local
     depends_on:
       - redis
     restart: unless-stopped
@@ -39,7 +39,7 @@ services:
       dockerfile: workers/ecampus/Dockerfile
     container_name: ufam-academics-ecampus-worker
     env_file:
-      - ./workers/ecampus/.env
+      - ./workers/ecampus/.env.local
     depends_on:
       - redis
     restart: unless-stopped

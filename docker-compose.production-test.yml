@@ -1,0 +1,27 @@
+## Override for docker-compose.yml: swaps each service's config from
+## .env.local to .env.production, so you can test production-shaped
+## config (secrets, rate limits, allowed origins, MCP URLs) without
+## deploying — while REDIS_URL stays pinned to the local Redis container,
+## since you're not actually leaving your machine.
+##
+## Usage:
+##   docker compose -f docker-compose.yml -f docker-compose.production-test.yml up --build
+services:
+  api:
+    env_file:
+      - ./api/.env.production
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379/0
+
+  ai-worker:
+    env_file:
+      - ./workers/ai/.env.production
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+
+  ecampus-worker:
+    env_file:
+      - ./workers/ecampus/.env.production
+    environment:
+      - REDIS_URL=redis://redis:6379/0

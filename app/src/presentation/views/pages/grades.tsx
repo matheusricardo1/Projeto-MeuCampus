@@ -50,7 +50,7 @@ export function GradesPage({ grades, input, loading, onChange, onRefresh }: { gr
                             <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
                                 <MiniGrade featured label="MF" value={grade.final_grade || '-'} helper={t('grades.finalAverage')} />
                                 <MiniGrade label="FT" value={grade.absences || '-'} helper={t('home.registeredAbsences')} />
-                                <MiniGrade label="AV" value={String(grade.evaluations.length)} helper={t('grades.evaluations')} />
+                                <MiniGrade label="AV" value={String(grade.evaluations?.length ?? 0)} helper={t('grades.evaluations')} />
                                 {grade.final_exam ? <MiniGrade label="PF" value={grade.final_exam} helper={t('grades.finalExam')} /> : null}
                             </View>
                         </View>
