@@ -49,7 +49,6 @@ export class McpClientManager {
             const { tools: mcpTools } = await client.listTools();
 
             for (const mcpTool of mcpTools) {
-                const capturedClient = client;
                 const toolName = mcpTool.name;
                 const schema = jsonSchema<Record<string, unknown>>(
                     mcpTool.inputSchema as Parameters<typeof jsonSchema>[0]
@@ -60,23 +59,46 @@ export class McpClientManager {
                 target[toolName] = {
                     description: mcpTool.description ?? '',
                     inputSchema: schema,
-                    execute: async (args: Record<string, unknown>): Promise<string> => {
-                        const result = await capturedClient.callTool({
-                            name: toolName,
-                            arguments: args
-                        });
-
-                        const content = result.content as Array<{ type: string; text?: string }>;
-                        return content
-                            .filter((c) => c.type === 'text')
-                            .map((c) => c.text ?? '')
-                            .join('\n');
-                    }
+                    // The model may call this long after listTools() returns (it decides
+                    // when, mid-generation), and the listing connection is already closed
+                    // by then — so each call opens its own short-lived connection rather
+                    // than reusing (or reopening) the one used to list tools.
+                    execute: async (args: Record<string, unknown>): Promise<string> =>
+                        this.callTool(serverUrl, userId, toolName, args)
                 } as unknown as ToolSet[string];
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.warn(`[McpClientManager] Failed to load tools from ${serverUrl}: ${message}`);
+        } finally {
+            await client.close().catch(() => undefined);
+        }
+    }
+
+    private async callTool(
+        serverUrl: string,
+        userId: string,
+        toolName: string,
+        args: Record<string, unknown>
+    ): Promise<string> {
+        const client = new Client({ name: 'ai-worker', version: '1.0.0' });
+        const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
+            requestInit: {
+                headers: {
+                    'x-internal-secret': this.internalSecret,
+                    'x-mcp-user-id': userId
+                }
+            }
+        });
+
+        try {
+            await client.connect(transport as never);
+            const result = await client.callTool({ name: toolName, arguments: args });
+            const content = result.content as Array<{ type: string; text?: string }>;
+            return content
+                .filter((c) => c.type === 'text')
+                .map((c) => c.text ?? '')
+                .join('\n');
         } finally {
             await client.close().catch(() => undefined);
         }
