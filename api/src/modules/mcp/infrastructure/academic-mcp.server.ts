@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
-import { AcademicPeriod } from '@academic/domain/value-objects/academic-period.value-object';
+import { resolveCurrentGradesPeriod } from '@academic/application/services/resolve-current-grades-period';
 
 const NOT_AVAILABLE = 'Dados não disponíveis. Oriente o usuário a abrir o app para sincronizar.';
 
@@ -37,8 +37,10 @@ export function createAcademicMcpServer(
         },
         async ({ year, period }) => {
             try {
-                const current = AcademicPeriod.guessCurrent();
-                const grades = await repository.getGrades(userId, year ?? current.year, period ?? current.period);
+                const resolved = year && period
+                    ? { year, period }
+                    : await resolveCurrentGradesPeriod(repository, userId);
+                const grades = await repository.getGrades(userId, resolved.year, resolved.period);
                 return { content: [{ type: 'text' as const, text: JSON.stringify(grades) }] };
             } catch {
                 return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
