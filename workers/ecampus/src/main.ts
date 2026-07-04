@@ -1,13 +1,12 @@
 import 'dotenv/config';
 import { register } from 'tsconfig-paths';
 import { EcampusScrapingWorker } from '@/infrastructure/queue/bullmq-ecampus-scraping.worker';
-import { appLogger } from './logging/app-logger';
+import { appLogger } from './infrastructure/logging/app-logger';
 
 register({
     baseUrl: __dirname,
     paths: {
-        '@/*': ['*'],
-        '@ecampus/*': ['ecampus/*']
+        '@/*': ['*']
     }
 });
 

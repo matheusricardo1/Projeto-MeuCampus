@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { AiChatWorker } from '@/infrastructure/queue/bullmq-ai-chat.worker';
-import { appLogger } from '@/logging/app-logger';
+import { appLogger } from '@/infrastructure/logging/app-logger';
 
 async function bootstrap(): Promise<void> {
     const worker = new AiChatWorker();

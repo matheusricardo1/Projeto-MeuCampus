@@ -1,11 +1,9 @@
 import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
 import { AcademicNotificationService } from '@realtime/application/ports/academic-notification-service';
-import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
-import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
-import { AccessTokenService } from '@auth/application/ports/access-token-service';
-import { AcademicBootstrapTracker, type AcademicBootstrapState } from '@academic/application/ports/academic-bootstrap-tracker';
-import { PrefetchAcademicDataUseCase } from '@academic/application/use-cases/prefetch-academic-data.usecase';
+import { HandleAcademicLoginReadyUseCase } from '@academic/application/use-cases/handle-academic-login-ready.usecase';
+import { HandleAcademicResourceFailedUseCase } from '@academic/application/use-cases/handle-academic-resource-failed.usecase';
+import { HandleAcademicResourceReadyUseCase } from '@academic/application/use-cases/handle-academic-resource-ready.usecase';
 import { logger } from '@ecampus/infrastructure/logging/console-logger';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 import { decryptQueuePayload } from '@/shared/security/ecampus-queue-payload-cipher';
@@ -18,17 +16,20 @@ import {
     type AcademicScrapeResultEvent
 } from '@ecampus/infrastructure/redis/ecampus-scrape-events';
 
+/**
+ * Redis Pub/Sub adapter only: subscription lifecycle, message parsing/
+ * decryption, and routing to the use case for each event type. No session,
+ * bootstrap, or notification logic lives here anymore.
+ */
 @Injectable()
 export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDestroy {
     private readonly subscriber = new Redis(createRedisConnectionOptions());
 
     constructor(
         private readonly notifier: AcademicNotificationService,
-        private readonly academicDataRepository: AcademicDataRepository,
-        private readonly sessionRegistry: AcademicSessionRegistry,
-        private readonly bootstrapTracker: AcademicBootstrapTracker,
-        private readonly accessTokenService: AccessTokenService,
-        private readonly prefetchUseCase: PrefetchAcademicDataUseCase
+        private readonly handleLoginReady: HandleAcademicLoginReadyUseCase,
+        private readonly handleResourceFailed: HandleAcademicResourceFailedUseCase,
+        private readonly handleResourceReady: HandleAcademicResourceReadyUseCase
     ) {}
 
     async onModuleInit(): Promise<void> {
@@ -92,29 +93,16 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
 
         try {
             if (this.isLoginEvent(event)) {
-                await this.handleLoginEvent(event);
+                await this.routeLoginEvent(event);
                 return;
             }
 
             if (this.isResourceFailedEvent(event)) {
-                if (event.errorName === 'AuthenticationError') {
-                    await this.invalidateExpiredSession(event.cpf);
-                }
-
-                const bootstrapState = await this.bootstrapTracker.markFailed(event.cpf, event.resource);
-                if (bootstrapState?.status === 'failed') {
-                    this.notifier.emitBootstrapFailed(this.toBootstrapNotification(bootstrapState));
-                }
-
-                this.notifier.emitResourceFailed(event);
+                await this.handleResourceFailed.execute(event);
                 return;
             }
 
-            this.notifier.emitResourceReady(event);
-            const bootstrapState = await this.bootstrapTracker.markReady(event.cpf, event.resource);
-            if (bootstrapState?.status === 'ready') {
-                this.notifier.emitBootstrapReady(this.toBootstrapNotification(bootstrapState));
-            }
+            await this.handleResourceReady.execute(event);
         } catch (error) {
             logger.error('Failed to send eCampus scrape notification through WebSocket.', {
                 errorName: error instanceof Error ? error.name : 'UnknownError',
@@ -135,46 +123,13 @@ export class EcampusScrapeEventsSubscriber implements OnModuleInit, OnModuleDest
         return 'status' in event && (event as AcademicResourceFailedEvent).status === 'failed';
     }
 
-    private async handleLoginEvent(event: AcademicLoginReadyEvent | AcademicLoginFailedEvent): Promise<void> {
+    private async routeLoginEvent(event: AcademicLoginReadyEvent | AcademicLoginFailedEvent): Promise<void> {
         if ('status' in event && event.status === 'failed') {
             this.notifier.emitLoginFailed({ jobId: event.jobId, message: (event as AcademicLoginFailedEvent).message });
             return;
         }
 
         const ready = event as AcademicLoginReadyEvent;
-        const credentials = { cpf: ready.cpf, session: ready.session };
-        await this.sessionRegistry.activate(credentials);
-        // A previous session's fingerprint is now stale — kick any socket still
-        // connected under it instead of waiting for it to fail on its own.
-        this.notifier.revokeUserSessions(ready.cpf);
-        const accessToken = this.accessTokenService.sign(credentials);
-        this.notifier.emitLoginReady({ jobId: ready.jobId, accessToken });
-        void this.prefetchUseCase.execute(credentials).catch((error: unknown) => {
-            logger.error('Failed to prefetch academic data after login.', {
-                cpf: ready.cpf,
-                errorName: error instanceof Error ? error.name : 'UnknownError',
-                message: error instanceof Error ? error.message : String(error)
-            });
-        });
-    }
-
-    private async invalidateExpiredSession(cpf: string): Promise<void> {
-        const [cacheDeletedKeys] = await Promise.all([
-            this.academicDataRepository.clearUserCache(cpf),
-            this.sessionRegistry.invalidate(cpf)
-        ]);
-
-        logger.warning('Invalidated academic session after worker authentication failure.', {
-            cacheDeletedKeys
-        });
-    }
-
-    private toBootstrapNotification(state: AcademicBootstrapState) {
-        return {
-            cpf: state.cpf,
-            requiredResources: state.requiredResources,
-            readyResources: state.readyResources,
-            failedResources: state.failedResources
-        };
+        await this.handleLoginReady.execute(ready);
     }
 }

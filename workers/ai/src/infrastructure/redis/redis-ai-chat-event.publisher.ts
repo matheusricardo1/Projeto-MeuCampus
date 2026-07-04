@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
-import { createRedisConnectionOptions } from '@/redis-connection';
-import { AI_CHAT_RESULT_CHANNEL } from '@/ai-chat-job';
+import { createRedisConnectionOptions } from '@/infrastructure/redis/redis-connection';
+import { AI_CHAT_RESULT_CHANNEL } from '@/application/ports/ai-chat-job';
 import type { AiChatEventPublisher, AiChatFailedEvent, AiChatReadyEvent } from '@/application/ports/ai-chat-event-publisher';
 
 export class RedisAiChatEventPublisher implements AiChatEventPublisher {

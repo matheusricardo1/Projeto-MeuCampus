@@ -8,8 +8,7 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@ecampus/*": ["src/ecampus/*"]
+      "@/*": ["src/*"]
     },
     "types": ["node"],
     "sourceMap": true,

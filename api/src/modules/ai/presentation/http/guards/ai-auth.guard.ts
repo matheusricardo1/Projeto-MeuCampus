@@ -1,7 +1,6 @@
 import { Injectable, type CanActivate, type ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import type { AiAuthenticatedUser } from '@ai/domain/entities/ai-authenticated-user.entity';
-import { AccessTokenService } from '@auth/application/ports/access-token-service';
-import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
+import { AuthenticateAcademicRequestUseCase } from '@auth/application/use-cases/authenticate-academic-request.usecase';
 
 interface RequestWithAiUser {
     headers: {
@@ -13,8 +12,7 @@ interface RequestWithAiUser {
 @Injectable()
 export class AiAuthGuard implements CanActivate {
     constructor(
-        private readonly accessTokenService: AccessTokenService,
-        private readonly sessionRegistry: AcademicSessionRegistry
+        private readonly authenticateRequest: AuthenticateAcademicRequestUseCase
     ) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -22,12 +20,7 @@ export class AiAuthGuard implements CanActivate {
         const token = this.extractBearerToken(request.headers.authorization);
 
         try {
-            const credentials = this.accessTokenService.verify(token);
-            const isActive = await this.sessionRegistry.isActive(credentials);
-            if (!isActive) {
-                throw new Error('Academic session is not active.');
-            }
-
+            const credentials = await this.authenticateRequest.execute(token);
             request.aiUser = { id: credentials.cpf };
             return true;
         } catch {

@@ -1,7 +1,6 @@
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import type { Namespace, Socket } from 'socket.io';
-import { AccessTokenService } from '@auth/application/ports/access-token-service';
-import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
+import { AuthenticateAcademicRequestUseCase } from '@auth/application/use-cases/authenticate-academic-request.usecase';
 import {
     ACADEMIC_AI_FAILED_EVENT,
     ACADEMIC_AI_REPLY_EVENT,
@@ -38,8 +37,7 @@ export class AcademicGateway extends AcademicNotificationService {
     private server!: Namespace;
 
     constructor(
-        private readonly accessTokenService: AccessTokenService,
-        private readonly sessionRegistry: AcademicSessionRegistry
+        private readonly authenticateRequest: AuthenticateAcademicRequestUseCase
     ) {
         super();
     }
@@ -66,12 +64,7 @@ export class AcademicGateway extends AcademicNotificationService {
         }
 
         try {
-            const credentials = this.accessTokenService.verify(token);
-            const isActive = await this.sessionRegistry.isActive(credentials);
-            if (!isActive) {
-                throw new Error('Academic session is not active.');
-            }
-
+            const credentials = await this.authenticateRequest.execute(token);
             const room = this.roomFor(credentials.cpf);
             client.join(room);
             appLogger.info('Accepted academic WebSocket connection.', {

@@ -1,18 +1,27 @@
 import { Worker, type Job } from 'bullmq';
 import type { ConnectionOptions } from 'bullmq';
 import Redis from 'ioredis';
-import { EcampusAuthService } from '@ecampus/infrastructure/ecampus/ecampus-auth-service';
-import { EcampusHttpRepository } from '@ecampus/infrastructure/ecampus/ecampus-http.repository';
-import { appLogger } from '@/logging/app-logger';
-import { createRedisConnectionOptions } from '@/redis-connection';
+import { EcampusAuthService } from '@/infrastructure/ecampus-portal/ecampus-auth-service';
+import { EcampusHttpRepository } from '@/infrastructure/ecampus-portal/ecampus-http.repository';
+import { appLogger } from '@/infrastructure/logging/app-logger';
+import { createRedisConnectionOptions } from '@/infrastructure/redis/redis-connection';
 import {
     ECAMPUS_SCRAPE_QUEUE_NAME,
     type EcampusScrapeJobData,
     type EcampusScrapeJobName,
     type EncryptedEcampusScrapeJobData
-} from '@/ecampus-scrape-job';
-import { EcampusSessionCoordinator } from '@/ecampus-session-coordinator';
+} from '@/application/ports/ecampus-scrape-job';
+import { RedisEcampusSessionCoordinator } from '@/infrastructure/redis/redis-ecampus-session-coordinator';
 import { ProcessEcampusScrapeJobUseCase } from '@/application/use-cases/process-ecampus-scrape-job.usecase';
+import { LoginEcampusSessionUseCase } from '@/application/use-cases/login-ecampus-session.usecase';
+import { LogoutEcampusSessionUseCase } from '@/application/use-cases/logout-ecampus-session.usecase';
+import { GetStudentProfileUseCase } from '@/application/use-cases/get-student-profile.usecase';
+import { GetScheduleUseCase } from '@/application/use-cases/get-schedule.usecase';
+import { GetGradesUseCase } from '@/application/use-cases/get-grades.usecase';
+import { GetLessonPlanSubjectsUseCase } from '@/application/use-cases/get-lesson-plan-subjects.usecase';
+import { GetLessonPlanUseCase } from '@/application/use-cases/get-lesson-plan.usecase';
+import { ReportEcampusScrapeFailureUseCase } from '@/application/use-cases/report-ecampus-scrape-failure.usecase';
+import { CacheAndPublishScrapedResource } from '@/application/services/cache-and-publish-scraped-resource.service';
 import { RedisEcampusCacheStore } from '@/infrastructure/redis/redis-ecampus-cache.store';
 import { RedisEcampusScrapeEventPublisher } from '@/infrastructure/redis/redis-ecampus-scrape-event.publisher';
 import { decryptQueuePayload } from '@/infrastructure/crypto/ecampus-queue-payload-cipher';
@@ -26,16 +35,20 @@ export class EcampusScrapingWorker {
     constructor() {
         const authService = new EcampusAuthService();
         const repository = new EcampusHttpRepository(authService);
-        const sessions = new EcampusSessionCoordinator(this.redis);
+        const sessions = new RedisEcampusSessionCoordinator(this.redis);
         const cache = new RedisEcampusCacheStore(this.redis);
         const events = new RedisEcampusScrapeEventPublisher(this.redis);
+        const cacheAndPublish = new CacheAndPublishScrapedResource(sessions, cache, events);
 
         this.processJob = new ProcessEcampusScrapeJobUseCase(
-            repository,
-            authService,
-            sessions,
-            cache,
-            events
+            new LoginEcampusSessionUseCase(authService, sessions, events),
+            new LogoutEcampusSessionUseCase(repository, cache, sessions),
+            new GetStudentProfileUseCase(repository, sessions, cacheAndPublish),
+            new GetScheduleUseCase(repository, sessions, cacheAndPublish),
+            new GetGradesUseCase(repository, sessions, cacheAndPublish),
+            new GetLessonPlanSubjectsUseCase(repository, sessions, cacheAndPublish),
+            new GetLessonPlanUseCase(repository, sessions, cacheAndPublish),
+            new ReportEcampusScrapeFailureUseCase(cache, sessions, events)
         );
 
         this.worker = new Worker<EncryptedEcampusScrapeJobData>(

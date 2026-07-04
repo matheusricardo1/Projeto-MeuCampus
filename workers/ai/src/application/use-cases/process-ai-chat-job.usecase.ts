@@ -1,7 +1,7 @@
 import type { AiChatProvider } from '@/application/ports/ai-chat-provider';
 import type { AiChatEventPublisher } from '@/application/ports/ai-chat-event-publisher';
-import type { AiChatJobData } from '@/ai-chat-job';
-import type { AiChatReply } from '@/models/ai-chat-reply';
+import type { AiChatJobData } from '@/application/ports/ai-chat-job';
+import type { AiChatReply } from '@/domain/value-objects/ai-chat-reply';
 
 export class ProcessAiChatJobUseCase {
     constructor(

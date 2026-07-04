@@ -1,6 +1,5 @@
 import { Injectable, type CanActivate, type ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import { AccessTokenService } from '@auth/application/ports/access-token-service';
-import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
+import { AuthenticateAcademicRequestUseCase } from '@auth/application/use-cases/authenticate-academic-request.usecase';
 import type { AcademicCredentials } from '@auth/domain/entities/academic-session.entity';
 
 interface RequestWithAcademicCredentials {
@@ -13,8 +12,7 @@ interface RequestWithAcademicCredentials {
 @Injectable()
 export class AcademicAuthGuard implements CanActivate {
     constructor(
-        private readonly accessTokenService: AccessTokenService,
-        private readonly sessionRegistry: AcademicSessionRegistry
+        private readonly authenticateRequest: AuthenticateAcademicRequestUseCase
     ) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -22,13 +20,7 @@ export class AcademicAuthGuard implements CanActivate {
         const token = this.extractBearerToken(request.headers.authorization);
 
         try {
-            const credentials = this.accessTokenService.verify(token);
-            const isActive = await this.sessionRegistry.isActive(credentials);
-            if (!isActive) {
-                throw new Error('Academic session is not active.');
-            }
-
-            request.academicCredentials = credentials;
+            request.academicCredentials = await this.authenticateRequest.execute(token);
             return true;
         } catch {
             throw new UnauthorizedException('Sua sessao expirou. Entre novamente.');

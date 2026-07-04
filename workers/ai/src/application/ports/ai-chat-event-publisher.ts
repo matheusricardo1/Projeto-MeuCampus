@@ -1,4 +1,4 @@
-import type { AiChatReply } from '@/models/ai-chat-reply';
+import type { AiChatReply } from '@/domain/value-objects/ai-chat-reply';
 
 export interface AiChatReadyEvent {
     jobId: string;

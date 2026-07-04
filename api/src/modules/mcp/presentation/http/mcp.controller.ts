@@ -3,7 +3,7 @@ import { Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
-import { InternalSecretGuard } from '@mcp/guards/internal-secret.guard';
+import { InternalSecretGuard } from '@mcp/presentation/http/guards/internal-secret.guard';
 import { createAcademicMcpServer } from '@mcp/infrastructure/academic-mcp.server';
 
 @Controller('mcp')

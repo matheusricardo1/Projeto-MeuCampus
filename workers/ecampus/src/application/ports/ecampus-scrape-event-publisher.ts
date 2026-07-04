@@ -1,4 +1,4 @@
-import type { EcampusLoginFailedEvent, EcampusLoginReadyEvent, EcampusResourceFailedEvent, EcampusResourceReadyEvent } from '@/ecampus-scrape-events';
+import type { EcampusLoginFailedEvent, EcampusLoginReadyEvent, EcampusResourceFailedEvent, EcampusResourceReadyEvent } from '@/application/ports/ecampus-scrape-events';
 
 export interface EcampusScrapeEventPublisher {
     publishReady(event: EcampusResourceReadyEvent): Promise<void>;

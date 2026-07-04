@@ -1,11 +1,11 @@
 import { Worker, type Job } from 'bullmq';
 import type { ConnectionOptions } from 'bullmq';
-import { appLogger } from '@/logging/app-logger';
-import { createRedisConnectionOptions } from '@/redis-connection';
-import { AI_CHAT_QUEUE_NAME, type AiChatJobData } from '@/ai-chat-job';
-import type { AiChatReply } from '@/models/ai-chat-reply';
+import { appLogger } from '@/infrastructure/logging/app-logger';
+import { createRedisConnectionOptions } from '@/infrastructure/redis/redis-connection';
+import { AI_CHAT_QUEUE_NAME, type AiChatJobData } from '@/application/ports/ai-chat-job';
+import type { AiChatReply } from '@/domain/value-objects/ai-chat-reply';
 import { ProcessAiChatJobUseCase } from '@/application/use-cases/process-ai-chat-job.usecase';
-import { VercelAiChatProvider } from '@/providers/vercel-ai-chat.provider';
+import { VercelAiChatProvider } from '@/infrastructure/providers/vercel-ai-chat.provider';
 import { RedisAiChatEventPublisher } from '@/infrastructure/redis/redis-ai-chat-event.publisher';
 
 export class AiChatWorker {

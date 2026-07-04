@@ -8,6 +8,9 @@ import { AccessTokenService } from '@auth/application/ports/access-token-service
 import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
 import { AcademicNotificationService } from '@realtime/application/ports/academic-notification-service';
 import { PrefetchAcademicDataUseCase } from '@academic/application/use-cases/prefetch-academic-data.usecase';
+import { HandleAcademicLoginReadyUseCase } from '@academic/application/use-cases/handle-academic-login-ready.usecase';
+import { HandleAcademicResourceFailedUseCase } from '@academic/application/use-cases/handle-academic-resource-failed.usecase';
+import { HandleAcademicResourceReadyUseCase } from '@academic/application/use-cases/handle-academic-resource-ready.usecase';
 import { EcampusScrapingJobService } from '@ecampus/infrastructure/queue/ecampus-job.service';
 import { EcampusRedisRepository } from '@ecampus/infrastructure/redis/ecampus-redis.repository';
 import { EcampusScrapeEventsSubscriber } from '@ecampus/infrastructure/redis/ecampus-scrape-events.subscriber';
@@ -26,22 +29,44 @@ import { EcampusBootstrapTracker } from '@ecampus/infrastructure/redis/ecampus-b
             inject: [ScrapingJobService, AcademicBootstrapTracker]
         },
         {
-            provide: EcampusScrapeEventsSubscriber,
+            provide: HandleAcademicLoginReadyUseCase,
             useFactory: (
+                sessions: AcademicSessionRegistry,
+                tokens: AccessTokenService,
                 notifier: AcademicNotificationService,
+                prefetch: PrefetchAcademicDataUseCase
+            ) => new HandleAcademicLoginReadyUseCase(sessions, tokens, notifier, prefetch),
+            inject: [AcademicSessionRegistry, AccessTokenService, AcademicNotificationService, PrefetchAcademicDataUseCase]
+        },
+        {
+            provide: HandleAcademicResourceFailedUseCase,
+            useFactory: (
                 repo: AcademicDataRepository,
                 sessions: AcademicSessionRegistry,
                 bootstrap: AcademicBootstrapTracker,
-                tokens: AccessTokenService,
-                prefetch: PrefetchAcademicDataUseCase
-            ) => new EcampusScrapeEventsSubscriber(notifier, repo, sessions, bootstrap, tokens, prefetch),
+                notifier: AcademicNotificationService
+            ) => new HandleAcademicResourceFailedUseCase(repo, sessions, bootstrap, notifier),
+            inject: [AcademicDataRepository, AcademicSessionRegistry, AcademicBootstrapTracker, AcademicNotificationService]
+        },
+        {
+            provide: HandleAcademicResourceReadyUseCase,
+            useFactory: (bootstrap: AcademicBootstrapTracker, notifier: AcademicNotificationService) =>
+                new HandleAcademicResourceReadyUseCase(bootstrap, notifier),
+            inject: [AcademicBootstrapTracker, AcademicNotificationService]
+        },
+        {
+            provide: EcampusScrapeEventsSubscriber,
+            useFactory: (
+                notifier: AcademicNotificationService,
+                handleLoginReady: HandleAcademicLoginReadyUseCase,
+                handleResourceFailed: HandleAcademicResourceFailedUseCase,
+                handleResourceReady: HandleAcademicResourceReadyUseCase
+            ) => new EcampusScrapeEventsSubscriber(notifier, handleLoginReady, handleResourceFailed, handleResourceReady),
             inject: [
                 AcademicNotificationService,
-                AcademicDataRepository,
-                AcademicSessionRegistry,
-                AcademicBootstrapTracker,
-                AccessTokenService,
-                PrefetchAcademicDataUseCase
+                HandleAcademicLoginReadyUseCase,
+                HandleAcademicResourceFailedUseCase,
+                HandleAcademicResourceReadyUseCase
             ]
         },
         { provide: AcademicDataRepository, useExisting: EcampusRedisRepository },

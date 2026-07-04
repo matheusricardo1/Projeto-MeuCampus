@@ -1,13 +1,16 @@
 import type Redis from 'ioredis';
 import type { EcampusScrapeEventPublisher } from '@/application/ports/ecampus-scrape-event-publisher';
-import {
-    ECAMPUS_SCRAPE_RESULT_CHANNEL,
-    type EcampusLoginFailedEvent,
-    type EcampusLoginReadyEvent,
-    type EcampusResourceFailedEvent,
-    type EcampusResourceReadyEvent
-} from '@/ecampus-scrape-events';
+import type {
+    EcampusLoginFailedEvent,
+    EcampusLoginReadyEvent,
+    EcampusResourceFailedEvent,
+    EcampusResourceReadyEvent
+} from '@/application/ports/ecampus-scrape-events';
 import { encryptQueuePayload } from '@/infrastructure/crypto/ecampus-queue-payload-cipher';
+
+// Redis-specific wiring detail — the only consumer of this channel name is
+// this publisher (and the API's matching subscriber, in its own codebase).
+const ECAMPUS_SCRAPE_RESULT_CHANNEL = 'ecampus:scrape:result';
 
 export class RedisEcampusScrapeEventPublisher implements EcampusScrapeEventPublisher {
     constructor(private readonly redis: Redis) {}

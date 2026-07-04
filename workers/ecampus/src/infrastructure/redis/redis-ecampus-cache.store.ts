@@ -1,6 +1,7 @@
 import type Redis from 'ioredis';
 import type { EcampusCacheStore } from '@/application/ports/ecampus-cache-store';
-import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from '@/ecampus-cache';
+import { getEcampusCacheKey, getEcampusUserCachePattern } from '@/infrastructure/redis/ecampus-cache-keys';
+import type { EcampusCachedResource } from '@/domain/value-objects/ecampus-cached-resource';
 import { encryptCachePayload } from '@/infrastructure/crypto/ecampus-cache-cipher';
 
 export class RedisEcampusCacheStore implements EcampusCacheStore {

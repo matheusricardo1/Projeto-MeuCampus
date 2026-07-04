@@ -1,4 +1,4 @@
-import type { EcampusCredentials } from '@ecampus/domain/models/ecampus-credentials';
+import type { EcampusCredentials } from '@/domain/value-objects/ecampus-credentials';
 
 export interface EcampusAuthenticator {
     authenticate(credentials: EcampusCredentials, password: string): Promise<Record<string, unknown>>;
