@@ -11,7 +11,7 @@
     "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "audit": "npm audit --audit-level=moderate",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -39,6 +39,7 @@
     "cross-env": "^7.0.3",
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.17",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   }
 }
