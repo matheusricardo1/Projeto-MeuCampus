@@ -89,7 +89,6 @@ export function useEcampusWorkspace() {
     const [isReady, setIsReady] = useState(false);
     const [loadingRequests, setLoadingRequests] = useState(0);
     const [errorState, setErrorState] = useState<WorkspaceError | null>(null);
-    const [activeTab, setActiveTab] = useState<WorkspaceTab>('home');
     const [profile, setProfile] = useState<StudentProfile | null>(null);
     const [schedule, setSchedule] = useState<ScheduleClass[]>([]);
     const [grades, setGrades] = useState<Grade[]>([]);
@@ -217,7 +216,6 @@ export function useEcampusWorkspace() {
             startNewSessionGeneration();
             setIsAuthenticated(false);
             clearWorkspaceData();
-            setActiveTab('home');
             if (message) {
                 setRawError(message);
             } else {
@@ -689,7 +687,6 @@ export function useEcampusWorkspace() {
             startNewSessionGeneration();
             clearWorkspaceData();
             clearError();
-            setActiveTab('home');
 
             const generation = sessionGeneration.current;
             const validated = await run(async () => {
@@ -722,7 +719,6 @@ export function useEcampusWorkspace() {
 
         startNewSessionGeneration();
         clearWorkspaceData();
-        setActiveTab('home');
         setIsAuthenticated(true);
         clearError();
         waitForInitialScrapingEvents();
@@ -733,7 +729,6 @@ export function useEcampusWorkspace() {
         setIsAuthenticated(false);
         clearWorkspaceData();
         clearError();
-        setActiveTab('home');
 
         await runSingle('logout', () => useCases.logout.execute()).catch((caught) => {
             if (caught instanceof Error) {
@@ -797,12 +792,9 @@ export function useEcampusWorkspace() {
 
     const openTab = (tab: WorkspaceTab) => {
         if (tab === 'ai' && !IS_AI_FEATURE_ENABLED) {
-            setActiveTab('home');
             void prefetchWorkspace();
             return;
         }
-
-        setActiveTab(tab);
 
         if (tab === 'home') void prefetchWorkspace();
         if (tab === 'profile' && !isLoaded('profile') && !isInitialResourcePending('profile')) {
@@ -836,7 +828,6 @@ export function useEcampusWorkspace() {
     };
 
     return {
-        activeTab,
         changeLessonPlanSubject,
         changeGradesInputAndLoad,
         currentGradesInput,
