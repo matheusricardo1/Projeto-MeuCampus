@@ -4,8 +4,8 @@ import { AiModule } from '@ai/ai.module';
 import { AuthModule } from '@auth/auth.module';
 import { EcampusModule } from '@ecampus/ecampus.module';
 import { HealthModule } from '@health/health.module';
-import { McpModule } from '@mcp/mcp.module';
-import { RealtimeModule } from '@realtime/realtime.module';
+import { McpModule } from '@composition/mcp/mcp.module';
+import { RealtimeModule } from '@composition/realtime/realtime.module';
 
 @Module({
     imports: [

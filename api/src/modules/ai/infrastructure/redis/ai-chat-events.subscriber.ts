@@ -1,7 +1,7 @@
 import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
-import { AcademicNotificationService } from '@realtime/application/ports/academic-notification-service';
+import { AiNotificationService } from '@ai/application/ports/ai-notification-service';
 import { appLogger } from '@/shared/logging/app-logger';
 import {
     AI_CHAT_RESULT_CHANNEL,
@@ -14,7 +14,7 @@ import {
 export class AiChatEventsSubscriber implements OnModuleInit, OnModuleDestroy {
     private readonly subscriber = new Redis(createRedisConnectionOptions());
 
-    constructor(private readonly notifier: AcademicNotificationService) {}
+    constructor(private readonly notifier: AiNotificationService) {}
 
     async onModuleInit(): Promise<void> {
         this.subscriber.on('message', (_channel, message) => {
@@ -51,12 +51,12 @@ export class AiChatEventsSubscriber implements OnModuleInit, OnModuleDestroy {
         }
 
         if (this.isFailedEvent(event)) {
-            this.notifier.emitAiChatFailed({ userId: event.userId, jobId: event.jobId, message: event.message });
+            this.notifier.emitChatFailed({ userId: event.userId, jobId: event.jobId, message: event.message });
             return;
         }
 
         const ready = event as AiChatReadyEvent;
-        this.notifier.emitAiChatReply({
+        this.notifier.emitChatReply({
             userId: ready.userId,
             jobId: ready.jobId,
             conversationId: ready.reply.conversationId,

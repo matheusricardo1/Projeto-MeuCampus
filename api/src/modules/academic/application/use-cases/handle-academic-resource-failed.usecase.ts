@@ -1,7 +1,7 @@
 import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
 import { AcademicBootstrapTracker } from '@academic/application/ports/academic-bootstrap-tracker';
-import { AcademicNotificationService, type AcademicResourceFailedNotification } from '@realtime/application/ports/academic-notification-service';
+import { AcademicNotificationService, type AcademicResourceFailedNotification } from '@academic/application/ports/academic-notification-service';
 import { toBootstrapNotification } from '@academic/application/services/to-bootstrap-notification';
 
 export class HandleAcademicResourceFailedUseCase {

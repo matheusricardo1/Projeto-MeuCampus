@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@auth/auth.module';
-import { RealtimeModule } from '@realtime/realtime.module';
+import { RealtimeModule } from '@composition/realtime/realtime.module';
 import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { ScrapingJobService } from '@academic/application/ports/scraping-job-service';
 import { AcademicBootstrapTracker } from '@academic/application/ports/academic-bootstrap-tracker';
 import { AccessTokenService } from '@auth/application/ports/access-token-service';
 import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
-import { AcademicNotificationService } from '@realtime/application/ports/academic-notification-service';
+import { AcademicNotificationService } from '@academic/application/ports/academic-notification-service';
 import { PrefetchAcademicDataUseCase } from '@academic/application/use-cases/prefetch-academic-data.usecase';
 import { HandleAcademicLoginReadyUseCase } from '@academic/application/use-cases/handle-academic-login-ready.usecase';
 import { HandleAcademicResourceFailedUseCase } from '@academic/application/use-cases/handle-academic-resource-failed.usecase';

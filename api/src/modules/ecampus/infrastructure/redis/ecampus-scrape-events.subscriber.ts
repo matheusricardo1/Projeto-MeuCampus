@@ -1,6 +1,6 @@
 import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
-import { AcademicNotificationService } from '@realtime/application/ports/academic-notification-service';
+import { AcademicNotificationService } from '@academic/application/ports/academic-notification-service';
 import { HandleAcademicLoginReadyUseCase } from '@academic/application/use-cases/handle-academic-login-ready.usecase';
 import { HandleAcademicResourceFailedUseCase } from '@academic/application/use-cases/handle-academic-resource-failed.usecase';
 import { HandleAcademicResourceReadyUseCase } from '@academic/application/use-cases/handle-academic-resource-ready.usecase';

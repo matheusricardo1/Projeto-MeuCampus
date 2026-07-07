@@ -1,12 +1,7 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { appLogger } from '@/shared/logging/app-logger';
-import { InvalidAiMessageException } from '@ai/domain/exceptions/invalid-ai-message.exception';
-import { InvalidAcademicRequestError } from '@academic/presentation/http/errors/invalid-academic-request.error';
-import { AcademicLoginFailedException } from '@academic/domain/exceptions/academic-login-failed.exception';
-import { AcademicResourceNotFoundException } from '@academic/domain/exceptions/academic-resource-not-found.exception';
-import { AcademicWorkerUnavailableException } from '@academic/domain/exceptions/academic-worker-unavailable.exception';
-import { DomainException } from '@academic/domain/exceptions/domain.exception';
+import { DomainException } from '@/shared/domain/domain.exception';
 
 const statusMessages: Record<number, string> = {
     [HttpStatus.BAD_REQUEST]: 'Requisicao invalida.',
@@ -70,14 +65,6 @@ export class HttpErrorFilter implements ExceptionFilter {
             }
         }
 
-        if (exception instanceof InvalidAiMessageException) {
-            return this.translateMessage(exception.message, statusCode);
-        }
-
-        if (exception instanceof InvalidAcademicRequestError) {
-            return this.translateMessage(exception.message, statusCode);
-        }
-
         if (exception instanceof DomainException) {
             return this.translateMessage(exception.message, statusCode);
         }
@@ -129,12 +116,7 @@ export class HttpErrorFilter implements ExceptionFilter {
 
     private getStatusCode(exception: unknown): number {
         if (exception instanceof HttpException) return exception.getStatus();
-        if (exception instanceof InvalidAiMessageException) return HttpStatus.BAD_REQUEST;
-        if (exception instanceof InvalidAcademicRequestError) return HttpStatus.BAD_REQUEST;
-        if (exception instanceof AcademicLoginFailedException) return HttpStatus.BAD_REQUEST;
-        if (exception instanceof AcademicWorkerUnavailableException) return HttpStatus.SERVICE_UNAVAILABLE;
-        if (exception instanceof AcademicResourceNotFoundException) return HttpStatus.NOT_FOUND;
-        if (exception instanceof DomainException) return HttpStatus.BAD_REQUEST;
+        if (exception instanceof DomainException) return exception.statusCode;
         return HttpStatus.INTERNAL_SERVER_ERROR;
     }
 

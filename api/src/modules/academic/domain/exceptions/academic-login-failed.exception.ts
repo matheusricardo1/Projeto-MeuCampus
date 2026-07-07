@@ -1,4 +1,4 @@
-import { DomainException } from '@academic/domain/exceptions/domain.exception';
+import { DomainException } from '@/shared/domain/domain.exception';
 
 export class AcademicLoginFailedException extends DomainException {
     constructor() {

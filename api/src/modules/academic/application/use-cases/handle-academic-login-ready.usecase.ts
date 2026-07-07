@@ -1,6 +1,6 @@
 import { AccessTokenService } from '@auth/application/ports/access-token-service';
 import { AcademicSessionRegistry } from '@auth/application/ports/academic-session-registry';
-import { AcademicNotificationService } from '@realtime/application/ports/academic-notification-service';
+import { AcademicNotificationService } from '@academic/application/ports/academic-notification-service';
 import { PrefetchAcademicDataUseCase } from '@academic/application/use-cases/prefetch-academic-data.usecase';
 import { appLogger } from '@/shared/logging/app-logger';
 

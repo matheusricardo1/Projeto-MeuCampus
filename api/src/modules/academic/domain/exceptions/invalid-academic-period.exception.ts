@@ -1,4 +1,4 @@
-import { DomainException } from '@academic/domain/exceptions/domain.exception';
+import { DomainException } from '@/shared/domain/domain.exception';
 
 export class InvalidAcademicYearException extends DomainException {
     constructor(message = 'Informe um ano dentro do periodo aceito.') {
