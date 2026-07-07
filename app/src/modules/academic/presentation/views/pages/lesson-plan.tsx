@@ -1,45 +1,22 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ClipboardList, Clock3, Filter, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Translate } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { EmptyInline, SkeletonBlock } from '@/modules/academic/presentation/views/components';
 import { isApprovedStatus, parseGrade } from '@/modules/academic/presentation/views/workspace.utils';
+import { useLessonPlanCourses, type CourseCard } from '@/modules/academic/presentation/hooks/use-lesson-plan-courses';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
-type CourseCard = {
-    absences: string;
-    available: boolean;
-    classIdentifier: string;
-    code: string;
-    credits: number | null;
-    evaluations: string;
-    evaluationItems: Array<{ score: string; weight: string }>;
-    exerciseAverage: string;
-    finalExam: string;
-    finalGrade: string;
-    attendance: Workspace['grades'][number]['attendance'] | null;
-    planItems: Workspace['lessonPlan'];
-    professor: string;
-    scheduleItems: Workspace['schedule'];
-    status: string;
-    subject: string;
-    workloadHours: number | null;
-};
-
-type AttendanceSummary = Workspace['grades'][number]['attendance'];
-
-export function LessonPlanPage({
+export function LessonPlanListPage({
     currentGradesInput,
     grades,
     gradesInput,
     items,
     loading,
     onChangeGradesInput,
-    onChangeSubjectCode,
-    onNavigateScreen,
-    onRefresh,
     onRefreshSubjects,
     profile,
     schedule,
@@ -52,9 +29,6 @@ export function LessonPlanPage({
     items: Workspace['lessonPlan'];
     loading: boolean;
     onChangeGradesInput: Workspace['changeGradesInputAndLoad'];
-    onChangeSubjectCode: (value: string) => Promise<void>;
-    onNavigateScreen: () => void;
-    onRefresh: () => Promise<void>;
     onRefreshSubjects: () => Promise<void>;
     profile: Workspace['profile'];
     schedule: Workspace['schedule'];
@@ -62,9 +36,8 @@ export function LessonPlanPage({
     subjects: Workspace['lessonPlanSubjects'];
 }) {
     const { t } = useLanguage();
+    const router = useRouter();
     const [openSelector, setOpenSelector] = useState<'year' | 'period' | null>(null);
-    const [selectedCourseCode, setSelectedCourseCode] = useState('');
-    const [selectedCourseView, setSelectedCourseView] = useState<'content' | 'details'>('details');
     const currentYear = Number(currentGradesInput.year);
     const admissionYear = parseAdmissionYear(profile?.academic?.admission_term, currentYear);
     const yearOptions = useMemo(() => {
@@ -75,132 +48,15 @@ export function LessonPlanPage({
     const periodOptions = ['1', '2'];
     const courseName = profile?.academic?.course || t('lesson.courseUnknown');
     const semesterLabel = t('lesson.semesterLabel', { course: courseName, period: gradesInput.period, year: gradesInput.year });
-    const courses = useMemo(() => {
-        const byCode = new Map<string, CourseCard>();
-
-        for (const grade of grades) {
-            byCode.set(grade.code, {
-                absences: grade.absences,
-                available: true,
-                classIdentifier: grade.class_identifier,
-                code: grade.code,
-                credits: null,
-                evaluations: grade.evaluations.map((evaluation) => `${evaluation.weight}: ${evaluation.score}`).join(' | '),
-                evaluationItems: grade.evaluations,
-                exerciseAverage: grade.exercise_average,
-                finalExam: grade.final_exam,
-                finalGrade: grade.final_grade,
-                attendance: grade.attendance,
-                planItems: grade.code === selectedSubjectCode ? items : [],
-                professor: '',
-                scheduleItems: schedule.filter((item) => item.code === grade.code || item.class_identifier === grade.class_identifier),
-                status: grade.status || t('lesson.inProgress'),
-                subject: grade.subject,
-                workloadHours: grade.attendance?.workload_hours ?? null
-            });
-        }
-
-        for (const subject of subjects) {
-            const backendGrade = subject.grade ?? null;
-            const current = byCode.get(subject.code);
-            const grade = current ?? (backendGrade ? {
-                absences: backendGrade.absences,
-                available: true,
-                classIdentifier: backendGrade.class_identifier,
-                code: backendGrade.code,
-                credits: null,
-                evaluations: backendGrade.evaluations.map((evaluation) => `${evaluation.weight}: ${evaluation.score}`).join(' | '),
-                evaluationItems: backendGrade.evaluations,
-                exerciseAverage: backendGrade.exercise_average,
-                finalExam: backendGrade.final_exam,
-                finalGrade: backendGrade.final_grade,
-                attendance: backendGrade.attendance,
-                planItems: backendGrade.code === selectedSubjectCode ? items : [],
-                professor: '',
-                scheduleItems: [],
-                status: backendGrade.status || t('lesson.inProgress'),
-                subject: backendGrade.subject,
-                workloadHours: backendGrade.attendance?.workload_hours ?? null
-            } : null);
-            const attendance = buildAttendanceSummary(
-                grade?.attendance ?? null,
-                subject.workloadHours ?? grade?.workloadHours ?? null,
-                grade?.absences || '0'
-            );
-            const backendScheduleItems = subject.scheduleItems ?? [];
-
-            byCode.set(subject.code, {
-                absences: grade?.absences || '0',
-                available: subject.available,
-                classIdentifier: grade?.classIdentifier || subject.classIdentifier,
-                code: subject.code,
-                credits: subject.credits,
-                evaluations: grade?.evaluations || '',
-                evaluationItems: grade?.evaluationItems || [],
-                exerciseAverage: grade?.exerciseAverage || '',
-                finalExam: grade?.finalExam || '',
-                finalGrade: grade?.finalGrade || '',
-                attendance,
-                planItems: subject.code === selectedSubjectCode ? items : [],
-                professor: subject.professor,
-                scheduleItems: backendScheduleItems.length > 0
-                    ? backendScheduleItems
-                    : schedule.filter((item) => item.code === subject.code || item.class_identifier === subject.classIdentifier),
-                status: grade?.status || (subject.available ? t('lesson.planAvailable') : t('lesson.planUnavailable')),
-                subject: grade?.subject || subject.subject,
-                workloadHours: subject.workloadHours ?? grade?.workloadHours ?? null
-            });
-        }
-
-        return Array.from(byCode.values()).sort((a, b) => a.subject.localeCompare(b.subject));
-    }, [grades, items, schedule, selectedSubjectCode, subjects, t]);
+    const courses = useLessonPlanCourses({ grades, items, schedule, selectedSubjectCode, subjects, t });
 
     if (loading && subjects.length === 0 && grades.length === 0) return <LessonPlanSkeleton />;
     const isChangingPeriod = loading && grades.length === 0;
-    const selectedCourse = selectedCourseCode ? courses.find((course) => course.code === selectedCourseCode) ?? null : null;
 
     const openCourse = (course: CourseCard) => {
-        setSelectedCourseCode(course.code);
-        setSelectedCourseView('details');
-        onNavigateScreen();
-
-        if (course.code !== selectedSubjectCode) {
-            void onChangeSubjectCode(course.code);
-        }
+        router.push(`/lesson-plan/${encodeURIComponent(course.code)}`);
     };
 
-    if (selectedCourse) {
-        const selectedCourseWithCurrentItems = { ...selectedCourse, planItems: selectedCourse.code === selectedSubjectCode ? items : selectedCourse.planItems };
-        if (selectedCourseView === 'content') {
-            return (
-                <CourseContentScreen
-                    course={selectedCourseWithCurrentItems}
-                    onBack={() => {
-                        setSelectedCourseView('details');
-                        onNavigateScreen();
-                    }}
-                    t={t}
-                />
-            );
-        }
-
-        return (
-            <CourseDetailsScreen
-                course={selectedCourseWithCurrentItems}
-                loading={loading && selectedCourse.code === selectedSubjectCode}
-                onBack={() => {
-                    setSelectedCourseCode('');
-                    onNavigateScreen();
-                }}
-                onOpenFullContent={() => {
-                    setSelectedCourseView('content');
-                    onNavigateScreen();
-                }}
-                semester={`${gradesInput.year}.${gradesInput.period}`}
-                t={t}
-            />
-        );
-    }
     const changeYear = (year: string) => {
         setOpenSelector(null);
         if (year !== gradesInput.year) {
@@ -330,7 +186,7 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
     );
 }
 
-function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent, semester, t }: { course: CourseCard; loading: boolean; onBack: () => void; onOpenFullContent: () => void; semester: string; t: Translate }) {
+export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent, semester, t }: { course: CourseCard; loading: boolean; onBack: () => void; onOpenFullContent: () => void; semester: string; t: Translate }) {
     const frequency = course.attendance?.presence_percent;
     const gradeState = buildGradeState(course, frequency ?? null, t);
     const isApproved = gradeState.tone === 'success';
@@ -460,7 +316,7 @@ function FinalExamStatusCard({ course, frequency, t }: { course: CourseCard; fre
     );
 }
 
-function CourseContentScreen({ course, onBack, t }: { course: CourseCard; onBack: () => void; t: Translate }) {
+export function CourseContentScreen({ course, onBack, t }: { course: CourseCard; onBack: () => void; t: Translate }) {
     const [filter, setFilter] = useState<'all' | 'practical' | 'theoretical'>('all');
     const filteredItems = useMemo(() => filterLessonItems(course.planItems, filter), [course.planItems, filter]);
     const progress = buildContentProgress(course.planItems);
@@ -834,36 +690,6 @@ function parseAdmissionYear(value: string | undefined, fallback: number): number
     const match = value?.match(/\b(19|20)\d{2}\b/);
     const parsed = match ? Number(match[0]) : fallback;
     return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function buildAttendanceSummary(
-    currentAttendance: AttendanceSummary | null,
-    workloadHours: number | null,
-    absences: string
-): AttendanceSummary | null {
-    if (currentAttendance && currentAttendance.source === 'computed') {
-        return currentAttendance;
-    }
-
-    if (!workloadHours || workloadHours <= 0) {
-        return currentAttendance;
-    }
-
-    const absencesHours = parseHours(absences);
-    const maxAbsencesAllowed = Math.floor(workloadHours * 0.25);
-    const minimumPresenceHours = workloadHours - maxAbsencesAllowed;
-    const presenceHours = Math.max(workloadHours - absencesHours, 0);
-
-    return {
-        workload_hours: workloadHours,
-        absences_hours: absencesHours,
-        max_absences_allowed: maxAbsencesAllowed,
-        minimum_presence_hours: minimumPresenceHours,
-        presence_hours: presenceHours,
-        presence_percent: Math.max(0, Math.min(100, Math.round((presenceHours / workloadHours) * 100))),
-        is_absence_risk: absencesHours > maxAbsencesAllowed,
-        source: 'computed'
-    };
 }
 
 function parseHours(value: string): number {
