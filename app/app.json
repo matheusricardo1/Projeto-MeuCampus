@@ -13,7 +13,9 @@
       "backgroundColor": "#10372f"
     },
     "web": {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro",
+      "output": "single"
     },
     "android": {
       "package": "br.edu.ufam.meucampus",
@@ -27,6 +29,9 @@
     "ios": {
       "bundleIdentifier": "br.edu.ufam.meucampus",
       "supportsTablet": true
-    }
+    },
+    "plugins": [
+      "expo-router"
+    ]
   }
 }

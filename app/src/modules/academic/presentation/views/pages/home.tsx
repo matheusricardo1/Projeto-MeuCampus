@@ -1,4 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { BookOpen, CalendarDays, CheckCircle2, ClipboardList, FileText, GraduationCap, Star, TrendingUp } from 'lucide-react-native';
 import { colors } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
@@ -10,6 +11,7 @@ import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 export function DashboardPage({ workspace }: { workspace: Workspace }) {
     const layout = useResponsiveLayout();
     const { t } = useLanguage();
+    const router = useRouter();
     const { grades, isInitialDataLoading, isLoading, lessonPlanSubjects, profile, schedule } = workspace;
     const groupedSchedule = groupScheduleByDay(schedule);
     const weekMap = buildWeekMap(groupedSchedule, t);
@@ -32,10 +34,10 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
         .sort((a, b) => a.parsedFinal - b.parsedFinal)
         .slice(0, 3);
     const shortcuts = [
-        { label: t('nav.grades'), icon: Star, action: () => workspace.openTab('grades'), tone: styles.homeShortcutTonePrimary },
-        { label: t('nav.schedule'), icon: CalendarDays, action: () => workspace.openTab('schedule'), tone: styles.homeShortcutToneSecondary },
-        { label: t('nav.lessonPlan'), icon: ClipboardList, action: () => workspace.openTab('lessonPlan'), tone: styles.homeShortcutToneNeutral },
-        { label: t('nav.profile'), icon: FileText, action: () => workspace.openTab('profile'), tone: styles.homeShortcutToneNeutral }
+        { label: t('nav.grades'), icon: Star, action: () => router.push('/grades'), tone: styles.homeShortcutTonePrimary },
+        { label: t('nav.schedule'), icon: CalendarDays, action: () => router.push('/schedule'), tone: styles.homeShortcutToneSecondary },
+        { label: t('nav.lessonPlan'), icon: ClipboardList, action: () => router.push('/lesson-plan'), tone: styles.homeShortcutToneNeutral },
+        { label: t('nav.profile'), icon: FileText, action: () => router.push('/profile'), tone: styles.homeShortcutToneNeutral }
     ];
 
     if (isInitialDataLoading || (isLoading && !profile && schedule.length === 0 && grades.length === 0)) return <DashboardSkeleton />;
@@ -50,7 +52,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
             <View style={styles.homeSection}>
                 <View style={styles.homeSectionHeader}>
                     <Text style={styles.homeSectionTitle}>{nextClass?.isHappening ? t('home.classInProgress') : t('home.nextClass')}</Text>
-                    <Pressable onPress={() => workspace.openTab('schedule')}>
+                    <Pressable onPress={() => router.push('/schedule')}>
                         <Text style={styles.homeSectionAction}>{t('home.viewAll')}</Text>
                     </Pressable>
                 </View>
@@ -167,10 +169,10 @@ function DashboardSkeleton() {
         <View style={styles.sectionStack}>
             <SkeletonBlock height={150} />
             <View style={styles.metricGrid}>
-                <SkeletonBlock height={92} />
-                <SkeletonBlock height={92} />
-                <SkeletonBlock height={92} />
-                <SkeletonBlock height={92} />
+                <SkeletonBlock height={92} style={styles.metricSkeletonItem} />
+                <SkeletonBlock height={92} style={styles.metricSkeletonItem} />
+                <SkeletonBlock height={92} style={styles.metricSkeletonItem} />
+                <SkeletonBlock height={92} style={styles.metricSkeletonItem} />
             </View>
             <View style={styles.twoColumnGrid}>
                 <SkeletonBlock height={220} />

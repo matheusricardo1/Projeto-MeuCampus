@@ -7,7 +7,7 @@ export const styles = StyleSheet.create({
     appShellDesktop: { paddingHorizontal: 0 },
     flexScroll: { flex: 1, minHeight: 0 },
     pageTransition: { flex: 1, minHeight: 0 },
-    webFreeScroll: { flex: 1, minHeight: 0, overflowY: 'auto' } as object,
+    webFreeScroll: { flex: 1, minHeight: 0, overflowX: 'hidden', overflowY: 'auto' } as object,
     bootScreen: { alignItems: 'center', backgroundColor: colors.canvas, flex: 1, justifyContent: 'center', padding: spacing[6] },
     bootCard: { alignItems: 'center', borderRadius: radii.md, gap: spacing[3], paddingHorizontal: spacing[7], paddingVertical: spacing[8], width: '100%' },
     bootTitle: { color: colors.inverseText, fontFamily: fonts.medium, fontSize: 24, fontWeight: '700' },
@@ -204,6 +204,7 @@ export const styles = StyleSheet.create({
     metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[3] },
     metricGridWide: { justifyContent: 'space-between' },
     metricCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flexBasis: '47%', flexGrow: 1, gap: spacing[2], minHeight: 90, padding: spacing[4] },
+    metricSkeletonItem: { flexBasis: '47%', flexGrow: 1 },
     tileLabel: { ...typography.label, color: colors.textMuted, textTransform: 'uppercase' },
     tileValue: { color: colors.text, fontFamily: fonts.medium, fontSize: 15, fontWeight: '600' },
     metricValue: { color: colors.text, fontFamily: fonts.medium, fontSize: 30, fontWeight: '700' },
@@ -576,5 +577,5 @@ export const styles = StyleSheet.create({
     navItemActive: { backgroundColor: colors.brandDark },
     navText: { color: colors.textMuted, fontFamily: fonts.medium, fontSize: 13, fontWeight: '700' },
     navTextActive: { color: colors.brandMuted },
-    skeletonBlock: { backgroundColor: colors.border, borderRadius: radii.md }
+    skeletonBlock: { backgroundColor: colors.border, borderRadius: radii.md, maxWidth: '100%', overflow: 'hidden', width: '100%' }
 });

@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { RefreshCw } from 'lucide-react-native';
 import { colors } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
@@ -99,6 +99,6 @@ export function EmptyInline({ text }: { text: string }) {
     );
 }
 
-export function SkeletonBlock({ height }: { height: number }) {
-    return <View style={[styles.skeletonBlock, { height }]} />;
+export function SkeletonBlock({ height, style }: { height: number; style?: StyleProp<ViewStyle> }) {
+    return <View style={[styles.skeletonBlock, { height }, style]} />;
 }
