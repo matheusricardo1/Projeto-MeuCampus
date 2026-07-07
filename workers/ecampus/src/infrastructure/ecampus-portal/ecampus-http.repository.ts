@@ -7,7 +7,7 @@ import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
 import { ResourceNotFoundError } from '@/domain/exceptions/resource-not-found.error';
 import type { ScheduleClass } from '@/domain/value-objects/schedule-class';
 import type { StudentProfile } from '@/domain/entities/student-profile';
-import type { EcampusRepository } from '@/domain/repositories/ecampus.repository';
+import type { CurrentAcademicPeriod, EcampusRepository } from '@/domain/repositories/ecampus.repository';
 import { AcademicPeriod } from '@/domain/value-objects/academic-period.value-object';
 import { EcampusAuthService } from '@/infrastructure/ecampus-portal/ecampus-auth-service';
 import { appLogger as logger } from '@/infrastructure/logging/app-logger';
@@ -27,10 +27,7 @@ export class EcampusHttpRepository implements EcampusRepository {
             const client = await this.authService.getAuthenticatedClient(credentials);
             logger.info("Fetching student profile data...");
 
-            const response = await this.withExternalRetry(
-                'student profile',
-                () => client.get<string>('/atualizarDadosAluno/index', { timeout: 15000 })
-            );
+            const response = await client.get<string>('/atualizarDadosAluno/index', { timeout: 15000 });
             const tree = parse(response.data);
 
             const profileData: StudentProfile = {
@@ -55,6 +52,29 @@ export class EcampusHttpRepository implements EcampusRepository {
         });
     }
 
+    async getCurrentPeriod(credentials: EcampusCredentials): Promise<CurrentAcademicPeriod> {
+        return this.runExclusive(credentials.cpf, async () => {
+            const client = await this.authService.getAuthenticatedClient(credentials);
+            logger.info("Resolving the current academic period from eCampus...");
+
+            const response = await client.get<string>('/notasEFrequencia/index', { timeout: 15000 });
+            const tree = parse(response.data);
+
+            const year = tree.querySelector('input#ano')?.getAttribute('value')?.trim();
+            const options = tree.querySelectorAll('select[name="periodo"] option');
+            const selectedOption = options.find((option) => option.getAttribute('selected') !== undefined);
+            const ecampusCode = selectedOption?.getAttribute('value')?.trim();
+
+            if (!year || !ecampusCode) {
+                throw new Error('Unable to determine the current academic period from eCampus.');
+            }
+
+            const period = AcademicPeriod.fromEcampusCode(ecampusCode);
+            logger.info(`Resolved current academic period: ${year}/${period}.`);
+            return { year, period };
+        });
+    }
+
     async getGrades(credentials: EcampusCredentials, year: string, period: string): Promise<Grade[]> {
         return this.runExclusive(credentials.cpf, async () => {
             const client = await this.authService.getAuthenticatedClient(credentials);
@@ -64,7 +84,15 @@ export class EcampusHttpRepository implements EcampusRepository {
 
             logger.info(`Fetching grades for year ${year}, period ${period}...`);
 
-            const html = await this.fetchGradesHtml(client, params);
+            const [html, workloadMap] = await Promise.all([
+                this.fetchGradesHtml(client, params),
+                this.getLessonPlanWorkloadMap(client).catch((error) => {
+                    logger.warning("Unable to fetch lesson plan workload map. Attendance summaries will omit workload-based calculations.", {
+                        error: error instanceof Error ? error.message : String(error)
+                    });
+                    return new Map<string, number>();
+                })
+            ]);
             const tree = parse(html);
             const tables = tree.querySelectorAll('table.grid-notas');
 
@@ -76,12 +104,6 @@ export class EcampusHttpRepository implements EcampusRepository {
             const tableGrades = tables[0]!;
             const tableNames = tables[1]!;
             const subjectMap: Record<string, { subject: string; classIdentifier: string }> = {};
-            const workloadMap = await this.getLessonPlanWorkloadMap(client).catch((error) => {
-                logger.warning("Unable to fetch lesson plan workload map. Attendance summaries will omit workload-based calculations.", {
-                    error: error instanceof Error ? error.message : String(error)
-                });
-                return new Map<string, number>();
-            });
 
             for (const row of tableNames.querySelectorAll('tbody tr')) {
                 const columns = row.querySelectorAll('td');
@@ -193,10 +215,7 @@ export class EcampusHttpRepository implements EcampusRepository {
     }
 
     private async getLessonPlanWorkloadMap(client: Awaited<ReturnType<EcampusAuthService['getAuthenticatedClient']>>): Promise<Map<string, number>> {
-        const response = await this.withExternalRetry(
-            'lesson plan workload map',
-            () => client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 })
-        );
+        const response = await client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 });
         const subjects = this.extractLessonPlanSubjects(response.data);
         const workloadMap = new Map<string, number>();
 
@@ -233,10 +252,7 @@ export class EcampusHttpRepository implements EcampusRepository {
             const client = await this.authService.getAuthenticatedClient(credentials);
             logger.info("Fetching the current schedule...");
 
-            const response = await this.withExternalRetry(
-                'schedule',
-                () => client.post<string>('/quadroHorarioGraduacaoRegular/getHorarios', {}, { timeout: 15000 })
-            );
+            const response = await client.post<string>('/quadroHorarioGraduacaoRegular/getHorarios', {}, { timeout: 15000 });
             const html = response.data;
             const tree = parse(html);
             const subjectMap: Record<string, string> = {};
@@ -293,10 +309,7 @@ export class EcampusHttpRepository implements EcampusRepository {
             const client = await this.authService.getAuthenticatedClient(credentials);
             logger.info("Fetching lesson plan subjects...");
 
-            const response = await this.withExternalRetry(
-                'lesson plan subjects',
-                () => client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 })
-            );
+            const response = await client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 });
             const subjects = this.extractLessonPlanSubjects(response.data);
 
             logger.info(`Extraction complete: ${subjects.length} lesson plan subjects mapped.`);
@@ -316,10 +329,7 @@ export class EcampusHttpRepository implements EcampusRepository {
 
             logger.info(`Fetching lesson plan for ID: ${resolvedPlanId}...`);
 
-            const response = await this.withExternalRetry(
-                'lesson plan',
-                () => client.post<string>('/cienciaAlunoPE/getCronograma', params, { timeout: 15000 })
-            );
+            const response = await client.post<string>('/cienciaAlunoPE/getCronograma', params, { timeout: 15000 });
             const tree = parse(response.data);
             const lessonPlan: LessonPlanItem[] = [];
 
@@ -392,10 +402,7 @@ export class EcampusHttpRepository implements EcampusRepository {
             return value;
         }
 
-        const response = await this.withExternalRetry(
-            'lesson plan subject resolution',
-            () => client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 })
-        );
+        const response = await client.get<string>('/cienciaAlunoPE/index', { timeout: 15000 });
         const subjects = this.extractLessonPlanSubjects(response.data);
         const subject = subjects.find((item) => item.code.toLowerCase() === value.toLowerCase());
 
@@ -414,36 +421,6 @@ export class EcampusHttpRepository implements EcampusRepository {
         // Each job owns an HTTP client and imported cookie jar, so requests for the
         // same user can safely run concurrently in separate worker slots.
         return operation();
-    }
-
-    private async withExternalRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {
-        const maxAttempts = 2;
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-            try {
-                return await operation();
-            } catch (error) {
-                const shouldRetry = error instanceof AxiosError && (error.response?.status || 0) >= 500 && attempt < maxAttempts;
-
-                if (!shouldRetry) {
-                    throw error;
-                }
-
-                logger.warning(`eCampus returned ${error.response?.status} while fetching ${label}. Retrying once...`, {
-                    externalStatus: error.response?.status,
-                    externalStatusText: error.response?.statusText,
-                    url: error.config?.url
-                });
-
-                await this.delay(700);
-            }
-        }
-
-        throw new Error(`Unable to fetch ${label}.`);
-    }
-
-    private delay(milliseconds: number): Promise<void> {
-        return new Promise((resolve) => setTimeout(resolve, milliseconds));
     }
 
     private getInputValue(tree: HTMLElement, elementId: string): string {

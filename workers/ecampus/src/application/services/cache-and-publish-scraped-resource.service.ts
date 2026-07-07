@@ -33,6 +33,9 @@ export class CacheAndPublishScrapedResource {
                 : undefined;
 
         await this.cache.save(resource, cpf, result, extra);
+        if (resource === 'grades' && parameters.year && parameters.period) {
+            await this.cache.saveCurrentPeriod(cpf, parameters.year, parameters.period);
+        }
         await this.events.publishReady({ cpf, resource, ...parameters });
         return result;
     }

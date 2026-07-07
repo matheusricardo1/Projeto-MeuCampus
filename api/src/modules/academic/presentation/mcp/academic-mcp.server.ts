@@ -40,6 +40,11 @@ export function createAcademicMcpServer(
                 const resolved = year && period
                     ? { year, period }
                     : await resolveCurrentGradesPeriod(repository, userId);
+
+                if (!resolved.year || !resolved.period) {
+                    return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+                }
+
                 const grades = await repository.getGrades(userId, resolved.year, resolved.period);
                 return { content: [{ type: 'text' as const, text: JSON.stringify(grades) }] };
             } catch {

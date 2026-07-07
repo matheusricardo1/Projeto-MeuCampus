@@ -5,6 +5,11 @@ import type { LessonPlanSubject } from '@academic/domain/entities/lesson-plan-su
 import type { ScheduleClass } from '@academic/domain/value-objects/schedule-class.value-object';
 import type { StudentProfile } from '@academic/domain/entities/student-profile.entity';
 
+export interface CurrentAcademicPeriod {
+  year: string;
+  period: string;
+}
+
 /**
  * Reads normalized academic data for the application layer.
  * Implementations may consume fragmented raw payloads, but callers should
@@ -17,5 +22,7 @@ export abstract class AcademicDataRepository {
   abstract getLessonPlanSubjects(cpf: string): Promise<LessonPlanSubject[]>;
   abstract getLessonPlan(cpf: string, planId: string): Promise<LessonPlanItem[]>;
   abstract getAcademicSubjects(cpf: string, year: string, period: string): Promise<AcademicSubject[]>;
+  /** The year/period eCampus itself last resolved as "current" for this student, if known yet. */
+  abstract getCurrentPeriodHint(cpf: string): Promise<CurrentAcademicPeriod | null>;
   abstract clearUserCache(cpf: string): Promise<number>;
 }

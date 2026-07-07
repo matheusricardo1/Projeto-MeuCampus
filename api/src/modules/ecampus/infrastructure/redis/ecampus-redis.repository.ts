@@ -3,7 +3,8 @@ import Redis from 'ioredis';
 import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { AcademicResourceNotFoundException } from '@academic/domain/exceptions/academic-resource-not-found.exception';
 import { createApiRedisConnectionOptions } from '@/shared/redis-connection';
-import { getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from '@ecampus/infrastructure/redis/ecampus-cache';
+import { getCurrentPeriodCacheKey, getEcampusCacheKey, getEcampusUserCachePattern, type EcampusCachedResource } from '@ecampus/infrastructure/redis/ecampus-cache';
+import type { CurrentAcademicPeriod } from '@academic/domain/repositories/academic-data.repository';
 import { decryptCachePayload } from '@/shared/security/ecampus-cache-cipher';
 import type { AcademicSubject } from '@academic/domain/entities/academic-subject.entity';
 import type { AttendanceSummary, Grade, GradeEvaluation } from '@academic/domain/entities/grade.entity';
@@ -42,8 +43,7 @@ export class EcampusRedisRepository extends AcademicDataRepository {
   }
 
   async getGrades(cpf: string, year: string, period: string): Promise<Grade[]> {
-    const current = AcademicPeriod.guessCurrent();
-    const isCurrentPeriod = year === current.year && period === current.period;
+    const isCurrentPeriod = await this.isCurrentPeriod(cpf, year, period);
 
     const [gradesRaw, lessonPlanSubjectsRaw] = await Promise.all([
       this.getRequired('grades', cpf, `${year}-${period}`),
@@ -51,6 +51,11 @@ export class EcampusRedisRepository extends AcademicDataRepository {
     ]);
 
     return this.parseGrades(gradesRaw, lessonPlanSubjectsRaw);
+  }
+
+  async getCurrentPeriodHint(cpf: string): Promise<CurrentAcademicPeriod | null> {
+    const raw = await this.redis.get(getCurrentPeriodCacheKey(cpf));
+    return raw ? decryptCachePayload<CurrentAcademicPeriod>(raw) : null;
   }
 
   async getLessonPlanSubjects(cpf: string): Promise<LessonPlanSubject[]> {
@@ -83,8 +88,7 @@ export class EcampusRedisRepository extends AcademicDataRepository {
   }
 
   async getAcademicSubjects(cpf: string, year: string, period: string): Promise<AcademicSubject[]> {
-    const current = AcademicPeriod.guessCurrent();
-    const isCurrentPeriod = year === current.year && period === current.period;
+    const isCurrentPeriod = await this.isCurrentPeriod(cpf, year, period);
 
     const [gradesRaw, lessonPlanSubjectsRaw, scheduleRaw] = await Promise.all([
       this.getRequired('grades', cpf, `${year}-${period}`),
@@ -128,6 +132,18 @@ export class EcampusRedisRepository extends AcademicDataRepository {
   private async getOptional<T = unknown>(resource: EcampusCachedResource, cpf: string, extra?: string): Promise<T | null> {
     const raw = await this.redis.get(getEcampusCacheKey(resource, cpf, extra));
     return raw ? decryptCachePayload<T>(raw) : null;
+  }
+
+  /**
+   * Whether year/period is the student's actual current term — used to
+   * decide whether to enrich grades with schedule/lesson-plan-subjects data
+   * that's only meaningful for the term in progress. Prefers the real
+   * period eCampus resolved; only falls back to a calendar guess before
+   * that's ever been discovered (e.g. the very first request of a session).
+   */
+  private async isCurrentPeriod(cpf: string, year: string, period: string): Promise<boolean> {
+    const hint = await this.getCurrentPeriodHint(cpf) ?? AcademicPeriod.guessCurrent();
+    return year === hint.year && period === hint.period;
   }
 
   // ---------------------------------------------------------------------

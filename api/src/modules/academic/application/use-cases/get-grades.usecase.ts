@@ -25,7 +25,7 @@ export class GetGradesUseCase {
       ? { year: input.year, period: input.period, needsScrape: false }
       : await resolveCurrentGradesPeriod(this.cache, input.credentials.cpf);
 
-    if (needsScrape) {
+    if (needsScrape || !year || !period) {
       return this.enqueueGradesScrape(input.credentials, year, period);
     }
 
@@ -40,13 +40,12 @@ export class GetGradesUseCase {
     }
   }
 
-  private async enqueueGradesScrape(credentials: AcademicCredentials, year: string, period: string): Promise<PendingScrapeJob> {
+  private async enqueueGradesScrape(credentials: AcademicCredentials, year?: string, period?: string): Promise<PendingScrapeJob> {
     await this.scrapingJobService.enqueue('grades', {
       credentials,
-      year,
-      period,
+      ...(year && period ? { year, period } : {}),
     }, {
-      dedupeKey: scrapingJobDedupeKey(credentials, 'grades', `${year}-${period}`),
+      dedupeKey: scrapingJobDedupeKey(credentials, 'grades', year && period ? `${year}-${period}` : undefined),
     });
 
     return pendingScrapeJob('grades');

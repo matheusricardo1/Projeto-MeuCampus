@@ -51,7 +51,6 @@ export class EcampusScrapingJobService extends ScrapingJobService {
     }
 
     const jobOptions: JobsOptions = {
-      ...this.getRetryOptions(name),
       ...this.getCleanupOptions(name),
       ...(jobId ? { jobId } : {})
     };
@@ -103,19 +102,5 @@ export class EcampusScrapingJobService extends ScrapingJobService {
     }
 
     return {};
-  }
-
-  private getRetryOptions(name: string): JobsOptions {
-    if (!['profile', 'schedule', 'grades', 'lesson-plan-subjects', 'lesson-plan'].includes(name)) {
-      return {};
-    }
-
-    return {
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 1500
-      }
-    };
   }
 }

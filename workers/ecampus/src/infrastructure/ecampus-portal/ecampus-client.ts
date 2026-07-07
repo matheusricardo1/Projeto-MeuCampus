@@ -63,13 +63,10 @@ export class EcampusClient {
         logger.info("Attempting eCampus authentication.");
 
         try {
-            const response = await this.withExternalRetry(
-                'login',
-                () => this.session.post('/home/loginValida', params, {
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    timeout: EcampusClient.LOGIN_TIMEOUT_MS
-                })
-            );
+            const response = await this.session.post('/home/loginValida', params, {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                timeout: EcampusClient.LOGIN_TIMEOUT_MS
+            });
 
             const html = response.data;
             if (typeof html === 'string' && html.includes('Acesso ecampus')) {
@@ -100,10 +97,7 @@ export class EcampusClient {
     async setStudentModule(moduleId: number = 22): Promise<void> {
         logger.info(`Changing context to module ID: ${moduleId}`);
         try {
-            await this.withExternalRetry(
-                `module activation ${moduleId}`,
-                () => this.session.get(`/home/setModulo/${moduleId}`, { timeout: EcampusClient.DEFAULT_TIMEOUT_MS })
-            );
+            await this.session.get(`/home/setModulo/${moduleId}`, { timeout: EcampusClient.DEFAULT_TIMEOUT_MS });
         } catch (error) {
             logger.error("Failed to activate student module.", this.toErrorContext(error, `/home/setModulo/${moduleId}`));
             throw error;
@@ -183,51 +177,6 @@ export class EcampusClient {
         }
 
         this.assertAuthenticatedResponse(error.response, error.config?.url || fallbackUrl);
-    }
-
-    private async withExternalRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {
-        const maxAttempts = 2;
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-            try {
-                return await operation();
-            } catch (error) {
-                const shouldRetry = this.shouldRetry(error) && attempt < maxAttempts;
-
-                if (!shouldRetry) {
-                    throw error;
-                }
-
-                logger.warning(`eCampus timed out or failed while performing ${label}. Retrying once...`, {
-                    ...this.toErrorContext(error, label)
-                });
-
-                await this.delay(700);
-            }
-        }
-
-        throw new Error(`Unable to complete ${label}.`);
-    }
-
-    private shouldRetry(error: unknown): boolean {
-        const networkErrors = this.getNetworkErrors(error);
-        if (networkErrors.some(({ code }) => code && [
-            'ECONNABORTED', 'ECONNRESET', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'ETIMEDOUT'
-        ].includes(code))) {
-            return true;
-        }
-
-        if (!(error instanceof AxiosError)) return false;
-
-        if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message)) {
-            return true;
-        }
-
-        return (error.response?.status || 0) >= 500;
-    }
-
-    private delay(milliseconds: number): Promise<void> {
-        return new Promise((resolve) => setTimeout(resolve, milliseconds));
     }
 
     private toErrorContext(error: unknown, fallbackUrl: string): Record<string, unknown> {

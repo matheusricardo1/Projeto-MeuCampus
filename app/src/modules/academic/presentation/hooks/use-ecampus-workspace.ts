@@ -84,6 +84,7 @@ export function useEcampusWorkspace() {
     const realtimeBootstrapReadyHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
     const realtimeBootstrapFailedHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
     const pendingLessonPlanPlanIdRef = useRef<string | null>(null);
+    const pendingGradesPeriodRef = useRef<GradesInput | null>(null);
     const loadedResourcesRef = useRef(new Set<InitialResourceKey>());
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isReady, setIsReady] = useState(false);
@@ -118,6 +119,7 @@ export function useEcampusWorkspace() {
         setLessonPlanSubjects([]);
         setSelectedLessonPlanSubjectCode('');
         pendingLessonPlanPlanIdRef.current = null;
+        pendingGradesPeriodRef.current = null;
         loadedResourcesRef.current.clear();
         pendingInitialResourcesRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
@@ -190,7 +192,7 @@ export function useEcampusWorkspace() {
                 return;
             }
 
-            void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
+            void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false }, pendingGradesPeriodRef.current ?? undefined);
         }, 8000);
     };
 
@@ -219,7 +221,9 @@ export function useEcampusWorkspace() {
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
         clearInitialHydrationInterval();
-        await loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
+        const gradesOverride = pendingGradesPeriodRef.current ?? undefined;
+        pendingGradesPeriodRef.current = null;
+        await loadInitialDataFromCache({ reportError: false, showGlobalLoading: false }, gradesOverride);
     };
 
     const expireSession = async (message?: string) => {
@@ -331,15 +335,19 @@ export function useEcampusWorkspace() {
         }
     };
 
-    const loadGrades = async (options?: RequestOptions) => {
+    const loadGrades = async (options?: RequestOptions, override?: GradesInput) => {
         const generation = sessionGeneration.current;
-        const data = await runSingle('grades', () => run(() => useCases.getGrades.execute(gradesInput.year, gradesInput.period), {
+        const target = override ?? gradesInput;
+        const data = await runSingle('grades', () => run(() => useCases.getGrades.execute(target.year, target.period), {
             ...options,
             sessionGeneration: generation
         }));
 
         if (data !== null && generation === sessionGeneration.current) {
             setGrades(data);
+            if (override && (override.year !== gradesInput.year || override.period !== gradesInput.period)) {
+                setGradesInput(override);
+            }
             loadedResourcesRef.current.add('grades');
             markInitialResourceReady('grades');
         }
@@ -389,9 +397,10 @@ export function useEcampusWorkspace() {
             || null;
     };
 
-    const loadLessonPlanSubjects = async (options?: RequestOptions) => {
+    const loadLessonPlanSubjects = async (options?: RequestOptions, override?: GradesInput) => {
         const generation = sessionGeneration.current;
-        const data = await runSingle('lessonPlanSubjects', () => run(() => useCases.getLessonPlanSubjects.execute(gradesInput.year, gradesInput.period), {
+        const target = override ?? gradesInput;
+        const data = await runSingle('lessonPlanSubjects', () => run(() => useCases.getLessonPlanSubjects.execute(target.year, target.period), {
             ...options,
             sessionGeneration: generation
         }));
@@ -458,21 +467,25 @@ export function useEcampusWorkspace() {
         });
     };
 
-    const loadInitialDataFromCache = async (options?: RequestOptions) => {
+    const loadInitialDataFromCache = async (options?: RequestOptions, gradesOverride?: GradesInput) => {
         await Promise.allSettled([
             loadProfile(options),
             loadSchedule(options),
-            loadGrades(options),
-            loadLessonPlanSubjects(options)
+            loadGrades(options, gradesOverride),
+            loadLessonPlanSubjects(options, gradesOverride)
         ]);
     };
 
     realtimeHandlerRef.current = (event: EcampusResourceReadyEvent) => {
-        // During bootstrap wait, only track the lesson-plan planId (A3).
-        // All data loading happens in batch when bootstrap-ready fires.
+        // During bootstrap wait, only track the lesson-plan planId and the
+        // grades period eCampus actually resolved (A3). All data loading
+        // happens in batch when bootstrap-ready fires.
         if (isWaitingForInitialEventsRef.current) {
             if (event.resource === 'lesson-plan' && event.planId) {
                 pendingLessonPlanPlanIdRef.current = event.planId;
+            }
+            if (event.resource === 'grades' && event.year && event.period) {
+                pendingGradesPeriodRef.current = { year: event.year, period: event.period };
             }
             return;
         }
@@ -487,9 +500,14 @@ export function useEcampusWorkspace() {
                 void loadSchedule(silentOptions);
                 return;
             case 'grades':
-                if (event.year === gradesInput.year && event.period === gradesInput.period) {
-                    void loadGrades(silentOptions);
-                    void loadLessonPlanSubjects(silentOptions);
+                // Trust the period eCampus actually scraped, not whatever
+                // gradesInput currently guesses — they can disagree (e.g.
+                // eCampus resolving the previous term because the calendar-
+                // guessed one has nothing posted yet).
+                if (event.year && event.period) {
+                    const resolved = { year: event.year, period: event.period };
+                    void loadGrades(silentOptions, resolved);
+                    void loadLessonPlanSubjects(silentOptions, resolved);
                 }
                 return;
             case 'lesson-plan-subjects':
@@ -538,7 +556,9 @@ export function useEcampusWorkspace() {
         setRawError(event.failedResources.length > 0
             ? `Nao foi possivel carregar: ${event.failedResources.join(', ')}.`
             : 'Nao foi possivel carregar todos os dados agora.');
-        void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
+        const gradesOverride = pendingGradesPeriodRef.current ?? undefined;
+        pendingGradesPeriodRef.current = null;
+        void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false }, gradesOverride);
     };
 
     const prefetchWorkspace = async (options?: PrefetchOptions) => {

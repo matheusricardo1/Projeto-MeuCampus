@@ -35,4 +35,17 @@ export class AcademicPeriod {
     static toEcampusCode(period: string): string {
         return ECAMPUS_PERIOD_CODES[period.trim().toLowerCase()] || period;
     }
+
+    /**
+     * The reverse of `toEcampusCode`, collapsed onto the two periods this app
+     * models ('1'/'2'). eCampus's intersession codes (férias, especial) have
+     * no equivalent here, so they fall back to the nearer regular semester
+     * rather than surfacing a period the rest of the app doesn't understand.
+     */
+    static fromEcampusCode(code: string): string {
+        const trimmed = code.trim();
+        if (trimmed === '201' || trimmed === '203') return '1';
+        if (trimmed === '202' || trimmed === '204') return '2';
+        return AcademicPeriod.guessCurrent().period;
+    }
 }

@@ -3,7 +3,6 @@ import type { EcampusSessionStore } from '@/application/ports/ecampus-session-st
 import type { EcampusCredentials } from '@/domain/value-objects/ecampus-credentials';
 import type { Grade } from '@/domain/entities/grade';
 import { CacheAndPublishScrapedResource } from '@/application/services/cache-and-publish-scraped-resource.service';
-import { resolveGradesPeriod } from '@/application/services/resolve-grades-period';
 
 export class GetGradesUseCase {
     constructor(
@@ -14,7 +13,9 @@ export class GetGradesUseCase {
 
     async execute(credentials: EcampusCredentials, requestedYear?: string, requestedPeriod?: string): Promise<Grade[]> {
         await this.sessions.assertActive(credentials.cpf);
-        const { year, period } = resolveGradesPeriod({ year: requestedYear, period: requestedPeriod });
+        const { year, period } = requestedYear && requestedPeriod
+            ? { year: requestedYear, period: requestedPeriod }
+            : await this.repository.getCurrentPeriod(credentials);
 
         return this.cacheAndPublish.run(
             'grades',

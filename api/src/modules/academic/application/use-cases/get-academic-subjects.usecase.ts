@@ -24,7 +24,7 @@ export class GetAcademicSubjectsUseCase {
       ? { year: input.year, period: input.period, needsScrape: false }
       : await resolveCurrentGradesPeriod(this.cache, input.credentials.cpf);
 
-    if (needsScrape) {
+    if (needsScrape || !year || !period) {
       await this.enqueueMissingResource('grades', { credentials: input.credentials, year, period });
       return pendingScrapeJob('grades');
     }
@@ -43,15 +43,14 @@ export class GetAcademicSubjectsUseCase {
 
   private async enqueueMissingResource(
     resource: AcademicResourceNotFoundException['resource'],
-    input: { credentials: AcademicCredentials; year: string; period: string }
+    input: { credentials: AcademicCredentials; year?: string | undefined; period?: string | undefined }
   ): Promise<void> {
     if (resource === 'grades') {
       await this.scrapingJobService.enqueue('grades', {
         credentials: input.credentials,
-        year: input.year,
-        period: input.period,
+        ...(input.year && input.period ? { year: input.year, period: input.period } : {}),
       }, {
-        dedupeKey: scrapingJobDedupeKey(input.credentials, 'grades', `${input.year}-${input.period}`),
+        dedupeKey: scrapingJobDedupeKey(input.credentials, 'grades', input.year && input.period ? `${input.year}-${input.period}` : undefined),
       });
       return;
     }
