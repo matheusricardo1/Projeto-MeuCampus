@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { AppState, type AppStateStatus, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Slot, useRouter, useSegments } from 'expo-router';
@@ -42,11 +42,18 @@ export default function RootLayout() {
     );
 }
 
+// If the app/tab sat in the background longer than this, the session is
+// worth re-checking against the server on return instead of trusting
+// whatever's still in memory — the eCampus token could easily have expired
+// in the meantime, and eCampus itself could be unreachable/down.
+const STALE_AFTER_MS = 2 * 60 * 1000;
+
 function AuthGate() {
     const workspace = useWorkspace();
     const router = useRouter();
     const segments = useSegments();
     const didRestoreSession = useRef(false);
+    const lastActiveAtRef = useRef(Date.now());
 
     useEffect(() => {
         if (didRestoreSession.current) return;
@@ -57,6 +64,26 @@ function AuthGate() {
         // object every render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        const handleAppStateChange = (nextState: AppStateStatus) => {
+            if (nextState !== 'active') {
+                lastActiveAtRef.current = Date.now();
+                return;
+            }
+
+            const awayMs = Date.now() - lastActiveAtRef.current;
+            lastActiveAtRef.current = Date.now();
+
+            if (awayMs > STALE_AFTER_MS && workspace.isAuthenticated) {
+                void workspace.restoreSession();
+            }
+        };
+
+        const subscription = AppState.addEventListener('change', handleAppStateChange);
+        return () => subscription.remove();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [workspace.isAuthenticated]);
 
     useEffect(() => {
         if (!workspace.isReady) return;

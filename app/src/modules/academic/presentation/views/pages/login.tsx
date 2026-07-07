@@ -159,6 +159,7 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                                         <TextInput
                                             autoCapitalize="none"
                                             autoCorrect={false}
+                                            maxLength={100}
                                             onChangeText={setPassword}
                                             onFocus={() => focusField('password')}
                                             placeholder={t('login.passwordPlaceholder')}
@@ -181,9 +182,9 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                             ) : null}
 
                             <Pressable
-                                disabled={workspace.isLoading}
+                                disabled={workspace.isLoading || onlyDigits(user).length === 0 || password.length === 0}
                                 onPress={() => void workspace.login({ password, user: onlyDigits(user) })}
-                                style={styles.primaryButton}
+                                style={[styles.primaryButton, (onlyDigits(user).length === 0 || password.length === 0) && !workspace.isLoading ? styles.primaryButtonDisabled : null]}
                             >
                                 {workspace.isLoading ? <ActivityIndicator color={colors.inverseText} /> : <KeyRound color={colors.inverseText} size={18} />}
                                 <Text style={styles.primaryButtonText}>{workspace.isLoading ? t('login.submitting') : t('login.submit')}</Text>

@@ -11,8 +11,12 @@ export class AcademicRequestValidator {
         return digits;
     }
 
+    // eCampus itself enforces no minimum password length — a 1-character
+    // password is a real, valid credential there — so this only rejects
+    // what's actually invalid: missing, empty, control characters, or
+    // longer than we're willing to accept.
     static parsePassword(value?: string): string {
-        if (typeof value !== 'string' || value.length < 1 || value.length > 128 || /[\u0000-\u001F\u007F]/.test(value)) {
+        if (typeof value !== 'string' || value.length < 1 || value.length > 100 || /[\u0000-\u001F\u007F]/.test(value)) {
             throw new InvalidAcademicRequestError('Informe uma senha valida.');
         }
 

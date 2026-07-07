@@ -151,14 +151,34 @@ export class EcampusHttpRepository implements EcampusRepository {
             requestInit.cache = 'no-store';
         }
 
-        const response = await fetch(`${this.baseUrl}${path}`, {
-            ...requestInit
-        });
+        let response: Response;
+        try {
+            response = await fetch(`${this.baseUrl}${path}`, {
+                ...requestInit
+            });
+        } catch {
+            // fetch itself throws (not an HTTP error response) when there's no
+            // network path to the server at all — offline, DNS failure, the
+            // API being unreachable, a timeout, etc.
+            throw new Error('Sem conexao com a internet. Verifique sua rede e tente novamente.');
+        }
 
         const body = await response.text();
-        const payload = body ? JSON.parse(body) : null;
+        let payload: unknown = null;
+        if (body) {
+            try {
+                payload = JSON.parse(body);
+            } catch {
+                // A non-JSON body means we're not even talking to our API
+                // anymore (a proxy/gateway error page, an HTML 502, etc.) —
+                // the status code alone still tells us enough to respond.
+                throw new Error(response.ok
+                    ? 'O servidor respondeu de forma inesperada. Tente novamente em instantes.'
+                    : describeHttpFailure(response.status));
+            }
+        }
 
-        if (response.status === 202 && payload?.status === 'pending' && typeof payload.resource === 'string') {
+        if (response.status === 202 && isPlainObject(payload) && payload.status === 'pending' && typeof payload.resource === 'string') {
             throw new EcampusResourcePendingError(payload.resource);
         }
 
@@ -167,8 +187,13 @@ export class EcampusHttpRepository implements EcampusRepository {
                 throw new AuthSessionExpiredError('Sua sessao expirou. Entre novamente.');
             }
 
-            const message = payload?.message || 'Falha ao comunicar com o eCampus.';
-            throw new Error(Array.isArray(message) ? message.join(', ') : message);
+            const message = isPlainObject(payload) ? payload.message : undefined;
+            const resolvedMessage = typeof message === 'string'
+                ? message
+                : Array.isArray(message)
+                    ? message.join(', ')
+                    : describeHttpFailure(response.status);
+            throw new Error(resolvedMessage);
         }
 
         return payload as T;
@@ -197,6 +222,16 @@ function getAppEnv(): 'development' | 'production' {
     return process.env.EXPO_PUBLIC_APP_ENV === 'development'
         ? 'development'
         : DEFAULT_APP_ENV;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+function describeHttpFailure(status: number): string {
+    if (status === 404) return 'Recurso nao encontrado.';
+    if (status >= 500) return 'O servidor esta com problemas no momento. Tente novamente em instantes.';
+    return 'Nao foi possivel concluir a solicitacao.';
 }
 
 function isMissingAcademicPeriodError(error: unknown): boolean {

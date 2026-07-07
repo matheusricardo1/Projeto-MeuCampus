@@ -46,6 +46,7 @@ export const styles = StyleSheet.create({
     passwordInput: { paddingRight: 54 },
     passwordToggle: { alignItems: 'center', height: 52, justifyContent: 'center', position: 'absolute', right: 0, top: 0, width: 52 },
     primaryButton: { alignItems: 'center', backgroundColor: colors.brand, borderRadius: radii.md, flexDirection: 'row', gap: spacing[2], justifyContent: 'center', minHeight: 54, paddingHorizontal: spacing[5] },
+    primaryButtonDisabled: { opacity: 0.5 },
     primaryButtonText: { color: colors.inverseText, fontFamily: fonts.medium, fontSize: 16, fontWeight: '700' },
     languageSelector: { maxWidth: 240, minWidth: 210, position: 'relative', zIndex: 40 },
     languageSelectorCompact: { minWidth: 186 },
