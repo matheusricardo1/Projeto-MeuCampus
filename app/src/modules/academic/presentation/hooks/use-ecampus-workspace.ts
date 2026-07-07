@@ -76,7 +76,6 @@ export function useEcampusWorkspace() {
     const isWaitingForInitialEventsRef = useRef(false);
     const hasRealtimeConnectedRef = useRef(false);
     const initialEventsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const initialHydrationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const inFlightRequests = useRef(new Map<ResourceKey, Promise<unknown>>());
     const pendingInitialResourcesRef = useRef(new Set<InitialResourceKey>());
     const realtimeHandlerRef = useRef<(event: EcampusResourceReadyEvent) => void>(() => undefined);
@@ -124,7 +123,6 @@ export function useEcampusWorkspace() {
         pendingInitialResourcesRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
-        clearInitialHydrationInterval();
         setPendingInitialResources(new Set());
     };
 
@@ -136,7 +134,6 @@ export function useEcampusWorkspace() {
         isWaitingForInitialEventsRef.current = false;
         hasRealtimeConnectedRef.current = false;
         clearInitialEventsTimeout();
-        clearInitialHydrationInterval();
         setLoadingRequests(0);
         setPendingInitialResources(new Set());
         return sessionGeneration.current;
@@ -177,37 +174,22 @@ export function useEcampusWorkspace() {
         }
     };
 
-    const clearInitialHydrationInterval = () => {
-        if (initialHydrationIntervalRef.current) {
-            clearInterval(initialHydrationIntervalRef.current);
-            initialHydrationIntervalRef.current = null;
-        }
-    };
-
-    const startInitialHydrationFallback = () => {
-        clearInitialHydrationInterval();
-        initialHydrationIntervalRef.current = setInterval(() => {
-            if (!isWaitingForInitialEventsRef.current) {
-                clearInitialHydrationInterval();
-                return;
-            }
-
-            void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false }, pendingGradesPeriodRef.current ?? undefined);
-        }, 8000);
-    };
-
+    // The bootstrap tracker's completion signal (bootstrap-ready /
+    // bootstrap-failed) fires exactly once every required resource has
+    // settled, whether it succeeded or failed — so there's no need to poll
+    // the cache speculatively while waiting for it. This timeout only
+    // exists as a last resort if that signal itself never arrives (e.g. a
+    // dropped Redis pub/sub message).
     const waitForInitialScrapingEvents = () => {
         isWaitingForInitialEventsRef.current = true;
         markInitialResourcesPending([...BOOTSTRAP_RESOURCES, 'lessonPlan']);
         clearInitialEventsTimeout();
-        startInitialHydrationFallback();
         initialEventsTimeoutRef.current = setTimeout(() => {
             if (!isWaitingForInitialEventsRef.current) {
                 return;
             }
 
             isWaitingForInitialEventsRef.current = false;
-            clearInitialHydrationInterval();
             setTranslatedError('errors.generic');
             setPendingInitialResources(new Set());
         }, 30000);
@@ -220,7 +202,6 @@ export function useEcampusWorkspace() {
 
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
-        clearInitialHydrationInterval();
         const gradesOverride = pendingGradesPeriodRef.current ?? undefined;
         pendingGradesPeriodRef.current = null;
         await loadInitialDataFromCache({ reportError: false, showGlobalLoading: false }, gradesOverride);
@@ -551,7 +532,6 @@ export function useEcampusWorkspace() {
 
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
-        clearInitialHydrationInterval();
         setPendingInitialResources(new Set());
         setRawError(event.failedResources.length > 0
             ? `Nao foi possivel carregar: ${event.failedResources.join(', ')}.`

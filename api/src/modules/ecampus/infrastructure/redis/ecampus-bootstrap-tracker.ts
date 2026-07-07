@@ -91,6 +91,8 @@ export class EcampusBootstrapTracker extends AcademicBootstrapTracker {
               return nil
             end
 
+            local previousStatus = state.status
+
             if status == 'ready' then
               local alreadyReady = false
               for _, item in ipairs(state.readyResources or {}) do
@@ -113,54 +115,35 @@ export class EcampusBootstrapTracker extends AcademicBootstrapTracker {
                 end
               end
               state.failedResources = nextFailed
-
-              local allReady = true
-              for _, required in ipairs(state.requiredResources or {}) do
-                local found = false
-                for _, ready in ipairs(state.readyResources or {}) do
-                  if required == ready then
-                    found = true
-                    break
-                  end
-                end
-
-                if not found then
-                  allReady = false
+            else
+              local alreadyFailed = false
+              for _, item in ipairs(state.failedResources or {}) do
+                if item == resource then
+                  alreadyFailed = true
                   break
                 end
               end
 
-              local previousStatus = state.status
-              state.status = allReady and 'ready' or 'pending'
-              state.updatedAt = updatedAt
-              redis.call('SET', key, cjson.encode(state), 'EX', ttl)
-
-              if state.status == 'ready' and previousStatus ~= 'ready' then
-                return cjson.encode(state)
+              if alreadyFailed then
+                return nil
               end
 
-              return nil
+              table.insert(state.failedResources, resource)
             end
 
-            local alreadyFailed = false
-            for _, item in ipairs(state.failedResources or {}) do
-              if item == resource then
-                alreadyFailed = true
-                break
-              end
-            end
-
-            if alreadyFailed then
-              return nil
-            end
-
-            table.insert(state.failedResources, resource)
-            state.status = 'failed'
+            -- The bootstrap set is done once every required resource has
+            -- settled one way or the other, regardless of WHICH resource
+            -- happened to settle last or whether it succeeded or failed.
+            -- (Previously "ready" only completed when the last settlement
+            -- was itself a success, so a set that finished failure-first-
+            -- then-success-last never fired any completion event at all.)
+            local totalResolved = #state.readyResources + #state.failedResources
+            local isComplete = totalResolved >= #state.requiredResources
+            state.status = isComplete and (#state.failedResources == 0 and 'ready' or 'failed') or 'pending'
             state.updatedAt = updatedAt
             redis.call('SET', key, cjson.encode(state), 'EX', ttl)
 
-            local totalResolved = #state.readyResources + #state.failedResources
-            if totalResolved >= #state.requiredResources then
+            if isComplete and previousStatus == 'pending' then
               return cjson.encode(state)
             end
 

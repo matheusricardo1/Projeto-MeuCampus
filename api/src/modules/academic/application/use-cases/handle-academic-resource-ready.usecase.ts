@@ -14,6 +14,11 @@ export class HandleAcademicResourceReadyUseCase {
         const bootstrapState = await this.bootstrapTracker.markReady(event.cpf, event.resource);
         if (bootstrapState?.status === 'ready') {
             this.notifier.emitBootstrapReady(toBootstrapNotification(bootstrapState));
+        } else if (bootstrapState?.status === 'failed') {
+            // The bootstrap set can complete on a *successful* resource —
+            // this one — even though the overall outcome is "failed"
+            // because some other required resource failed earlier.
+            this.notifier.emitBootstrapFailed(toBootstrapNotification(bootstrapState));
         }
     }
 }
