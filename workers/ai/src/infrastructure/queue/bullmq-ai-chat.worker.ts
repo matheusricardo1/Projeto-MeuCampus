@@ -5,12 +5,12 @@ import { createRedisConnectionOptions } from '@/infrastructure/redis/redis-conne
 import { AI_CHAT_QUEUE_NAME, type AiChatJobData } from '@/application/ports/ai-chat-job';
 import type { AiChatReply } from '@/domain/value-objects/ai-chat-reply';
 import { ProcessAiChatJobUseCase } from '@/application/use-cases/process-ai-chat-job.usecase';
-import { VercelAiChatProvider } from '@/infrastructure/providers/vercel-ai-chat.provider';
+import { DefaultAiChatProvider } from '@/infrastructure/providers/ai-chat.provider';
 import { RedisAiChatEventPublisher } from '@/infrastructure/redis/redis-ai-chat-event.publisher';
 
 export class AiChatWorker {
     private readonly eventPublisher = new RedisAiChatEventPublisher();
-    private readonly processJob = new ProcessAiChatJobUseCase(new VercelAiChatProvider(), this.eventPublisher);
+    private readonly processJob = new ProcessAiChatJobUseCase(new DefaultAiChatProvider(), this.eventPublisher);
     private readonly worker: Worker<AiChatJobData, AiChatReply>;
 
     constructor() {
