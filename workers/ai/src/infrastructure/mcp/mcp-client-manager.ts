@@ -6,11 +6,76 @@ import type { ToolSet } from 'ai';
 export class McpClientManager {
     private readonly serverUrls: string[];
     private readonly internalSecret: string;
+    // MCP resources (unlike tool results) are static institutional context —
+    // same content for every user — so it's fetched once per process
+    // lifetime instead of once per chat message.
+    private staticContextPromise: Promise<string> | null = null;
 
     constructor() {
         const raw = process.env.MCP_SERVER_URLS ?? '';
         this.serverUrls = raw.split(',').map((u) => u.trim()).filter(Boolean);
         this.internalSecret = process.env.INTERNAL_API_SECRET ?? '';
+    }
+
+    async getStaticContext(userId: string): Promise<string> {
+        if (this.serverUrls.length === 0) {
+            return '';
+        }
+
+        if (!this.staticContextPromise) {
+            this.staticContextPromise = this.loadStaticContext(userId).catch((error) => {
+                this.staticContextPromise = null;
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`[McpClientManager] Failed to load static context: ${message}`);
+                return '';
+            });
+        }
+
+        return this.staticContextPromise;
+    }
+
+    private async loadStaticContext(userId: string): Promise<string> {
+        const perServerContext = await Promise.all(
+            this.serverUrls.map((url) => this.collectResourcesFromServer(url, userId))
+        );
+
+        return perServerContext.filter(Boolean).join('\n\n');
+    }
+
+    private async collectResourcesFromServer(serverUrl: string, userId: string): Promise<string> {
+        const client = new Client({ name: 'ai-worker', version: '1.0.0' });
+        const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
+            requestInit: {
+                headers: {
+                    'x-internal-secret': this.internalSecret,
+                    'x-mcp-user-id': userId
+                }
+            }
+        });
+
+        try {
+            await client.connect(transport as never);
+            const { resources } = await client.listResources();
+            if (resources.length === 0) {
+                return '';
+            }
+
+            const contents = await Promise.all(
+                resources.map((resource) => client.readResource({ uri: resource.uri }))
+            );
+
+            return contents
+                .flatMap((result) => result.contents)
+                .filter((entry): entry is { uri: string; text: string } => typeof (entry as { text?: unknown }).text === 'string')
+                .map((entry) => entry.text)
+                .join('\n\n');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(`[McpClientManager] Failed to load resources from ${serverUrl}: ${message}`);
+            return '';
+        } finally {
+            await client.close().catch(() => undefined);
+        }
     }
 
     async buildTools(userId: string): Promise<ToolSet> {

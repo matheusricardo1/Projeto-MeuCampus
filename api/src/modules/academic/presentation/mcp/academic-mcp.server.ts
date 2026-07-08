@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { resolveCurrentGradesPeriod } from '@academic/application/services/resolve-current-grades-period';
+import { UFAM_ACADEMIC_RULES } from '@academic/domain/knowledge/ufam-academic-rules';
 
 const NOT_AVAILABLE = 'Dados não disponíveis. Oriente o usuário a abrir o app para sincronizar.';
 
@@ -13,6 +14,19 @@ export function createAcademicMcpServer(
         name: 'academic-data',
         version: '1.0.0'
     });
+
+    server.registerResource(
+        'ufam_academic_rules',
+        'academic://rules/ufam',
+        {
+            title: 'Regras academicas da UFAM',
+            description: 'Regras oficiais (Resolucao 023/2017) de media final, frequencia e trancamento, com exemplos de calculo.',
+            mimeType: 'text/plain'
+        },
+        async (uri) => ({
+            contents: [{ uri: uri.href, text: UFAM_ACADEMIC_RULES, mimeType: 'text/plain' }]
+        })
+    );
 
     server.tool(
         'get_student_profile',
