@@ -9,4 +9,5 @@ export interface AiChatJobData {
 
 export abstract class AiJobService {
     abstract enqueue(data: AiChatJobData): Promise<{ id: string }>;
+    abstract cancel(jobId: string): Promise<void>;
 }

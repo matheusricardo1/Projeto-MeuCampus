@@ -34,6 +34,11 @@ interface SendAiChatMessageInput {
     history?: AiChatMessage[];
 }
 
+interface SendAiChatMessageHandlers {
+    onJobId?: (jobId: string) => void;
+    onChunk?: (delta: string) => void;
+}
+
 interface RequestOptions {
     reportError?: boolean;
     showGlobalLoading?: boolean;
@@ -740,12 +745,12 @@ export function useEcampusWorkspace() {
         });
     };
 
-    const sendAiChatMessage = async (input: SendAiChatMessageInput) => {
+    const sendAiChatMessage = async (input: SendAiChatMessageInput, handlers?: SendAiChatMessageHandlers) => {
         const generation = sessionGeneration.current;
         clearError();
 
         try {
-            return await useCases.sendAiChatMessage.execute(input);
+            return await useCases.sendAiChatMessage.execute(input, handlers);
         } catch (caught) {
             if (caught instanceof AuthSessionExpiredError) {
                 if (generation === sessionGeneration.current) {
@@ -762,6 +767,16 @@ export function useEcampusWorkspace() {
 
             setTranslatedError('errors.generic');
             throw new Error(t('errors.generic'));
+        }
+    };
+
+    const cancelAiChatMessage = async (jobId: string) => {
+        try {
+            await useCases.cancelAiChatMessage.execute(jobId);
+        } catch {
+            // Best-effort: if the cancel request itself fails (offline, request
+            // already finished), the generation either already completed or will
+            // simply finish on its own — nothing else to do from the UI's side.
         }
     };
 
@@ -837,6 +852,7 @@ export function useEcampusWorkspace() {
         isAuthenticated,
         isInitialDataLoading,
         isLoading,
+        cancelAiChatMessage,
         isReady,
         lessonPlan,
         lessonPlanSubjects,

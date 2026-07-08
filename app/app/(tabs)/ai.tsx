@@ -16,6 +16,7 @@ export default function AiRoute() {
         <AIPage
             bottomInset={chrome.bottomNavInset}
             hidePromptInput={chrome.isAILaunching}
+            onCancelMessage={workspace.cancelAiChatMessage}
             onChatScroll={chrome.closeChatHistory}
             onSendMessage={workspace.sendAiChatMessage}
         />

@@ -104,6 +104,13 @@ export class EcampusHttpRepository implements EcampusRepository {
         });
     }
 
+    async cancelAiChatMessage(accessToken: string, jobId: string): Promise<void> {
+        await this.request<{ status: string }>(`/ai/chat/messages/${encodeURIComponent(jobId)}`, {
+            method: 'DELETE',
+            headers: this.authHeaders(accessToken)
+        });
+    }
+
     private authHeaders(accessToken: string): HeadersInit {
         return {
             Authorization: `Bearer ${accessToken}`

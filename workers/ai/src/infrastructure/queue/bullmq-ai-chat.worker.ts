@@ -7,10 +7,14 @@ import type { AiChatReply } from '@/domain/value-objects/ai-chat-reply';
 import { ProcessAiChatJobUseCase } from '@/application/use-cases/process-ai-chat-job.usecase';
 import { DefaultAiChatProvider } from '@/infrastructure/providers/ai-chat.provider';
 import { RedisAiChatEventPublisher } from '@/infrastructure/redis/redis-ai-chat-event.publisher';
+import { RedisAiChatCancelSubscriber } from '@/infrastructure/redis/redis-ai-chat-cancel.subscriber';
+import { AiChatCancellationRegistry } from '@/infrastructure/cancellation/ai-chat-cancellation-registry';
 
 export class AiChatWorker {
     private readonly eventPublisher = new RedisAiChatEventPublisher();
-    private readonly processJob = new ProcessAiChatJobUseCase(new DefaultAiChatProvider(), this.eventPublisher);
+    private readonly cancellationRegistry = new AiChatCancellationRegistry();
+    private readonly cancelSubscriber = new RedisAiChatCancelSubscriber(this.cancellationRegistry);
+    private readonly processJob = new ProcessAiChatJobUseCase(new DefaultAiChatProvider(), this.eventPublisher, this.cancellationRegistry);
     private readonly worker: Worker<AiChatJobData, AiChatReply>;
 
     constructor() {
@@ -41,6 +45,7 @@ export class AiChatWorker {
     }
 
     async run(): Promise<void> {
+        await this.cancelSubscriber.start();
         appLogger.info('AI chat worker started.', {
             queue: AI_CHAT_QUEUE_NAME,
             concurrency: Number(process.env.AI_CHAT_WORKER_CONCURRENCY || 2),
@@ -51,7 +56,8 @@ export class AiChatWorker {
     async close(): Promise<void> {
         await Promise.all([
             this.worker.close(),
-            this.eventPublisher.close()
+            this.eventPublisher.close(),
+            this.cancelSubscriber.close()
         ]);
     }
 

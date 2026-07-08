@@ -11,17 +11,23 @@ export interface SendAiChatMessageInput {
     history?: AiChatMessage[];
 }
 
+export interface SendAiChatMessageHandlers {
+    onJobId?: (jobId: string) => void;
+    onChunk?: (delta: string) => void;
+}
+
 export class SendAiChatMessageUseCase {
     constructor(
         private readonly repository: EcampusRepository,
         private readonly sessionStore: AuthSessionStore
     ) {}
 
-    async execute(input: SendAiChatMessageInput): Promise<AiChatReply> {
+    async execute(input: SendAiChatMessageInput, handlers?: SendAiChatMessageHandlers): Promise<AiChatReply> {
         const session = await this.sessionStore.get();
         if (!session) throw new AuthSessionExpiredError();
 
         const { jobId } = await this.repository.sendAiChatMessage(session.accessToken, input);
-        return waitForAiReply(jobId);
+        handlers?.onJobId?.(jobId);
+        return waitForAiReply(jobId, handlers?.onChunk);
     }
 }

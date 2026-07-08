@@ -30,4 +30,5 @@ export interface EcampusRepository {
     getLessonPlanSubjects(accessToken: string): Promise<LessonPlanSubject[]>;
     getLessonPlan(accessToken: string, planId: string): Promise<LessonPlanItem[]>;
     sendAiChatMessage(accessToken: string, input: SendAiChatMessageRequest): Promise<{ jobId: string }>;
+    cancelAiChatMessage(accessToken: string, jobId: string): Promise<void>;
 }

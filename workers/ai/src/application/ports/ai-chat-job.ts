@@ -2,6 +2,7 @@ import type { AiChatMessage } from '@/domain/entities/ai-chat-message';
 
 export const AI_CHAT_QUEUE_NAME = process.env.AI_CHAT_QUEUE || 'ai-chat';
 export const AI_CHAT_RESULT_CHANNEL = process.env.AI_CHAT_RESULT_CHANNEL || 'ai:chat:result';
+export const AI_CHAT_CANCEL_CHANNEL = process.env.AI_CHAT_CANCEL_CHANNEL || 'ai:chat:cancel';
 
 export interface AiChatJobData {
     conversationId?: string;

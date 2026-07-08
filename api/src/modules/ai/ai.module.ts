@@ -2,8 +2,10 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@auth/auth.module';
 import { RealtimeModule } from '@composition/realtime/realtime.module';
 import { SendAiChatMessageUseCase } from '@ai/application/use-cases/send-ai-chat-message.usecase';
+import { CancelAiChatMessageUseCase } from '@ai/application/use-cases/cancel-ai-chat-message.usecase';
 import { AiJobService } from '@ai/application/ports/ai-job-service';
 import { AiChatJobService } from '@ai/infrastructure/queue/ai-chat-job.service';
+import { AiChatCancelPublisher } from '@ai/infrastructure/redis/ai-chat-cancel.publisher';
 import { AiChatEventsSubscriber } from '@ai/infrastructure/redis/ai-chat-events.subscriber';
 import { AiController } from '@ai/presentation/http/ai.controller';
 import { AiAuthGuard } from '@ai/presentation/http/guards/ai-auth.guard';
@@ -14,12 +16,20 @@ import { AiNotificationService } from '@ai/application/ports/ai-notification-ser
     controllers: [AiController],
     providers: [
         AiAuthGuard,
+        AiChatCancelPublisher,
         AiChatJobService,
         { provide: AiJobService, useExisting: AiChatJobService },
         {
             provide: SendAiChatMessageUseCase,
             useFactory: (aiJobService: AiJobService) => {
                 return new SendAiChatMessageUseCase(aiJobService);
+            },
+            inject: [AiJobService]
+        },
+        {
+            provide: CancelAiChatMessageUseCase,
+            useFactory: (aiJobService: AiJobService) => {
+                return new CancelAiChatMessageUseCase(aiJobService);
             },
             inject: [AiJobService]
         },

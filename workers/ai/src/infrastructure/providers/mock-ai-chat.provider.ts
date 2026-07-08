@@ -1,18 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import type { AiChatReply } from '@/domain/value-objects/ai-chat-reply';
 import type { AiChatRequest } from '@/domain/value-objects/ai-chat-request';
-import type { AiChatProvider } from '@/application/ports/ai-chat-provider';
+import type { AiChatProvider, AiChatStreamHandlers } from '@/application/ports/ai-chat-provider';
 
 export class MockAiChatProvider implements AiChatProvider {
-    async generateReply(request: AiChatRequest): Promise<AiChatReply> {
+    async generateReply(request: AiChatRequest, handlers: AiChatStreamHandlers): Promise<AiChatReply> {
         const conversationId = request.conversationId?.trim() || randomUUID();
+        const content = `Ainda estou em modo mock, mas ja recebi sua pergunta academica: "${request.message}".`;
+
+        for (const word of content.split(' ')) {
+            if (handlers.signal.aborted) break;
+            handlers.onDelta(`${word} `);
+        }
 
         return {
             conversationId,
             message: {
                 id: randomUUID(),
                 role: 'assistant',
-                content: `Ainda estou em modo mock, mas ja recebi sua pergunta academica: "${request.message}".`,
+                content,
                 createdAt: new Date().toISOString()
             }
         };

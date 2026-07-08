@@ -12,6 +12,7 @@ const LOGIN_READY_EVENT = 'ecampus:login-ready';
 const LOGIN_FAILED_EVENT = 'ecampus:login-failed';
 const AI_REPLY_EVENT = 'ecampus:ai-reply';
 const AI_FAILED_EVENT = 'ecampus:ai-failed';
+const AI_CHUNK_EVENT = 'ecampus:ai-chunk';
 const LOGIN_TIMEOUT_MS = 35_000;
 const AI_REPLY_TIMEOUT_MS = 60_000;
 
@@ -183,7 +184,7 @@ export function waitForLoginResult(jobId: string): Promise<AuthSession> {
     });
 }
 
-export function waitForAiReply(jobId: string): Promise<AiChatReply> {
+export function waitForAiReply(jobId: string, onChunk?: (delta: string) => void): Promise<AiChatReply> {
     return new Promise((resolve, reject) => {
         const socket = activeSocket;
         if (!socket) {
@@ -191,16 +192,21 @@ export function waitForAiReply(jobId: string): Promise<AiChatReply> {
             return;
         }
 
-        const timeout = setTimeout(() => {
-            socket.off(AI_REPLY_EVENT, onReply);
-            socket.off(AI_FAILED_EVENT, onFailed);
+        // Each streamed chunk pushes the deadline back — a slow-but-alive
+        // generation shouldn't time out just because it's taking a while
+        // overall; only genuine silence should.
+        let timeout = setTimeout(onTimeout, AI_REPLY_TIMEOUT_MS);
+
+        function onTimeout() {
+            cleanup();
             reject(new Error('A IA demorou demais para responder. Tente novamente.'));
-        }, AI_REPLY_TIMEOUT_MS);
+        }
 
         const cleanup = () => {
             clearTimeout(timeout);
             socket.off(AI_REPLY_EVENT, onReply);
             socket.off(AI_FAILED_EVENT, onFailed);
+            socket.off(AI_CHUNK_EVENT, onChunkEvent);
         };
 
         const onReply = (event: { jobId: string; conversationId: string; message: AiChatReply['message'] }) => {
@@ -215,8 +221,16 @@ export function waitForAiReply(jobId: string): Promise<AiChatReply> {
             reject(new Error(event.message));
         };
 
+        const onChunkEvent = (event: { jobId: string; delta: string }) => {
+            if (event.jobId !== jobId) return;
+            clearTimeout(timeout);
+            timeout = setTimeout(onTimeout, AI_REPLY_TIMEOUT_MS);
+            onChunk?.(event.delta);
+        };
+
         socket.on(AI_REPLY_EVENT, onReply);
         socket.on(AI_FAILED_EVENT, onFailed);
+        socket.on(AI_CHUNK_EVENT, onChunkEvent);
     });
 }
 

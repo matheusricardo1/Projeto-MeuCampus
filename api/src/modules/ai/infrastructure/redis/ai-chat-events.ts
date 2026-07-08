@@ -2,7 +2,15 @@ import type { AiChatMessage } from '@ai/domain/entities/ai-chat-message.entity';
 
 export const AI_CHAT_RESULT_CHANNEL = process.env.AI_CHAT_RESULT_CHANNEL || 'ai:chat:result';
 
+export interface AiChatChunkEvent {
+    type: 'chunk';
+    jobId: string;
+    userId: string;
+    delta: string;
+}
+
 export interface AiChatReadyEvent {
+    type: 'ready';
     jobId: string;
     userId: string;
     reply: {
@@ -12,11 +20,11 @@ export interface AiChatReadyEvent {
 }
 
 export interface AiChatFailedEvent {
+    type: 'failed';
     jobId: string;
     userId: string;
-    status: 'failed';
     errorName: string;
     message: string;
 }
 
-export type AiChatResultEvent = AiChatReadyEvent | AiChatFailedEvent;
+export type AiChatResultEvent = AiChatChunkEvent | AiChatReadyEvent | AiChatFailedEvent;

@@ -1,4 +1,5 @@
 import { ClearAuthSessionUseCase } from '@/shared/auth/clear-auth-session.usecase';
+import { CancelAiChatMessageUseCase } from '@/modules/academic/application/use-cases/cancel-ai-chat-message.usecase';
 import { EnqueueEcampusScrapeJobUseCase } from '@/modules/academic/application/use-cases/enqueue-ecampus-scrape-job.usecase';
 import { GetAuthSessionUseCase } from '@/shared/auth/get-auth-session.usecase';
 import { GetGradesUseCase } from '@/modules/academic/application/use-cases/get-grades.usecase';
@@ -18,6 +19,7 @@ export function createEcampusUseCases() {
     const sessionStore = new AsyncAuthSessionStore();
 
     return {
+        cancelAiChatMessage: new CancelAiChatMessageUseCase(repository, sessionStore),
         clearAuthSession: new ClearAuthSessionUseCase(sessionStore),
         enqueueScrapeJob: new EnqueueEcampusScrapeJobUseCase(repository, sessionStore),
         getAuthSession: new GetAuthSessionUseCase(sessionStore),

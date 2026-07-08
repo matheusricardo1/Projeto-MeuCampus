@@ -1,21 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputKeyPressEventData, View } from 'react-native';
-import { Bot, Brain, Send } from 'lucide-react-native';
+import { Bot, Brain, Check, Pencil, RotateCcw, Send, Square, X } from 'lucide-react-native';
 import type { AiChatMessage } from '@/modules/academic/domain/entities/ai-chat-message';
 import type { AiChatReply } from '@/modules/academic/domain/entities/ai-chat-reply';
 import { colors, fonts, radii, spacing } from '@/shared/design-system';
 
+type SendMessageHandlers = {
+    onJobId?: (jobId: string) => void;
+    onChunk?: (delta: string) => void;
+};
+
 type AIPageProps = {
     bottomInset?: number;
     hidePromptInput?: boolean;
+    onCancelMessage?: (jobId: string) => Promise<void>;
     onChatScroll?: () => void;
-    onSendMessage?: (input: { conversationId?: string; message: string; history?: AiChatMessage[] }) => Promise<AiChatReply | null>;
+    onSendMessage?: (input: { conversationId?: string; message: string; history?: AiChatMessage[] }, handlers?: SendMessageHandlers) => Promise<AiChatReply | null>;
 };
 
 type ChatMessage = AiChatMessage & {
     kind?: 'text' | 'grade-summary' | 'processing';
-    fullContent?: string;
-    isTyping?: boolean;
 };
 
 const initialMessages: ChatMessage[] = [
@@ -27,9 +31,7 @@ const initialMessages: ChatMessage[] = [
     }
 ];
 
-const AI_TYPING_FRAME_MS = 30;
-
-export function AIPage({ bottomInset = 0, hidePromptInput = false, onChatScroll, onSendMessage }: AIPageProps) {
+export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessage, onChatScroll, onSendMessage }: AIPageProps) {
     const scrollRef = useRef<ScrollView | null>(null);
     const lastSentPromptRef = useRef<{ prompt: string; sentAt: number } | null>(null);
     const processingPulse = useRef(new Animated.Value(0)).current;
@@ -37,6 +39,10 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onChatScroll,
     const [prompt, setPrompt] = useState('');
     const [conversationId, setConversationId] = useState<string | undefined>();
     const [isSending, setIsSending] = useState(false);
+    const [activeJobId, setActiveJobId] = useState<string | null>(null);
+    const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [editingText, setEditingText] = useState('');
     const scrollToBottom = useCallback((animated = false) => {
         const scheduleFrame = typeof requestAnimationFrame === 'function'
             ? requestAnimationFrame
@@ -75,38 +81,84 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onChatScroll,
         return () => animation.stop();
     }, [processingPulse]);
 
-    useEffect(() => {
-        const typingMessage = messages.find((message) => message.role === 'assistant' && message.isTyping && message.fullContent);
-        if (!typingMessage?.fullContent) {
-            return undefined;
-        }
+    const runExchange = useCallback(async (promptText: string, historyBase: ChatMessage[]) => {
+        const trimmedPrompt = promptText.trim();
+        if (!trimmedPrompt || isSending) return;
 
-        if (typingMessage.content.length >= typingMessage.fullContent.length) {
+        const now = Date.now();
+        const userMessage: ChatMessage = {
+            id: `user-${now}`,
+            role: 'user',
+            content: trimmedPrompt,
+            createdAt: new Date().toISOString()
+        };
+        const assistantId = `assistant-${now}`;
+        const processingMessage: ChatMessage = {
+            id: assistantId,
+            role: 'assistant',
+            content: '',
+            createdAt: new Date().toISOString(),
+            kind: 'processing'
+        };
+
+        const history = historyBase.map(({ kind: _kind, ...message }) => message);
+        setMessages([...historyBase, userMessage, processingMessage]);
+        setIsSending(true);
+        setStreamingMessageId(assistantId);
+        setActiveJobId(null);
+        scrollToBottom(true);
+
+        let hasStreamedContent = false;
+
+        try {
+            const reply = await onSendMessage?.(
+                {
+                    ...(conversationId ? { conversationId } : {}),
+                    message: trimmedPrompt,
+                    history
+                },
+                {
+                    onJobId: (jobId) => setActiveJobId(jobId),
+                    onChunk: (delta) => {
+                        hasStreamedContent = true;
+                        setMessages((current) => current.map((message) => (
+                            message.id === assistantId
+                                ? { ...message, kind: 'text', content: message.content + delta }
+                                : message
+                        )));
+                        scrollToBottom(false);
+                    }
+                }
+            );
+
+            if (!reply) {
+                throw new Error('A IA nao respondeu agora. Tente novamente.');
+            }
+
+            setConversationId(reply.conversationId);
             setMessages((current) => current.map((message) => (
-                message.id === typingMessage.id
-                    ? { ...message, content: typingMessage.fullContent || message.content, isTyping: false, fullContent: undefined }
+                message.id === assistantId
+                    ? { ...reply.message, id: assistantId, kind: 'text' }
                     : message
             )));
-            return undefined;
+            scrollToBottom(true);
+        } catch (error) {
+            if (hasStreamedContent) {
+                setMessages((current) => current.map((message) => (
+                    message.id === assistantId ? { ...message, kind: 'text' } : message
+                )));
+            } else {
+                setMessages(historyBase);
+                setPrompt(trimmedPrompt);
+            }
+        } finally {
+            setIsSending(false);
+            setActiveJobId(null);
+            setStreamingMessageId(null);
         }
+    }, [conversationId, isSending, onSendMessage, scrollToBottom]);
 
-        const nextLength = Math.min(
-            typingMessage.fullContent.length,
-            typingMessage.content.length + Math.max(2, Math.ceil(typingMessage.fullContent.length / 90))
-        );
-        const timeout = setTimeout(() => {
-            setMessages((current) => current.map((message) => (
-                message.id === typingMessage.id && message.fullContent
-                    ? { ...message, content: message.fullContent.slice(0, nextLength) }
-                    : message
-            )));
-            scrollToBottom(false);
-        }, AI_TYPING_FRAME_MS);
-
-        return () => clearTimeout(timeout);
-    }, [messages, scrollToBottom]);
-
-    const sendPrompt = useCallback(async () => {
+    const sendPrompt = useCallback(() => {
         const trimmedPrompt = prompt.trim();
         if (!trimmedPrompt || isSending) return;
 
@@ -117,57 +169,53 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onChatScroll,
         }
 
         lastSentPromptRef.current = { prompt: trimmedPrompt, sentAt: now };
-
-        const userMessage: ChatMessage = {
-            id: `user-${now}`,
-            role: 'user',
-            content: trimmedPrompt,
-            createdAt: new Date().toISOString()
-        };
-        const processingMessage: ChatMessage = {
-            id: `assistant-processing-${now}`,
-            role: 'assistant',
-            content: '',
-            createdAt: new Date().toISOString(),
-            kind: 'processing'
-        };
-
-        const history = messages.map(({ kind: _kind, ...message }) => message);
-        setMessages((current) => [...current, userMessage, processingMessage]);
         setPrompt('');
-        setIsSending(true);
-        scrollToBottom(true);
+        void runExchange(trimmedPrompt, messages);
+    }, [isSending, messages, prompt, runExchange]);
 
-        try {
-            const reply = await onSendMessage?.({
-                ...(conversationId ? { conversationId } : {}),
-                message: trimmedPrompt,
-                history
-            });
+    const regenerateLast = useCallback(() => {
+        if (isSending) return;
 
-            if (!reply) {
-                throw new Error('A IA nao respondeu agora. Tente novamente.');
+        let userIndex = -1;
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+            if (messages[index]?.role === 'user') {
+                userIndex = index;
+                break;
             }
-
-            setConversationId(reply.conversationId);
-            setMessages((current) => current.map((message) => (
-                message.id === processingMessage.id
-                    ? {
-                        ...reply.message,
-                        content: '',
-                        fullContent: reply.message.content,
-                        isTyping: true
-                    }
-                    : message
-            )));
-            scrollToBottom(true);
-        } catch (error) {
-            setMessages((current) => current.filter((message) => message.id !== userMessage.id && message.id !== processingMessage.id));
-            setPrompt(trimmedPrompt);
-        } finally {
-            setIsSending(false);
         }
-    }, [conversationId, isSending, messages, onSendMessage, prompt, scrollToBottom]);
+        if (userIndex === -1) return;
+
+        const promptText = messages[userIndex]?.content ?? '';
+        void runExchange(promptText, messages.slice(0, userIndex));
+    }, [isSending, messages, runExchange]);
+
+    const startEditing = useCallback((message: ChatMessage) => {
+        if (isSending) return;
+        setEditingMessageId(message.id);
+        setEditingText(message.content);
+    }, [isSending]);
+
+    const cancelEditing = useCallback(() => {
+        setEditingMessageId(null);
+        setEditingText('');
+    }, []);
+
+    const submitEdit = useCallback(() => {
+        if (!editingMessageId) return;
+
+        const index = messages.findIndex((message) => message.id === editingMessageId);
+        const promptText = editingText.trim();
+        setEditingMessageId(null);
+        setEditingText('');
+
+        if (index === -1 || !promptText) return;
+        void runExchange(promptText, messages.slice(0, index));
+    }, [editingMessageId, editingText, messages, runExchange]);
+
+    const stopGenerating = useCallback(() => {
+        if (!activeJobId) return;
+        void onCancelMessage?.(activeJobId);
+    }, [activeJobId, onCancelMessage]);
 
     const handleInputKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
         if (event.nativeEvent.key === 'Enter') {
@@ -188,13 +236,39 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onChatScroll,
                 style={styles.chatScroll}
             >
                 <View style={styles.chatSection}>
-                    {messages.map((message) => (
+                    {messages.map((message, index) => (
                         message.role === 'user' ? (
                             <View key={message.id} style={styles.messageRowUser}>
                                 <View style={styles.messageBodyUser}>
-                                    <View style={styles.userBubble}>
-                                        <Text style={styles.userMessageText}>{message.content}</Text>
-                                    </View>
+                                    {editingMessageId === message.id ? (
+                                        <View style={styles.editBubble}>
+                                            <TextInput
+                                                autoFocus
+                                                multiline
+                                                onChangeText={setEditingText}
+                                                style={styles.editInput}
+                                                value={editingText}
+                                            />
+                                            <View style={styles.editActions}>
+                                                <Pressable onPress={cancelEditing} style={styles.editActionButton}>
+                                                    <X color={colors.textMuted} size={16} />
+                                                </Pressable>
+                                                <Pressable disabled={!editingText.trim()} onPress={submitEdit} style={[styles.editActionButton, styles.editActionButtonPrimary]}>
+                                                    <Check color={colors.inverseText} size={16} />
+                                                </Pressable>
+                                            </View>
+                                        </View>
+                                    ) : (
+                                        <>
+                                            <View style={styles.userBubble}>
+                                                <Text style={styles.userMessageText}>{message.content}</Text>
+                                            </View>
+                                            <Pressable disabled={isSending} onPress={() => startEditing(message)} style={styles.messageActionButton}>
+                                                <Pencil color={colors.textSubtle} size={13} />
+                                                <Text style={styles.messageActionText}>Editar</Text>
+                                            </Pressable>
+                                        </>
+                                    )}
                                 </View>
                             </View>
                         ) : (
@@ -208,7 +282,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onChatScroll,
                                             <ProcessingMessage pulse={processingPulse} />
                                         ) : (
                                             <>
-                                                <FormattedAssistantMessage content={message.content} isTyping={message.isTyping} />
+                                                <FormattedAssistantMessage content={message.content} isTyping={message.id === streamingMessageId} />
                                             </>
                                         )}
 
@@ -239,6 +313,13 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onChatScroll,
                                             </>
                                         ) : null}
                                     </View>
+
+                                    {!isSending && message.kind === 'text' && index === messages.length - 1 ? (
+                                        <Pressable onPress={regenerateLast} style={styles.messageActionButton}>
+                                            <RotateCcw color={colors.textSubtle} size={13} />
+                                            <Text style={styles.messageActionText}>Refazer resposta</Text>
+                                        </Pressable>
+                                    ) : null}
                                 </View>
                             </View>
                         )
@@ -264,9 +345,15 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onChatScroll,
                             value={prompt}
                         />
                     </View>
-                    <Pressable disabled={isSending} onPress={sendPrompt} style={[styles.sendButton, isSending ? styles.sendButtonDisabled : null]}>
-                        <Send color={colors.inverseText} size={18} />
-                    </Pressable>
+                    {isSending ? (
+                        <Pressable onPress={stopGenerating} style={[styles.sendButton, styles.stopButton]}>
+                            <Square color={colors.inverseText} fill={colors.inverseText} size={14} />
+                        </Pressable>
+                    ) : (
+                        <Pressable disabled={!prompt.trim()} onPress={sendPrompt} style={[styles.sendButton, !prompt.trim() ? styles.sendButtonDisabled : null]}>
+                            <Send color={colors.inverseText} size={18} />
+                        </Pressable>
+                    )}
                 </View>
             </View>
         </View>
@@ -471,6 +558,55 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         gap: spacing[3],
         padding: spacing[4]
+    },
+    messageActionButton: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing[1],
+        paddingHorizontal: spacing[1],
+        paddingVertical: 2
+    },
+    messageActionText: {
+        color: colors.textSubtle,
+        fontFamily: fonts.medium,
+        fontSize: 11.5,
+        fontWeight: '700'
+    },
+    editBubble: {
+        backgroundColor: colors.surface,
+        borderColor: colors.brand,
+        borderRadius: 16,
+        borderWidth: 1.5,
+        gap: spacing[2],
+        maxWidth: '100%',
+        padding: spacing[3],
+        width: '100%'
+    },
+    editInput: {
+        color: colors.text,
+        fontFamily: fonts.sans,
+        fontSize: 15,
+        lineHeight: 22,
+        minHeight: 40,
+        outlineStyle: 'none',
+        textAlignVertical: 'top'
+    } as object,
+    editActions: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing[2],
+        justifyContent: 'flex-end'
+    },
+    editActionButton: {
+        alignItems: 'center',
+        backgroundColor: colors.canvas,
+        borderRadius: radii.pill,
+        height: 30,
+        justifyContent: 'center',
+        width: 30
+    },
+    editActionButtonPrimary: {
+        backgroundColor: colors.brand
     },
     userBubble: {
         backgroundColor: colors.brandDark,
@@ -689,5 +825,8 @@ const styles = StyleSheet.create({
     },
     sendButtonDisabled: {
         opacity: 0.55
+    },
+    stopButton: {
+        backgroundColor: colors.textMuted
     }
 });

@@ -5,8 +5,6 @@ import { AiNotificationService } from '@ai/application/ports/ai-notification-ser
 import { appLogger } from '@/shared/logging/app-logger';
 import {
     AI_CHAT_RESULT_CHANNEL,
-    type AiChatFailedEvent,
-    type AiChatReadyEvent,
     type AiChatResultEvent
 } from '@ai/infrastructure/redis/ai-chat-events';
 
@@ -50,21 +48,21 @@ export class AiChatEventsSubscriber implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        if (this.isFailedEvent(event)) {
+        if (event.type === 'chunk') {
+            this.notifier.emitChatChunk({ userId: event.userId, jobId: event.jobId, delta: event.delta });
+            return;
+        }
+
+        if (event.type === 'failed') {
             this.notifier.emitChatFailed({ userId: event.userId, jobId: event.jobId, message: event.message });
             return;
         }
 
-        const ready = event as AiChatReadyEvent;
         this.notifier.emitChatReply({
-            userId: ready.userId,
-            jobId: ready.jobId,
-            conversationId: ready.reply.conversationId,
-            message: ready.reply.message as { id: string; role: string; content: string; createdAt: string }
+            userId: event.userId,
+            jobId: event.jobId,
+            conversationId: event.reply.conversationId,
+            message: event.reply.message as { id: string; role: string; content: string; createdAt: string }
         });
-    }
-
-    private isFailedEvent(event: AiChatResultEvent): event is AiChatFailedEvent {
-        return 'status' in event && (event as AiChatFailedEvent).status === 'failed';
     }
 }
