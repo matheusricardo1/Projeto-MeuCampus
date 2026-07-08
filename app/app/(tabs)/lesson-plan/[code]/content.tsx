@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useLanguage } from '@/shared/i18n/language-provider';
@@ -21,7 +22,21 @@ export default function CourseContentRoute() {
     });
     const course = courses.find((candidate) => candidate.code === code) ?? null;
 
+    useEffect(() => {
+        if (code && code !== workspace.selectedLessonPlanSubjectCode) {
+            void workspace.changeLessonPlanSubject(code);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [code]);
+
     if (!course) return <View style={styles.flexScroll} />;
 
-    return <CourseContentScreen course={course} onBack={() => router.back()} t={t} />;
+    return (
+        <CourseContentScreen
+            course={course}
+            loading={workspace.isLoading && course.code === workspace.selectedLessonPlanSubjectCode}
+            onBack={() => router.back()}
+            t={t}
+        />
+    );
 }

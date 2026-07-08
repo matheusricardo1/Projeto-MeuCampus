@@ -395,6 +395,7 @@ export const styles = StyleSheet.create({
     coursesOptionTextActive: { color: '#ffffff' },
     coursesList: { elevation: 0, gap: 16, position: 'relative', zIndex: 0 },
     courseCard: { backgroundColor: '#ffffff', borderColor: '#c0c9be', borderRadius: 12, borderWidth: 1, elevation: 0, gap: 16, padding: 16, position: 'relative', shadowColor: '#000000', shadowOpacity: 0.04, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, zIndex: 0 },
+    courseCardUnavailable: { opacity: 0.55 },
     courseCardHeader: { alignItems: 'flex-start', flexDirection: 'row', gap: 16, justifyContent: 'space-between', marginBottom: 0 },
     courseCardTitleBlock: { flex: 1, gap: 8, minWidth: 0 },
     courseCodeBadge: { alignSelf: 'flex-start', backgroundColor: '#ffffff', borderColor: '#c0c9be', borderRadius: 4, borderWidth: 1, marginBottom: 2, paddingHorizontal: 8, paddingVertical: 2 },

@@ -54,6 +54,7 @@ export function LessonPlanListPage({
     const isChangingPeriod = loading && grades.length === 0;
 
     const openCourse = (course: CourseCard) => {
+        if (!course.available) return;
         router.push(`/lesson-plan/${encodeURIComponent(course.code)}`);
     };
 
@@ -149,7 +150,7 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
     const statusColor = isAbsenceRisk ? '#ba1a1a' : gradeState.color;
 
     return (
-        <Pressable onPress={onPress} style={styles.courseCard}>
+        <Pressable onPress={onPress} style={[styles.courseCard, !course.available ? styles.courseCardUnavailable : null]}>
             <View style={styles.courseCardHeader}>
                 <View style={styles.courseCardTitleBlock}>
                     <View style={[styles.courseCodeBadge, isRisk ? styles.courseCodeBadgeDanger : null]}>
@@ -316,7 +317,7 @@ function FinalExamStatusCard({ course, frequency, t }: { course: CourseCard; fre
     );
 }
 
-export function CourseContentScreen({ course, onBack, t }: { course: CourseCard; onBack: () => void; t: Translate }) {
+export function CourseContentScreen({ course, loading, onBack, t }: { course: CourseCard; loading: boolean; onBack: () => void; t: Translate }) {
     const [filter, setFilter] = useState<'all' | 'practical' | 'theoretical'>('all');
     const filteredItems = useMemo(() => filterLessonItems(course.planItems, filter), [course.planItems, filter]);
     const progress = buildContentProgress(course.planItems);
@@ -362,14 +363,14 @@ export function CourseContentScreen({ course, onBack, t }: { course: CourseCard;
             </View>
 
             <LessonGroup
-                emptyText={t('lesson.noUpcomingClasses')}
+                emptyText={loading ? t('lesson.syllabusLoading') : t('lesson.noUpcomingClasses')}
                 items={grouped.upcoming}
                 status="upcoming"
                 title={t('lesson.upcomingClasses')}
                 t={t}
             />
             <LessonGroup
-                emptyText={t('lesson.noTaughtClasses')}
+                emptyText={loading ? t('lesson.syllabusLoading') : t('lesson.noTaughtClasses')}
                 items={grouped.taught}
                 status="taught"
                 title={t('lesson.taughtClasses')}
