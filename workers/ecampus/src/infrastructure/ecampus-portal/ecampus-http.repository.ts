@@ -59,20 +59,28 @@ export class EcampusHttpRepository implements EcampusRepository {
 
             const response = await client.get<string>('/notasEFrequencia/index', { timeout: 15000 });
             const tree = parse(response.data);
+            const resolved = this.extractSelectedPeriod(tree);
 
-            const year = tree.querySelector('input#ano')?.getAttribute('value')?.trim();
-            const options = tree.querySelectorAll('select[name="periodo"] option');
-            const selectedOption = options.find((option) => option.getAttribute('selected') !== undefined);
-            const ecampusCode = selectedOption?.getAttribute('value')?.trim();
-
-            if (!year || !ecampusCode) {
+            if (!resolved) {
                 throw new Error('Unable to determine the current academic period from eCampus.');
             }
 
-            const period = AcademicPeriod.fromEcampusCode(ecampusCode);
-            logger.info(`Resolved current academic period: ${year}/${period}.`);
-            return { year, period };
+            logger.info(`Resolved current academic period: ${resolved.year}/${resolved.period}.`);
+            return resolved;
         });
+    }
+
+    private extractSelectedPeriod(tree: HTMLElement): CurrentAcademicPeriod | null {
+        const year = tree.querySelector('input#ano')?.getAttribute('value')?.trim();
+        const options = tree.querySelectorAll('select[name="periodo"] option');
+        const selectedOption = options.find((option) => option.getAttribute('selected') !== undefined);
+        const ecampusCode = selectedOption?.getAttribute('value')?.trim();
+
+        if (!year || !ecampusCode) {
+            return null;
+        }
+
+        return { year, period: AcademicPeriod.fromEcampusCode(ecampusCode) };
     }
 
     async getGrades(credentials: EcampusCredentials, year: string, period: string): Promise<Grade[]> {
@@ -85,7 +93,7 @@ export class EcampusHttpRepository implements EcampusRepository {
             logger.info(`Fetching grades for year ${year}, period ${period}...`);
 
             const [html, workloadMap] = await Promise.all([
-                this.fetchGradesHtml(client, params),
+                this.fetchGradesHtml(client, params, year, period),
                 this.getLessonPlanWorkloadMap(client).catch((error) => {
                     logger.warning("Unable to fetch lesson plan workload map. Attendance summaries will omit workload-based calculations.", {
                         error: error instanceof Error ? error.message : String(error)
@@ -117,9 +125,13 @@ export class EcampusHttpRepository implements EcampusRepository {
             }
 
             const reportCard: Grade[] = [];
+            let skippedRows = 0;
             for (const row of tableGrades.querySelectorAll('tbody tr')) {
                 const columns = row.querySelectorAll('td');
-                if (columns.length < 26) continue;
+                if (columns.length < 26) {
+                    skippedRows += 1;
+                    continue;
+                }
 
                 const code = columns[0]!.textContent.trim();
                 if (!code) continue;
@@ -136,6 +148,10 @@ export class EcampusHttpRepository implements EcampusRepository {
                     attendance: this.calculateAttendanceSummary(workloadMap.get(code) ?? null, columns[24]!.textContent.trim()),
                     status: columns[25]!.textContent.trim()
                 });
+            }
+
+            if (skippedRows > 0) {
+                logger.warning(`Skipped ${skippedRows} grade row(s) with an unexpected column count.`);
             }
 
             logger.info(`Extraction complete: ${reportCard.length} subjects processed.`);
@@ -228,7 +244,7 @@ export class EcampusHttpRepository implements EcampusRepository {
         return workloadMap;
     }
 
-    private async fetchGradesHtml(client: Awaited<ReturnType<EcampusAuthService['getAuthenticatedClient']>>, params: URLSearchParams): Promise<string> {
+    private async fetchGradesHtml(client: Awaited<ReturnType<EcampusAuthService['getAuthenticatedClient']>>, params: URLSearchParams, year: string, period: string): Promise<string> {
         try {
             const response = await client.post<string>('/notasEFrequencia/getNotas', params, { timeout: 15000 });
             return response.data;
@@ -240,6 +256,19 @@ export class EcampusHttpRepository implements EcampusRepository {
                 });
 
                 const fallbackResponse = await client.get<string>('/notasEFrequencia/index', { timeout: 15000 });
+                const fallbackTree = parse(fallbackResponse.data);
+                const resolved = this.extractSelectedPeriod(fallbackTree);
+
+                // The index page always reflects whatever period is currently
+                // selected in-session, which may not be the one we asked for —
+                // returning it unchecked would silently mislabel these grades
+                // as belonging to `year`/`period` in the cache.
+                if (!resolved || resolved.year !== year || resolved.period !== period) {
+                    throw new Error(
+                        `Grades fallback page shows period ${resolved?.year ?? 'unknown'}/${resolved?.period ?? 'unknown'}, not the requested ${year}/${period}.`
+                    );
+                }
+
                 return fallbackResponse.data;
             }
 
@@ -267,7 +296,7 @@ export class EcampusHttpRepository implements EcampusRepository {
                 }
             }
 
-            const pattern = /"start":\s*new Date\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\).*?"end":\s*new Date\(\d+,\s*\d+,\s*\d+,\s*(\d+),\s*(\d+)\).*?"title":\s*"(.*?)"/gs;
+            const pattern = /"start":\s*new Date\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*\d+)*\).*?"end":\s*new Date\(\d+,\s*\d+,\s*\d+,\s*(\d+),\s*(\d+)(?:,\s*\d+)*\).*?"title":\s*"(.*?)"/gs;
             const schedule: ScheduleClass[] = [];
             let match: RegExpExecArray | null;
 
@@ -342,7 +371,7 @@ export class EcampusHttpRepository implements EcampusRepository {
                     const workload = columns[1]!.textContent.trim();
                     lessonPlan.push({
                         date,
-                        workload: isNaN(Number(workload)) ? workload : parseInt(workload),
+                        workload: workload && !isNaN(Number(workload)) ? parseInt(workload, 10) : workload,
                         type: columns[2]!.textContent.trim(),
                         content: columns[3]!.textContent.trim(),
                         professor: columns[4]!.textContent.trim()
