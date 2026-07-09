@@ -228,7 +228,7 @@ export class EcampusHttpRepository implements EcampusRepository {
                 throw new AuthSessionExpiredError('Sua sessao expirou. Entre novamente.');
             }
 
-            if (response.status === 429 && isPlainObject(payload) && payload.error === 'AI_DAILY_LIMIT_REACHED') {
+            if (response.status === 429 && isPlainObject(payload) && payload.errorCode === 'AI_DAILY_LIMIT_REACHED') {
                 const limit = typeof payload.limit === 'number' ? payload.limit : 6;
                 const plan = payload.plan === 'PAID' ? 'PAID' : 'FREE';
                 const message = typeof payload.message === 'string' ? payload.message : 'Limite diario de mensagens atingido.';

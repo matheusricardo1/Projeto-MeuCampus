@@ -44,9 +44,27 @@ export class HttpErrorFilter implements ExceptionFilter {
             statusCode,
             message,
             error: this.getErrorLabel(statusCode),
+            ...this.getPassthroughFields(exception),
             path: request.originalUrl,
             timestamp: new Date().toISOString()
         });
+    }
+
+    /**
+     * Forwards a machine-readable `errorCode` (plus any extra fields the
+     * throw site attached) untouched, so callers can branch on it client-side
+     * without needing bespoke handling in this filter for every case. Named
+     * `errorCode` (not `error`) specifically so it never collides with the
+     * generic per-status `error` label above.
+     */
+    private getPassthroughFields(exception: unknown): Record<string, unknown> {
+        if (!(exception instanceof HttpException)) return {};
+
+        const response = exception.getResponse();
+        if (typeof response !== 'object' || response === null || !('errorCode' in response)) return {};
+
+        const { statusCode: _statusCode, message: _message, error: _error, ...rest } = response as Record<string, unknown>;
+        return rest;
     }
 
     private getMessage(exception: unknown, statusCode: number): string {

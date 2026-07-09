@@ -35,7 +35,9 @@ export class AiQuotaGuard implements CanActivate {
             throw new HttpException(
                 {
                     statusCode: HttpStatus.TOO_MANY_REQUESTS,
-                    error: 'AI_DAILY_LIMIT_REACHED',
+                    // errorCode (not `error`) so it survives HttpErrorFilter, which
+                    // always overwrites `error` with a generic per-status label.
+                    errorCode: 'AI_DAILY_LIMIT_REACHED',
                     message: `Limite diario de ${limit} mensagens atingido.`,
                     limit,
                     plan
