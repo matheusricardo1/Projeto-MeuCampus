@@ -30,6 +30,7 @@ export class AiQuotaGuard implements CanActivate {
         const limit = plan === 'PAID' ? PAID_DAILY_LIMIT : FREE_DAILY_LIMIT;
 
         const result = await this.quotaService.consume(userId, limit);
+
         if (!result.allowed) {
             throw new HttpException(
                 {

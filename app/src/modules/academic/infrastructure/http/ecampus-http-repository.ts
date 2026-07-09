@@ -8,7 +8,7 @@ import type { StudentProfile } from '@/modules/academic/domain/entities/student-
 import { AuthSessionExpiredError } from '@/shared/auth/auth-session-expired.error';
 import { AiDailyLimitReachedError } from '@/shared/errors/ai-daily-limit-reached.error';
 import { EcampusResourcePendingError } from '@/modules/academic/domain/errors/ecampus-resource-pending.error';
-import type { EcampusRepository, EcampusScrapeJobType, LoginCredentials, SendAiChatMessageRequest } from '@/modules/academic/domain/repositories/ecampus-repository';
+import type { CreateCardCheckoutRequest, EcampusRepository, EcampusScrapeJobType, LoginCredentials, SendAiChatMessageRequest } from '@/modules/academic/domain/repositories/ecampus-repository';
 import { AcademicPeriod } from '@/modules/academic/domain/value-objects/academic-period';
 
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://127.0.0.1:3001';
@@ -128,6 +128,20 @@ export class EcampusHttpRepository implements EcampusRepository {
     getCheckoutStatus(accessToken: string, paymentId: string): Promise<{ status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' }> {
         return this.request(`/billing/checkout/${encodeURIComponent(paymentId)}/status`, {
             headers: this.authHeaders(accessToken)
+        });
+    }
+
+    getMercadoPagoPublicKey(accessToken: string): Promise<{ publicKey: string; amount: number }> {
+        return this.request('/billing/mercadopago/public-key', {
+            headers: this.authHeaders(accessToken)
+        });
+    }
+
+    createCardCheckout(accessToken: string, input: CreateCardCheckoutRequest): Promise<{ paymentId: string; status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED'; statusDetail: string }> {
+        return this.request('/billing/checkout/card', {
+            method: 'POST',
+            headers: this.authHeaders(accessToken),
+            body: JSON.stringify(input)
         });
     }
 

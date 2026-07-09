@@ -1,8 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AcademicAuthGuard } from '@auth/presentation/http/guards/academic-auth.guard';
 import type { AcademicCredentials } from '@auth/domain/entities/academic-session.entity';
-import { pseudonymousUserId } from '@/shared/security/pseudonymous-user-id';
+import { normalizeCpf, pseudonymousUserId } from '@/shared/security/pseudonymous-user-id';
 import { appLogger } from '@/shared/logging/app-logger';
 import { UserPlanRepository } from '@billing/infrastructure/prisma/user-plan.repository';
 import { MercadoPagoPaymentService } from '@billing/infrastructure/mercadopago/mercadopago-payment.service';
@@ -12,6 +12,13 @@ const PAID_PLAN_DAYS = 30;
 
 interface RequestWithAcademicCredentials extends Request {
     academicCredentials?: AcademicCredentials;
+}
+
+interface CreateCardCheckoutRequest {
+    token?: string;
+    paymentMethodId?: string;
+    issuerId?: string;
+    installments?: number;
 }
 
 @Controller('billing')
@@ -56,6 +63,56 @@ export class BillingController {
         };
     }
 
+    @Get('mercadopago/public-key')
+    @UseGuards(AcademicAuthGuard)
+    getPublicKey() {
+        return { publicKey: this.mercadoPago.getPublicKey(), amount: PAID_PLAN_PRICE_CENTS / 100 };
+    }
+
+    @Post('checkout/card')
+    @UseGuards(AcademicAuthGuard)
+    @HttpCode(201)
+    async createCardCheckout(@Req() request: RequestWithAcademicCredentials, @Body() body: CreateCardCheckoutRequest) {
+        const cpf = this.requireCpf(request);
+        const userId = pseudonymousUserId(cpf);
+        const payerCpf = normalizeCpf(cpf);
+
+        if (!body?.token || !body?.paymentMethodId || !body?.installments) {
+            throw new BadRequestException('Dados do cartao incompletos.');
+        }
+
+        if (payerCpf.length !== 11) {
+            throw new BadRequestException('CPF invalido para pagamento com cartao.');
+        }
+
+        const paymentId = await this.userPlanRepository.createPendingPayment(userId, {
+            amountCents: PAID_PLAN_PRICE_CENTS,
+            planDays: PAID_PLAN_DAYS
+        });
+
+        const card = await this.mercadoPago.createCardPayment({
+            internalPaymentId: paymentId,
+            amountCents: PAID_PLAN_PRICE_CENTS,
+            description: 'UfamAcademics IA - Plano 100 mensagens/dia (30 dias)',
+            payerEmail: `${userId}@ufamacademics.card`,
+            payerCpf,
+            token: body.token,
+            paymentMethodId: body.paymentMethodId,
+            ...(body.issuerId ? { issuerId: body.issuerId } : {}),
+            installments: body.installments
+        });
+
+        await this.userPlanRepository.attachMercadoPagoId(paymentId, card.mpPaymentId);
+
+        if (card.status === 'APPROVED') {
+            await this.userPlanRepository.approvePayment(card.mpPaymentId);
+        } else if (card.status === 'REJECTED' || card.status === 'EXPIRED') {
+            await this.userPlanRepository.markPaymentStatus(card.mpPaymentId, card.status);
+        }
+
+        return { paymentId, status: card.status, statusDetail: card.statusDetail };
+    }
+
     @Get('checkout/:paymentId/status')
     @UseGuards(AcademicAuthGuard)
     async getCheckoutStatus(@Param('paymentId') paymentId: string) {
@@ -69,11 +126,12 @@ export class BillingController {
     @Post('webhook/mercadopago')
     @HttpCode(200)
     async handleWebhook(
-        @Body() body: { data?: { id?: string }; type?: string },
+        @Body() body: { type?: string },
+        @Query('data.id') queryDataId?: string,
         @Headers('x-signature') xSignature?: string,
         @Headers('x-request-id') xRequestId?: string
     ) {
-        const dataId = body?.data?.id;
+        const dataId = queryDataId;
         if (body?.type !== 'payment' || !dataId) {
             return { received: true };
         }

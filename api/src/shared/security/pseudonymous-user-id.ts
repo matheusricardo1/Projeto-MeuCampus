@@ -14,9 +14,19 @@ let cachedSubkey: Buffer | undefined;
  * secret itself), so this is cryptographically isolated from JWT signing:
  * rotating the JWT secret rotates this subkey too, but the two purposes
  * never share a key directly.
+ *
+ * The CPF is normalized to digits-only before hashing, since callers on the
+ * request path (JWT `sub`, `AcademicCredentials.cpf`) carry whatever the
+ * client sent, punctuated or not (nothing normalizes it upstream) — without
+ * this, the same person could hash to two different ids depending on how
+ * their CPF was formatted when they logged in.
  */
 export function pseudonymousUserId(cpf: string): string {
-    return createHmac('sha256', getSubkey()).update(cpf).digest('hex').slice(0, 32);
+    return createHmac('sha256', getSubkey()).update(normalizeCpf(cpf)).digest('hex').slice(0, 32);
+}
+
+export function normalizeCpf(cpf: string): string {
+    return cpf.replace(/\D/g, '');
 }
 
 function getSubkey(): Buffer {

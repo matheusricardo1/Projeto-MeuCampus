@@ -774,6 +774,10 @@ export function useEcampusWorkspace() {
 
     const getCheckoutStatus = (paymentId: string) => useCases.getCheckoutStatus.execute(paymentId);
 
+    const getMercadoPagoPublicKey = () => useCases.getMercadoPagoPublicKey.execute();
+
+    const createCardCheckout = (input: Parameters<typeof useCases.createCardCheckout.execute>[0]) => useCases.createCardCheckout.execute(input);
+
     const cancelAiChatMessage = async (jobId: string) => {
         try {
             await useCases.cancelAiChatMessage.execute(jobId);
@@ -857,8 +861,10 @@ export function useEcampusWorkspace() {
         isInitialDataLoading,
         isLoading,
         cancelAiChatMessage,
+        createCardCheckout,
         createPixCheckout,
         getCheckoutStatus,
+        getMercadoPagoPublicKey,
         isReady,
         lessonPlan,
         lessonPlanSubjects,

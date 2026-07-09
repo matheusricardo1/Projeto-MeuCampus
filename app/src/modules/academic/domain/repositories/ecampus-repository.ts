@@ -34,4 +34,13 @@ export interface EcampusRepository {
     getBillingPlan(accessToken: string): Promise<{ plan: 'FREE' | 'PAID'; planExpiresAt: string | null }>;
     createPixCheckout(accessToken: string): Promise<{ paymentId: string; qrCode: string; qrCodeBase64: string; expiresAt: string }>;
     getCheckoutStatus(accessToken: string, paymentId: string): Promise<{ status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' }>;
+    getMercadoPagoPublicKey(accessToken: string): Promise<{ publicKey: string; amount: number }>;
+    createCardCheckout(accessToken: string, input: CreateCardCheckoutRequest): Promise<{ paymentId: string; status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED'; statusDetail: string }>;
+}
+
+export interface CreateCardCheckoutRequest {
+    token: string;
+    paymentMethodId: string;
+    issuerId?: string;
+    installments: number;
 }

@@ -18,8 +18,10 @@ export default function AiRoute() {
             hidePromptInput={chrome.isAILaunching}
             onCancelMessage={workspace.cancelAiChatMessage}
             onChatScroll={chrome.closeChatHistory}
+            onCreateCardCheckout={workspace.createCardCheckout}
             onCreatePixCheckout={workspace.createPixCheckout}
             onGetCheckoutStatus={workspace.getCheckoutStatus}
+            onGetMercadoPagoPublicKey={workspace.getMercadoPagoPublicKey}
             onSendMessage={workspace.sendAiChatMessage}
         />
     );

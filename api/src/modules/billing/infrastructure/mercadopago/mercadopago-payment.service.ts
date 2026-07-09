@@ -1,7 +1,8 @@
-import { createHmac, timingSafeEqual } from 'crypto';
 import { Injectable } from '@nestjs/common';
-import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { InvalidWebhookSignatureError, MercadoPagoConfig, Payment, WebhookSignatureValidator } from 'mercadopago';
 import { appLogger } from '@/shared/logging/app-logger';
+
+const WEBHOOK_TOLERANCE_SECONDS = 300;
 
 export interface PixPayment {
     mpPaymentId: string;
@@ -10,13 +11,25 @@ export interface PixPayment {
     expiresAt: string;
 }
 
+export interface CardPaymentResult {
+    mpPaymentId: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+    statusDetail: string;
+}
+
 @Injectable()
 export class MercadoPagoPaymentService {
     private readonly client: Payment;
+    private readonly publicKey: string;
 
     constructor() {
         const accessToken = requireEnv('MERCADOPAGO_ACCESS_TOKEN');
+        this.publicKey = requireEnv('MERCADOPAGO_PUBLIC_KEY');
         this.client = new Payment(new MercadoPagoConfig({ accessToken }));
+    }
+
+    getPublicKey(): string {
+        return this.publicKey;
     }
 
     async createPixPayment(params: {
@@ -52,14 +65,59 @@ export class MercadoPagoPaymentService {
         };
     }
 
+    async createCardPayment(params: {
+        internalPaymentId: string;
+        amountCents: number;
+        description: string;
+        payerEmail: string;
+        payerCpf: string;
+        token: string;
+        paymentMethodId: string;
+        issuerId?: string;
+        installments: number;
+    }): Promise<CardPaymentResult> {
+        const webhookUrl = process.env.MERCADOPAGO_WEBHOOK_URL;
+
+        const response = await this.client.create({
+            body: {
+                transaction_amount: params.amountCents / 100,
+                description: params.description,
+                token: params.token,
+                payment_method_id: params.paymentMethodId,
+                installments: params.installments,
+                ...(params.issuerId ? { issuer_id: Number(params.issuerId) } : {}),
+                payer: {
+                    email: params.payerEmail,
+                    identification: { type: 'CPF', number: params.payerCpf }
+                },
+                external_reference: params.internalPaymentId,
+                ...(webhookUrl ? { notification_url: webhookUrl } : {})
+            }
+        });
+
+        if (!response.id) {
+            appLogger.error('Falha ao criar pagamento com cartao no Mercado Pago.', { internalPaymentId: params.internalPaymentId });
+            throw new Error('Nao foi possivel processar o pagamento com cartao.');
+        }
+
+        return {
+            mpPaymentId: String(response.id),
+            status: mapStatus(response.status),
+            statusDetail: response.status_detail || ''
+        };
+    }
+
     async getPaymentStatus(mpPaymentId: string): Promise<'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED'> {
         const response = await this.client.get({ id: mpPaymentId });
         return mapStatus(response.status);
     }
 
     /**
-     * Validates the x-signature header per Mercado Pago's webhook spec:
-     * HMAC-SHA256("id:{dataId};request-id:{xRequestId};ts:{ts};", secret).
+     * Validates the x-signature header via the official SDK utility.
+     * `dataId` must be the `data.id` QUERY STRING parameter (not the JSON
+     * body) — Mercado Pago's manifest is signed over the query value, and
+     * hashing the body's `data.id` instead produces a mismatch on every
+     * real webhook.
      */
     verifyWebhookSignature(params: { xSignature: string; xRequestId: string; dataId: string }): boolean {
         const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
@@ -68,23 +126,22 @@ export class MercadoPagoPaymentService {
             return false;
         }
 
-        const parts = Object.fromEntries(
-            params.xSignature.split(',').map((entry) => {
-                const [key, value] = entry.split('=');
-                return [key?.trim(), value?.trim()];
-            })
-        );
-
-        const ts = parts.ts;
-        const receivedHash = parts.v1;
-        if (!ts || !receivedHash) return false;
-
-        const manifest = `id:${params.dataId.toLowerCase()};request-id:${params.xRequestId};ts:${ts};`;
-        const expectedHash = createHmac('sha256', secret).update(manifest).digest('hex');
-
-        const expected = Buffer.from(expectedHash, 'utf8');
-        const received = Buffer.from(receivedHash, 'utf8');
-        return expected.length === received.length && timingSafeEqual(expected, received);
+        try {
+            WebhookSignatureValidator.validate({
+                xSignature: params.xSignature,
+                xRequestId: params.xRequestId,
+                dataId: params.dataId,
+                secret,
+                toleranceSeconds: WEBHOOK_TOLERANCE_SECONDS
+            });
+            return true;
+        } catch (error) {
+            if (error instanceof InvalidWebhookSignatureError) {
+                appLogger.warning('Assinatura de webhook do Mercado Pago invalida.', { reason: error.reason, requestId: error.requestId });
+                return false;
+            }
+            throw error;
+        }
     }
 }
 
