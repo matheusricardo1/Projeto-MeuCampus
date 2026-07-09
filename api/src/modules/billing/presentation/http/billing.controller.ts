@@ -10,6 +10,24 @@ import { MercadoPagoPaymentService } from '@billing/infrastructure/mercadopago/m
 const PAID_PLAN_PRICE_CENTS = 2000;
 const PAID_PLAN_DAYS = 30;
 
+/**
+ * The app never collects user emails (only CPF), but Mercado Pago requires
+ * a valid `payer.email` on every payment. We don't need per-user delivery -
+ * MP only validates the format/domain, it doesn't confirm the inbox exists -
+ * so every payment uses this single real address. In production MP does
+ * validate the domain (a fabricated TLD like "@ufamacademics.pix" gets
+ * rejected with "payer.email must be a valid email"), so this must point at
+ * a real, deliverable domain. Expect Mercado Pago's payment
+ * receipts/notifications to land here for every user's payment.
+ */
+function getPayerEmail(): string {
+    const value = process.env.MERCADOPAGO_PAYER_EMAIL;
+    if (!value) {
+        throw new Error('CONFIGURACAO ERRO: MERCADOPAGO_PAYER_EMAIL nao esta definida nas variaveis de ambiente!');
+    }
+    return value;
+}
+
 interface RequestWithAcademicCredentials extends Request {
     academicCredentials?: AcademicCredentials;
 }
@@ -50,7 +68,7 @@ export class BillingController {
             internalPaymentId: paymentId,
             amountCents: PAID_PLAN_PRICE_CENTS,
             description: 'UfamAcademics IA - Plano 100 mensagens/dia (30 dias)',
-            payerEmail: `${userId}@ufamacademics.pix`
+            payerEmail: getPayerEmail()
         });
 
         await this.userPlanRepository.attachMercadoPagoId(paymentId, pix.mpPaymentId);
@@ -94,7 +112,7 @@ export class BillingController {
             internalPaymentId: paymentId,
             amountCents: PAID_PLAN_PRICE_CENTS,
             description: 'UfamAcademics IA - Plano 100 mensagens/dia (30 dias)',
-            payerEmail: `${userId}@ufamacademics.card`,
+            payerEmail: getPayerEmail(),
             payerCpf,
             token: body.token,
             paymentMethodId: body.paymentMethodId,
