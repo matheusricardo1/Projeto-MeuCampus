@@ -1,5 +1,7 @@
 import { ClearAuthSessionUseCase } from '@/shared/auth/clear-auth-session.usecase';
 import { CancelAiChatMessageUseCase } from '@/modules/academic/application/use-cases/cancel-ai-chat-message.usecase';
+import { CreatePixCheckoutUseCase } from '@/modules/academic/application/use-cases/create-pix-checkout.usecase';
+import { GetCheckoutStatusUseCase } from '@/modules/academic/application/use-cases/get-checkout-status.usecase';
 import { EnqueueEcampusScrapeJobUseCase } from '@/modules/academic/application/use-cases/enqueue-ecampus-scrape-job.usecase';
 import { GetAuthSessionUseCase } from '@/shared/auth/get-auth-session.usecase';
 import { GetGradesUseCase } from '@/modules/academic/application/use-cases/get-grades.usecase';
@@ -20,6 +22,8 @@ export function createEcampusUseCases() {
 
     return {
         cancelAiChatMessage: new CancelAiChatMessageUseCase(repository, sessionStore),
+        createPixCheckout: new CreatePixCheckoutUseCase(repository, sessionStore),
+        getCheckoutStatus: new GetCheckoutStatusUseCase(repository, sessionStore),
         clearAuthSession: new ClearAuthSessionUseCase(sessionStore),
         enqueueScrapeJob: new EnqueueEcampusScrapeJobUseCase(repository, sessionStore),
         getAuthSession: new GetAuthSessionUseCase(sessionStore),

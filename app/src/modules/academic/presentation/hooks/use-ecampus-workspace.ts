@@ -770,6 +770,10 @@ export function useEcampusWorkspace() {
         }
     };
 
+    const createPixCheckout = () => useCases.createPixCheckout.execute();
+
+    const getCheckoutStatus = (paymentId: string) => useCases.getCheckoutStatus.execute(paymentId);
+
     const cancelAiChatMessage = async (jobId: string) => {
         try {
             await useCases.cancelAiChatMessage.execute(jobId);
@@ -853,6 +857,8 @@ export function useEcampusWorkspace() {
         isInitialDataLoading,
         isLoading,
         cancelAiChatMessage,
+        createPixCheckout,
+        getCheckoutStatus,
         isReady,
         lessonPlan,
         lessonPlanSubjects,

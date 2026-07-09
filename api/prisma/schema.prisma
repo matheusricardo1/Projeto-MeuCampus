@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  FREE
+  PAID
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+/// id is never the raw CPF - it is HMAC-SHA256(CPF) via pseudonymousUserId(),
+/// a one-way derivation. You can look up a user from a CPF, never a CPF from
+/// a user id (LGPD-friendly pseudonymization, see pseudonymous-user-id.ts).
+model User {
+  id             String    @id
+  plan           Plan      @default(FREE)
+  planExpiresAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  payments       Payment[]
+}
+
+model Payment {
+  id                  String        @id @default(uuid())
+  userId              String
+  user                User          @relation(fields: [userId], references: [id])
+  mpPaymentId          String?      @unique
+  status              PaymentStatus @default(PENDING)
+  amountCents         Int
+  planDays            Int
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([userId])
+}

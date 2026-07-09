@@ -78,7 +78,7 @@ A integração com IA usa o **Model Context Protocol (MCP)**: a API expõe um se
 
 A segurança foi priorizada em cada linha de código:
 
-1. **Zero Data Retention:** O sistema **NÃO possui banco de dados relacional/persistente** e **NÃO armazena senhas**. As credenciais são usadas apenas em memória para realizar o *handshake* com o eCampus. O único armazenamento intermediário é o Redis, usado exclusivamente como broker de filas, canal de Pub/Sub e cache de curta duração — nunca para persistir credenciais.
+1. **Minimização de Dados:** O sistema **NÃO armazena senhas**. As credenciais do eCampus são usadas apenas em memória para realizar o *handshake*, e o Redis funciona como broker de filas, canal de Pub/Sub e cache de curta duração — nunca para persistir credenciais. O único dado persistido em banco relacional (Postgres) é o registro de plano/pagamento da assinatura de IA, e mesmo esse é indexado por um **hash HMAC unidirecional do CPF** (não o CPF em si e não um ID reversível) — ver `pseudonymousUserId()`.
 2. **Criptografia em Trânsito:** Toda comunicação entre App, API e eCampus é realizada estritamente via HTTPS.
 3. **Gestão de Sessão:** Utilização de tokens JWT para manter o estado do usuário, garantindo que o backend seja *stateless* e seguro.
 4. **Respeito à LGPD:** O projeto segue o princípio da **Minimização de Dados**, tratando apenas as informações que o usuário já possui direito de acesso no portal oficial.

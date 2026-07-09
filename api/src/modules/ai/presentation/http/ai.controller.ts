@@ -5,6 +5,7 @@ import { CancelAiChatMessageUseCase } from '@ai/application/use-cases/cancel-ai-
 import { CurrentAiUser } from '@ai/presentation/http/decorators/current-ai-user.decorator';
 import { SendAiChatMessageRequest } from '@ai/presentation/http/dto/send-ai-chat-message.request';
 import { AiAuthGuard } from '@ai/presentation/http/guards/ai-auth.guard';
+import { AiQuotaGuard } from '@ai/presentation/http/guards/ai-quota.guard';
 
 @Controller('ai')
 @UseGuards(AiAuthGuard)
@@ -16,6 +17,7 @@ export class AiController {
 
     @Post('chat/messages')
     @HttpCode(202)
+    @UseGuards(AiQuotaGuard)
     async sendMessage(
         @CurrentAiUser() user: AiAuthenticatedUser,
         @Body() body: SendAiChatMessageRequest

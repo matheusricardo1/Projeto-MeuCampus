@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputKeyPressEventData, View } from 'react-native';
-import { Bot, Brain, Check, Pencil, RotateCcw, Send, Square, X } from 'lucide-react-native';
+import { ActivityIndicator, Animated, Easing, Image, Modal, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputKeyPressEventData, View } from 'react-native';
+import { Bot, Brain, Check, Lock, Pencil, RotateCcw, Send, Square, X } from 'lucide-react-native';
 import type { AiChatMessage } from '@/modules/academic/domain/entities/ai-chat-message';
 import type { AiChatReply } from '@/modules/academic/domain/entities/ai-chat-reply';
+import { AiDailyLimitReachedError } from '@/shared/errors/ai-daily-limit-reached.error';
 import { colors, fonts, radii, spacing } from '@/shared/design-system';
 
 type SendMessageHandlers = {
@@ -10,11 +11,16 @@ type SendMessageHandlers = {
     onChunk?: (delta: string) => void;
 };
 
+type PixCheckout = { paymentId: string; qrCode: string; qrCodeBase64: string; expiresAt: string };
+type CheckoutStatus = { status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' };
+
 type AIPageProps = {
     bottomInset?: number;
     hidePromptInput?: boolean;
     onCancelMessage?: (jobId: string) => Promise<void>;
     onChatScroll?: () => void;
+    onCreatePixCheckout?: () => Promise<PixCheckout>;
+    onGetCheckoutStatus?: (paymentId: string) => Promise<CheckoutStatus>;
     onSendMessage?: (input: { conversationId?: string; message: string; history?: AiChatMessage[] }, handlers?: SendMessageHandlers) => Promise<AiChatReply | null>;
 };
 
@@ -31,7 +37,7 @@ const initialMessages: ChatMessage[] = [
     }
 ];
 
-export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessage, onChatScroll, onSendMessage }: AIPageProps) {
+export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessage, onChatScroll, onCreatePixCheckout, onGetCheckoutStatus, onSendMessage }: AIPageProps) {
     const scrollRef = useRef<ScrollView | null>(null);
     const lastSentPromptRef = useRef<{ prompt: string; sentAt: number } | null>(null);
     const processingPulse = useRef(new Animated.Value(0)).current;
@@ -43,6 +49,8 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const [editingText, setEditingText] = useState('');
+    const [dailyLimit, setDailyLimit] = useState<{ limit: number } | null>(null);
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
     const scrollToBottom = useCallback((animated = false) => {
         const scheduleFrame = typeof requestAnimationFrame === 'function'
             ? requestAnimationFrame
@@ -143,7 +151,11 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
             )));
             scrollToBottom(true);
         } catch (error) {
-            if (hasStreamedContent) {
+            if (error instanceof AiDailyLimitReachedError) {
+                setMessages(historyBase);
+                setPrompt(trimmedPrompt);
+                setDailyLimit({ limit: error.limit });
+            } else if (hasStreamedContent) {
                 setMessages((current) => current.map((message) => (
                     message.id === assistantId ? { ...message, kind: 'text' } : message
                 )));
@@ -329,34 +341,148 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
             </ScrollView>
 
             <View pointerEvents={hidePromptInput ? 'none' : 'auto'} style={[styles.inputDock, hidePromptInput ? styles.inputDockHidden : null, { bottom: bottomInset }]}>
-                <View style={styles.inputBar}>
-                    <View style={styles.inputShell}>
-                        <Brain color={colors.brand} size={18} />
-                        <TextInput
-                            style={styles.input}
-                            blurOnSubmit={false}
-                            editable={!isSending}
-                            onChangeText={setPrompt}
-                            onKeyPress={handleInputKeyPress}
-                            onSubmitEditing={sendPrompt}
-                            placeholder="Pergunte qualquer coisa..."
-                            placeholderTextColor={colors.textSubtle}
-                            returnKeyType="send"
-                            value={prompt}
-                        />
+                {dailyLimit ? (
+                    <View style={styles.limitBanner}>
+                        <View style={styles.limitBannerIcon}>
+                            <Lock color={colors.brandDark} size={16} />
+                        </View>
+                        <View style={styles.limitBannerTextGroup}>
+                            <Text style={styles.limitBannerTitle}>Limite diario de {dailyLimit.limit} mensagens atingido</Text>
+                            <Text style={styles.limitBannerSubtitle}>Assine por R$ 20/mes e tenha 100 mensagens por dia</Text>
+                        </View>
+                        <Pressable onPress={() => setIsUpgradeModalOpen(true)} style={styles.limitBannerButton}>
+                            <Text style={styles.limitBannerButtonText}>Assinar</Text>
+                        </Pressable>
                     </View>
-                    {isSending ? (
-                        <Pressable onPress={stopGenerating} style={[styles.sendButton, styles.stopButton]}>
-                            <Square color={colors.inverseText} fill={colors.inverseText} size={14} />
+                ) : (
+                    <View style={styles.inputBar}>
+                        <View style={styles.inputShell}>
+                            <Brain color={colors.brand} size={18} />
+                            <TextInput
+                                style={styles.input}
+                                blurOnSubmit={false}
+                                editable={!isSending}
+                                onChangeText={setPrompt}
+                                onKeyPress={handleInputKeyPress}
+                                onSubmitEditing={sendPrompt}
+                                placeholder="Pergunte qualquer coisa..."
+                                placeholderTextColor={colors.textSubtle}
+                                returnKeyType="send"
+                                value={prompt}
+                            />
+                        </View>
+                        {isSending ? (
+                            <Pressable onPress={stopGenerating} style={[styles.sendButton, styles.stopButton]}>
+                                <Square color={colors.inverseText} fill={colors.inverseText} size={14} />
+                            </Pressable>
+                        ) : (
+                            <Pressable disabled={!prompt.trim()} onPress={sendPrompt} style={[styles.sendButton, !prompt.trim() ? styles.sendButtonDisabled : null]}>
+                                <Send color={colors.inverseText} size={18} />
+                            </Pressable>
+                        )}
+                    </View>
+                )}
+            </View>
+
+            <UpgradeModal
+                onClose={() => setIsUpgradeModalOpen(false)}
+                onCreatePixCheckout={onCreatePixCheckout}
+                onGetCheckoutStatus={onGetCheckoutStatus}
+                onPaymentApproved={() => {
+                    setIsUpgradeModalOpen(false);
+                    setDailyLimit(null);
+                }}
+                visible={isUpgradeModalOpen}
+            />
+        </View>
+    );
+}
+
+function UpgradeModal({ visible, onClose, onCreatePixCheckout, onGetCheckoutStatus, onPaymentApproved }: {
+    visible: boolean;
+    onClose: () => void;
+    onCreatePixCheckout?: () => Promise<PixCheckout>;
+    onGetCheckoutStatus?: (paymentId: string) => Promise<CheckoutStatus>;
+    onPaymentApproved: () => void;
+}) {
+    const [checkout, setCheckout] = useState<PixCheckout | null>(null);
+    const [checkoutError, setCheckoutError] = useState<string | null>(null);
+    const [isCreating, setIsCreating] = useState(false);
+
+    useEffect(() => {
+        if (!visible) {
+            setCheckout(null);
+            setCheckoutError(null);
+            return;
+        }
+
+        let cancelled = false;
+        setIsCreating(true);
+        setCheckoutError(null);
+
+        onCreatePixCheckout?.()
+            .then((result) => {
+                if (!cancelled) setCheckout(result);
+            })
+            .catch(() => {
+                if (!cancelled) setCheckoutError('Nao foi possivel gerar o pagamento PIX. Tente novamente.');
+            })
+            .finally(() => {
+                if (!cancelled) setIsCreating(false);
+            });
+
+        return () => { cancelled = true; };
+    }, [visible, onCreatePixCheckout]);
+
+    useEffect(() => {
+        if (!visible || !checkout || !onGetCheckoutStatus) return;
+
+        const interval = setInterval(() => {
+            onGetCheckoutStatus(checkout.paymentId)
+                .then((result) => {
+                    if (result.status === 'APPROVED') {
+                        onPaymentApproved();
+                    }
+                })
+                .catch(() => {});
+        }, 3000);
+
+        return () => clearInterval(interval);
+    }, [visible, checkout, onGetCheckoutStatus, onPaymentApproved]);
+
+    return (
+        <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+            <View style={styles.modalOverlay}>
+                <View style={styles.modalCard}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Plano de 100 mensagens/dia</Text>
+                        <Pressable onPress={onClose} style={styles.modalCloseButton}>
+                            <X color={colors.textMuted} size={18} />
                         </Pressable>
-                    ) : (
-                        <Pressable disabled={!prompt.trim()} onPress={sendPrompt} style={[styles.sendButton, !prompt.trim() ? styles.sendButtonDisabled : null]}>
-                            <Send color={colors.inverseText} size={18} />
-                        </Pressable>
-                    )}
+                    </View>
+
+                    {isCreating ? (
+                        <View style={styles.modalLoading}>
+                            <ActivityIndicator color={colors.brand} />
+                            <Text style={styles.modalHint}>Gerando cobranca PIX...</Text>
+                        </View>
+                    ) : checkoutError ? (
+                        <Text style={styles.modalError}>{checkoutError}</Text>
+                    ) : checkout ? (
+                        <>
+                            <Text style={styles.modalPrice}>R$ 20,00 / mes</Text>
+                            <Image source={{ uri: `data:image/png;base64,${checkout.qrCodeBase64}` }} style={styles.qrImage} />
+                            <Text style={styles.modalHint}>Escaneie o QR code com o app do seu banco ou copie o codigo abaixo</Text>
+                            <Text selectable style={styles.pixCode}>{checkout.qrCode}</Text>
+                            <View style={styles.modalWaitingRow}>
+                                <ActivityIndicator color={colors.brand} size="small" />
+                                <Text style={styles.modalHint}>Aguardando confirmacao do pagamento...</Text>
+                            </View>
+                        </>
+                    ) : null}
                 </View>
             </View>
-        </View>
+        </Modal>
     );
 }
 
@@ -828,5 +954,125 @@ const styles = StyleSheet.create({
     },
     stopButton: {
         backgroundColor: colors.textMuted
+    },
+    limitBanner: {
+        alignItems: 'center',
+        backgroundColor: '#ffffff',
+        borderColor: colors.brand,
+        borderRadius: 18,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: spacing[3],
+        maxWidth: 640,
+        padding: spacing[3],
+        width: '100%'
+    },
+    limitBannerIcon: {
+        alignItems: 'center',
+        backgroundColor: colors.brandSubtle,
+        borderRadius: radii.pill,
+        height: 34,
+        justifyContent: 'center',
+        width: 34
+    },
+    limitBannerTextGroup: {
+        flex: 1,
+        gap: 2
+    },
+    limitBannerTitle: {
+        color: colors.text,
+        fontFamily: fonts.medium,
+        fontSize: 13,
+        fontWeight: '800'
+    },
+    limitBannerSubtitle: {
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
+        fontSize: 12
+    },
+    limitBannerButton: {
+        backgroundColor: colors.brand,
+        borderRadius: 12,
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[2]
+    },
+    limitBannerButtonText: {
+        color: colors.inverseText,
+        fontFamily: fonts.medium,
+        fontSize: 13,
+        fontWeight: '800'
+    },
+    modalOverlay: {
+        alignItems: 'center',
+        backgroundColor: 'rgba(15, 23, 20, 0.55)',
+        flex: 1,
+        justifyContent: 'center',
+        padding: spacing[4]
+    },
+    modalCard: {
+        backgroundColor: '#ffffff',
+        borderRadius: 20,
+        gap: spacing[3],
+        maxWidth: 380,
+        padding: spacing[4],
+        width: '100%'
+    },
+    modalHeader: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'space-between'
+    },
+    modalTitle: {
+        color: colors.text,
+        fontFamily: fonts.medium,
+        fontSize: 16,
+        fontWeight: '800'
+    },
+    modalCloseButton: {
+        alignItems: 'center',
+        height: 28,
+        justifyContent: 'center',
+        width: 28
+    },
+    modalLoading: {
+        alignItems: 'center',
+        gap: spacing[2],
+        paddingVertical: spacing[4]
+    },
+    modalError: {
+        color: '#c0392b',
+        fontFamily: fonts.sans,
+        fontSize: 14
+    },
+    modalPrice: {
+        color: colors.brandDark,
+        fontFamily: fonts.medium,
+        fontSize: 20,
+        fontWeight: '800'
+    },
+    qrImage: {
+        alignSelf: 'center',
+        height: 220,
+        width: 220
+    },
+    modalHint: {
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
+        fontSize: 12,
+        textAlign: 'center'
+    },
+    pixCode: {
+        backgroundColor: colors.canvas,
+        borderRadius: 10,
+        color: colors.text,
+        fontFamily: fonts.sans,
+        fontSize: 11,
+        padding: spacing[2]
+    },
+    modalWaitingRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing[2],
+        justifyContent: 'center'
     }
 });

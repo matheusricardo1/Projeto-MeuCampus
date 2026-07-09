@@ -15,6 +15,7 @@
     "paths": {
       "@/*": ["src/*"],
       "@ai/*": ["src/modules/ai/*"],
+      "@billing/*": ["src/modules/billing/*"],
       "@academic/*": ["src/modules/academic/*"],
       "@auth/*": ["src/modules/auth/*"],
       "@ecampus/*": ["src/modules/ecampus/*"],

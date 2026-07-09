@@ -31,4 +31,7 @@ export interface EcampusRepository {
     getLessonPlan(accessToken: string, planId: string): Promise<LessonPlanItem[]>;
     sendAiChatMessage(accessToken: string, input: SendAiChatMessageRequest): Promise<{ jobId: string }>;
     cancelAiChatMessage(accessToken: string, jobId: string): Promise<void>;
+    getBillingPlan(accessToken: string): Promise<{ plan: 'FREE' | 'PAID'; planExpiresAt: string | null }>;
+    createPixCheckout(accessToken: string): Promise<{ paymentId: string; qrCode: string; qrCodeBase64: string; expiresAt: string }>;
+    getCheckoutStatus(accessToken: string, paymentId: string): Promise<{ status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' }>;
 }

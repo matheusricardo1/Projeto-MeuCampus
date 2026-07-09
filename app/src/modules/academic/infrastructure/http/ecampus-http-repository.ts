@@ -6,6 +6,7 @@ import type { LessonPlanSubject } from '@/modules/academic/domain/entities/lesso
 import type { ScheduleClass } from '@/modules/academic/domain/entities/schedule-class';
 import type { StudentProfile } from '@/modules/academic/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/shared/auth/auth-session-expired.error';
+import { AiDailyLimitReachedError } from '@/shared/errors/ai-daily-limit-reached.error';
 import { EcampusResourcePendingError } from '@/modules/academic/domain/errors/ecampus-resource-pending.error';
 import type { EcampusRepository, EcampusScrapeJobType, LoginCredentials, SendAiChatMessageRequest } from '@/modules/academic/domain/repositories/ecampus-repository';
 import { AcademicPeriod } from '@/modules/academic/domain/value-objects/academic-period';
@@ -111,6 +112,25 @@ export class EcampusHttpRepository implements EcampusRepository {
         });
     }
 
+    getBillingPlan(accessToken: string): Promise<{ plan: 'FREE' | 'PAID'; planExpiresAt: string | null }> {
+        return this.request('/billing/plan', {
+            headers: this.authHeaders(accessToken)
+        });
+    }
+
+    createPixCheckout(accessToken: string): Promise<{ paymentId: string; qrCode: string; qrCodeBase64: string; expiresAt: string }> {
+        return this.request('/billing/checkout/pix', {
+            method: 'POST',
+            headers: this.authHeaders(accessToken)
+        });
+    }
+
+    getCheckoutStatus(accessToken: string, paymentId: string): Promise<{ status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' }> {
+        return this.request(`/billing/checkout/${encodeURIComponent(paymentId)}/status`, {
+            headers: this.authHeaders(accessToken)
+        });
+    }
+
     private authHeaders(accessToken: string): HeadersInit {
         return {
             Authorization: `Bearer ${accessToken}`
@@ -192,6 +212,13 @@ export class EcampusHttpRepository implements EcampusRepository {
         if (!response.ok) {
             if (path !== '/ecampus/login' && (response.status === 401 || response.status === 403)) {
                 throw new AuthSessionExpiredError('Sua sessao expirou. Entre novamente.');
+            }
+
+            if (response.status === 429 && isPlainObject(payload) && payload.error === 'AI_DAILY_LIMIT_REACHED') {
+                const limit = typeof payload.limit === 'number' ? payload.limit : 6;
+                const plan = payload.plan === 'PAID' ? 'PAID' : 'FREE';
+                const message = typeof payload.message === 'string' ? payload.message : 'Limite diario de mensagens atingido.';
+                throw new AiDailyLimitReachedError(limit, plan, message);
             }
 
             const message = isPlainObject(payload) ? payload.message : undefined;
