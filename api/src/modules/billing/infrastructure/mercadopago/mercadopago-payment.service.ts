@@ -40,7 +40,7 @@ export class MercadoPagoPaymentService {
     }): Promise<PixPayment> {
         const webhookUrl = process.env.MERCADOPAGO_WEBHOOK_URL;
 
-        const response = await this.client.create({
+        const response = await this.callMp('createPixPayment', params.internalPaymentId, () => this.client.create({
             body: {
                 transaction_amount: params.amountCents / 100,
                 description: params.description,
@@ -49,11 +49,14 @@ export class MercadoPagoPaymentService {
                 external_reference: params.internalPaymentId,
                 ...(webhookUrl ? { notification_url: webhookUrl } : {})
             }
-        });
+        }));
 
         const pointOfInteraction = response.point_of_interaction?.transaction_data;
         if (!response.id || !pointOfInteraction?.qr_code || !pointOfInteraction?.qr_code_base64) {
-            appLogger.error('Falha ao criar pagamento PIX no Mercado Pago.', { internalPaymentId: params.internalPaymentId });
+            appLogger.error('Mercado Pago aceitou o pedido mas nao devolveu os dados do PIX.', {
+                internalPaymentId: params.internalPaymentId,
+                mpResponse: response
+            });
             throw new Error('Nao foi possivel gerar o pagamento PIX.');
         }
 
@@ -78,7 +81,7 @@ export class MercadoPagoPaymentService {
     }): Promise<CardPaymentResult> {
         const webhookUrl = process.env.MERCADOPAGO_WEBHOOK_URL;
 
-        const response = await this.client.create({
+        const response = await this.callMp('createCardPayment', params.internalPaymentId, () => this.client.create({
             body: {
                 transaction_amount: params.amountCents / 100,
                 description: params.description,
@@ -93,10 +96,13 @@ export class MercadoPagoPaymentService {
                 external_reference: params.internalPaymentId,
                 ...(webhookUrl ? { notification_url: webhookUrl } : {})
             }
-        });
+        }));
 
         if (!response.id) {
-            appLogger.error('Falha ao criar pagamento com cartao no Mercado Pago.', { internalPaymentId: params.internalPaymentId });
+            appLogger.error('Mercado Pago aceitou o pedido mas nao devolveu um id de pagamento.', {
+                internalPaymentId: params.internalPaymentId,
+                mpResponse: response
+            });
             throw new Error('Nao foi possivel processar o pagamento com cartao.');
         }
 
@@ -108,8 +114,30 @@ export class MercadoPagoPaymentService {
     }
 
     async getPaymentStatus(mpPaymentId: string): Promise<'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED'> {
-        const response = await this.client.get({ id: mpPaymentId });
+        const response = await this.callMp('getPaymentStatus', mpPaymentId, () => this.client.get({ id: mpPaymentId }));
         return mapStatus(response.status);
+    }
+
+    /**
+     * The SDK's low-level HTTP client does `throw await response.json()` on
+     * any non-2xx response (see node_modules/mercadopago/dist/utils/restClient) —
+     * it throws the raw parsed error body, not an Error instance. Left
+     * unwrapped, that reaches our global exception filter as a non-Error
+     * value, which logs as "UnknownError" with no message and no stack,
+     * hiding whatever Mercado Pago actually said was wrong. This logs the
+     * raw body (message/error/cause/status, whatever shape it has) and
+     * rethrows a real Error so every layer above behaves normally.
+     */
+    private async callMp<T>(operation: string, internalPaymentId: string, fn: () => Promise<T>): Promise<T> {
+        try {
+            return await fn();
+        } catch (error) {
+            appLogger.error(`Mercado Pago API error em ${operation}.`, {
+                internalPaymentId,
+                mpError: describeMpError(error)
+            });
+            throw new Error(`Falha ao comunicar com o Mercado Pago (${operation}).`);
+        }
     }
 
     /**
@@ -143,6 +171,16 @@ export class MercadoPagoPaymentService {
             throw error;
         }
     }
+}
+
+function describeMpError(error: unknown): Record<string, unknown> {
+    if (error instanceof Error) {
+        return { name: error.name, message: error.message, stack: error.stack };
+    }
+    if (error && typeof error === 'object') {
+        return { ...(error as Record<string, unknown>) };
+    }
+    return { raw: String(error) };
 }
 
 function mapStatus(status?: string): 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' {

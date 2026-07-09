@@ -30,8 +30,13 @@ export class HttpErrorFilter implements ExceptionFilter {
         const location = this.getStackLocation(stack);
         const isServerError = statusCode >= 500;
         const logMessage = `${request.method} ${request.originalUrl}`;
+        // Some third-party SDKs (e.g. the Mercado Pago client) throw the raw
+        // parsed response body instead of an Error, which carries no stack
+        // and no useful `.name` - dump it as-is so a 500 is still debuggable
+        // instead of surfacing only "UnknownError" with no other detail.
+        const rawException = !(exception instanceof Error) ? exception : undefined;
         const logContext = isServerError
-            ? { statusCode, errorName, message, location }
+            ? { statusCode, errorName, message, location, ...(rawException !== undefined ? { rawException } : {}) }
             : { statusCode, errorName, message };
 
         if (isServerError) {
