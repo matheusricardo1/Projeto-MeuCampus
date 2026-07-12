@@ -37,12 +37,18 @@ interface SendAiChatMessageInput {
 interface SendAiChatMessageHandlers {
     onJobId?: (jobId: string) => void;
     onChunk?: (delta: string) => void;
+    onToolCall?: (toolName: string) => void;
 }
 
 interface RequestOptions {
     reportError?: boolean;
     showGlobalLoading?: boolean;
     sessionGeneration?: number;
+    // The cold-start restoreSession check finds an already-stale session before the
+    // user ever actively used this tab — surfacing "session expired" there would
+    // wrongly imply they had just been logged in. Only live expiries (a request that
+    // fails mid-session) should show that banner.
+    silentSessionExpiry?: boolean;
 }
 
 interface PrefetchOptions extends RequestOptions {
@@ -215,7 +221,7 @@ export function useEcampusWorkspace() {
         await loadInitialDataFromCache({ reportError: false, showGlobalLoading: false }, gradesOverride);
     };
 
-    const expireSession = async (message?: string) => {
+    const expireSession = async (message?: string, options: { silent?: boolean } = {}) => {
         if (isExpiringSessionRef.current) {
             return;
         }
@@ -225,10 +231,12 @@ export function useEcampusWorkspace() {
             startNewSessionGeneration();
             setIsAuthenticated(false);
             clearWorkspaceData();
-            if (message) {
-                setRawError(message);
-            } else {
-                setTranslatedError('errors.sessionExpired');
+            if (!options.silent) {
+                if (message) {
+                    setRawError(message);
+                } else {
+                    setTranslatedError('errors.sessionExpired');
+                }
             }
             await useCases.clearAuthSession.execute();
         } finally {
@@ -272,7 +280,7 @@ export function useEcampusWorkspace() {
 
             if (caught instanceof AuthSessionExpiredError) {
                 if (requestOptions.sessionGeneration === undefined || requestOptions.sessionGeneration === sessionGeneration.current) {
-                    await expireSession(caught.message);
+                    await expireSession(caught.message, { silent: requestOptions.silentSessionExpiry });
                 }
 
                 return null;
@@ -704,7 +712,8 @@ export function useEcampusWorkspace() {
             }, {
                 reportError: false,
                 showGlobalLoading: false,
-                sessionGeneration: generation
+                sessionGeneration: generation,
+                silentSessionExpiry: true
             });
 
             if (!validated || generation !== sessionGeneration.current || isExpiringSessionRef.current) {

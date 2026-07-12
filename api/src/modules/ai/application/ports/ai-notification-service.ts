@@ -1,6 +1,7 @@
 export const AI_CHAT_REPLY_EVENT = 'ecampus:ai-reply';
 export const AI_CHAT_FAILED_EVENT = 'ecampus:ai-failed';
 export const AI_CHAT_CHUNK_EVENT = 'ecampus:ai-chunk';
+export const AI_CHAT_TOOL_EVENT = 'ecampus:ai-tool';
 
 export interface AiChatReplyNotification {
     userId: string;
@@ -21,8 +22,15 @@ export interface AiChatChunkNotification {
     delta: string;
 }
 
+export interface AiChatToolNotification {
+    userId: string;
+    jobId: string;
+    toolName: string;
+}
+
 export abstract class AiNotificationService {
     abstract emitChatReply(event: AiChatReplyNotification): void;
     abstract emitChatFailed(event: AiChatFailedNotification): void;
     abstract emitChatChunk(event: AiChatChunkNotification): void;
+    abstract emitChatTool(event: AiChatToolNotification): void;
 }

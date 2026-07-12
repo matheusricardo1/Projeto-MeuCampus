@@ -20,10 +20,12 @@ import {
     AI_CHAT_CHUNK_EVENT,
     AI_CHAT_FAILED_EVENT,
     AI_CHAT_REPLY_EVENT,
+    AI_CHAT_TOOL_EVENT,
     AiNotificationService,
     type AiChatChunkNotification,
     type AiChatFailedNotification,
-    type AiChatReplyNotification
+    type AiChatReplyNotification,
+    type AiChatToolNotification
 } from '@ai/application/ports/ai-notification-service';
 import { appLogger } from '@/shared/logging/app-logger';
 import { pseudonymousUserId } from '@/shared/security/pseudonymous-user-id';
@@ -218,6 +220,12 @@ export class AcademicGateway extends AcademicNotificationService implements AiNo
         // No per-chunk logging here on purpose — this fires many times per
         // reply and would flood logs; ready/failed remain the loggable events.
         this.server.to(room).emit(AI_CHAT_CHUNK_EVENT, payload);
+    }
+
+    emitChatTool(event: AiChatToolNotification): void {
+        const room = this.roomFor(event.userId);
+        const { userId: _userId, ...payload } = event;
+        this.server.to(room).emit(AI_CHAT_TOOL_EVENT, payload);
     }
 
     revokeUserSessions(cpf: string): void {

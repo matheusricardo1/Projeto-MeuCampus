@@ -18,6 +18,11 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ufamacademics -d ufamacademics']
+      interval: 2s
+      timeout: 3s
+      retries: 20
 
   api:
     build:
@@ -31,8 +36,10 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://ufamacademics:ufamacademics@postgres:5432/ufamacademics
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     ports:
       - '3001:3001'
     restart: unless-stopped

@@ -51,6 +51,12 @@ export class ProcessAiChatJobUseCase {
                     if (!flushTimer) {
                         flushTimer = setTimeout(flush, CHUNK_FLUSH_MAX_DELAY_MS);
                     }
+                },
+                onToolCall: (toolName) => {
+                    // Any text already buffered belongs before this tool call in the
+                    // timeline, so it should reach the client first.
+                    flush();
+                    void this.events.publishTool({ type: 'tool', jobId, userId: data.userId, toolName });
                 }
             });
 

@@ -53,6 +53,11 @@ export class AiChatEventsSubscriber implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
+        if (event.type === 'tool') {
+            this.notifier.emitChatTool({ userId: event.userId, jobId: event.jobId, toolName: event.toolName });
+            return;
+        }
+
         if (event.type === 'failed') {
             this.notifier.emitChatFailed({ userId: event.userId, jobId: event.jobId, message: event.message });
             return;

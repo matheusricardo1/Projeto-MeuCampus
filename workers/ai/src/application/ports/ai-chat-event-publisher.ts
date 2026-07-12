@@ -7,6 +7,13 @@ export interface AiChatChunkEvent {
     delta: string;
 }
 
+export interface AiChatToolEvent {
+    type: 'tool';
+    jobId: string;
+    userId: string;
+    toolName: string;
+}
+
 export interface AiChatReadyEvent {
     type: 'ready';
     jobId: string;
@@ -24,6 +31,7 @@ export interface AiChatFailedEvent {
 
 export interface AiChatEventPublisher {
     publishChunk(event: AiChatChunkEvent): Promise<void>;
+    publishTool(event: AiChatToolEvent): Promise<void>;
     publishReady(event: AiChatReadyEvent): Promise<void>;
     publishFailed(event: AiChatFailedEvent): Promise<void>;
 }

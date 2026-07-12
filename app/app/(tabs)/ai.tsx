@@ -22,7 +22,13 @@ export default function AiRoute() {
             onCreatePixCheckout={workspace.createPixCheckout}
             onGetCheckoutStatus={workspace.getCheckoutStatus}
             onGetMercadoPagoPublicKey={workspace.getMercadoPagoPublicKey}
+            onPersistState={({ conversationId, messages }) => {
+                workspace.setAiChatConversationId(conversationId);
+                workspace.setAiChatMessages(messages);
+            }}
             onSendMessage={workspace.sendAiChatMessage}
+            persistedConversationId={workspace.aiChatConversationId}
+            persistedMessages={workspace.aiChatMessages}
         />
     );
 }

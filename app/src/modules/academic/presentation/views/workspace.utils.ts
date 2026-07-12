@@ -162,10 +162,6 @@ export function isFinalExamWaived(mee: number | null, pf: number | null, hasEnou
     return mee !== null && mee >= 8 && hasEnoughPresence && (pf === null || pf === mee);
 }
 
-export function isPfRepeatSimulationEligible(mee: number | null, pf: number | null): boolean {
-    return mee !== null && mee >= 5 && mee < 8 && pf === null;
-}
-
 export function formatWorkload(workload: string | number): string {
     if (typeof workload === 'number') return `${workload}h`;
     if (!workload) return '-';

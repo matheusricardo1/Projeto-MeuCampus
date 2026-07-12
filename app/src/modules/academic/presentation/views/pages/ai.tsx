@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Image, Modal, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputKeyPressEventData, View } from 'react-native';
-import { Bot, Brain, Check, Lock, Pencil, RotateCcw, Send, Square, X } from 'lucide-react-native';
+import { AlertCircle, Bot, Brain, Check, Lock, Mic, Pencil, RotateCcw, Send, Square, X } from 'lucide-react-native';
 import type { AiChatMessage } from '@/modules/academic/domain/entities/ai-chat-message';
 import type { AiChatReply } from '@/modules/academic/domain/entities/ai-chat-reply';
 import { AiDailyLimitReachedError } from '@/shared/errors/ai-daily-limit-reached.error';
@@ -8,10 +8,12 @@ import { colors, fonts, radii, spacing } from '@/shared/design-system';
 import { MercadoPagoCardBrick } from '@/modules/academic/presentation/views/components/mercadopago-card-brick';
 import type { CardBrickTokenResult } from '@/modules/academic/presentation/views/components/mercadopago-card-brick.types';
 import type { CreateCardCheckoutRequest } from '@/modules/academic/domain/repositories/ecampus-repository';
+import { useSpeechToText, type SpeechToTextErrorReason } from '@/modules/academic/presentation/hooks/use-speech-to-text';
 
 type SendMessageHandlers = {
     onJobId?: (jobId: string) => void;
     onChunk?: (delta: string) => void;
+    onToolCall?: (toolName: string) => void;
 };
 
 type PixCheckout = { paymentId: string; qrCode: string; qrCodeBase64: string; expiresAt: string };
@@ -27,12 +29,28 @@ type AIPageProps = {
     onCreatePixCheckout?: () => Promise<PixCheckout>;
     onGetCheckoutStatus?: (paymentId: string) => Promise<CheckoutStatus>;
     onGetMercadoPagoPublicKey?: () => Promise<{ publicKey: string; amount: number }>;
+    onPersistState?: (state: { conversationId?: string; messages: AiChatMessage[] }) => void;
     onSendMessage?: (input: { conversationId?: string; message: string; history?: AiChatMessage[] }, handlers?: SendMessageHandlers) => Promise<AiChatReply | null>;
+    persistedConversationId?: string;
+    persistedMessages?: AiChatMessage[];
 };
 
 type ChatMessage = AiChatMessage & {
-    kind?: 'text' | 'grade-summary' | 'processing';
+    kind?: 'text' | 'processing';
+    statusLabel?: string;
 };
+
+const TOOL_STATUS_LABELS: Record<string, string> = {
+    get_student_profile: 'Consultando seu perfil...',
+    get_current_grades: 'Buscando suas notas...',
+    get_schedule: 'Consultando seu horario...',
+    get_lesson_plan_subjects: 'Listando suas disciplinas...',
+    get_lesson_plan: 'Buscando o plano de ensino...'
+};
+
+function toolStatusLabel(toolName: string): string {
+    return TOOL_STATUS_LABELS[toolName] || 'Buscando seus dados academicos...';
+}
 
 const initialMessages: ChatMessage[] = [
     {
@@ -43,13 +61,32 @@ const initialMessages: ChatMessage[] = [
     }
 ];
 
-export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessage, onChatScroll, onCreateCardCheckout, onCreatePixCheckout, onGetCheckoutStatus, onGetMercadoPagoPublicKey, onSendMessage }: AIPageProps) {
+function voiceErrorMessage(reason: SpeechToTextErrorReason): string {
+    switch (reason) {
+        case 'permission-denied':
+            return 'Permita o acesso ao microfone para usar o ditado por voz.';
+        case 'no-speech':
+            return 'Nao entendi, tente falar novamente.';
+        case 'network':
+            return 'Sem conexao para reconhecer sua voz agora.';
+        case 'not-supported':
+            return 'Ditado por voz nao esta disponivel neste navegador.';
+        default:
+            return 'Nao foi possivel captar sua voz. Tente novamente.';
+    }
+}
+
+export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessage, onChatScroll, onCreateCardCheckout, onCreatePixCheckout, onGetCheckoutStatus, onGetMercadoPagoPublicKey, onPersistState, onSendMessage, persistedConversationId, persistedMessages }: AIPageProps) {
     const scrollRef = useRef<ScrollView | null>(null);
     const lastSentPromptRef = useRef<{ prompt: string; sentAt: number } | null>(null);
     const processingPulse = useRef(new Animated.Value(0)).current;
-    const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+    const [messages, setMessages] = useState<ChatMessage[]>(() => (
+        persistedMessages && persistedMessages.length > 0
+            ? persistedMessages.map((message): ChatMessage => ({ ...message, kind: 'text' }))
+            : initialMessages
+    ));
     const [prompt, setPrompt] = useState('');
-    const [conversationId, setConversationId] = useState<string | undefined>();
+    const [conversationId, setConversationId] = useState<string | undefined>(persistedConversationId);
     const [isSending, setIsSending] = useState(false);
     const [activeJobId, setActiveJobId] = useState<string | null>(null);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
@@ -57,6 +94,47 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
     const [editingText, setEditingText] = useState('');
     const [dailyLimit, setDailyLimit] = useState<{ limit: number } | null>(null);
     const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+    const micPulse = useRef(new Animated.Value(0)).current;
+    const [showVoiceError, setShowVoiceError] = useState(false);
+
+    const handleVoiceTranscript = useCallback((transcript: string) => {
+        const trimmedTranscript = transcript.trim();
+        if (!trimmedTranscript) return;
+
+        setPrompt((current) => {
+            const trimmedCurrent = current.trim();
+            return trimmedCurrent ? `${trimmedCurrent} ${trimmedTranscript}` : trimmedTranscript;
+        });
+    }, []);
+
+    const speech = useSpeechToText({ lang: 'pt-BR', onFinalTranscript: handleVoiceTranscript });
+
+    useEffect(() => {
+        if (!speech.errorReason) return undefined;
+
+        setShowVoiceError(true);
+        const timeout = setTimeout(() => setShowVoiceError(false), 4000);
+        return () => clearTimeout(timeout);
+    }, [speech.errorReason]);
+
+    useEffect(() => {
+        if (!speech.isListening) {
+            micPulse.stopAnimation();
+            micPulse.setValue(0);
+            return undefined;
+        }
+
+        const animation = Animated.loop(
+            Animated.sequence([
+                Animated.timing(micPulse, { toValue: 1, duration: 550, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                Animated.timing(micPulse, { toValue: 0, duration: 550, easing: Easing.inOut(Easing.quad), useNativeDriver: true })
+            ])
+        );
+
+        animation.start();
+        return () => animation.stop();
+    }, [micPulse, speech.isListening]);
+
     const scrollToBottom = useCallback((animated = false) => {
         const scheduleFrame = typeof requestAnimationFrame === 'function'
             ? requestAnimationFrame
@@ -72,6 +150,14 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
         const timeout = setTimeout(() => scrollToBottom(false), 80);
         return () => clearTimeout(timeout);
     }, [scrollToBottom]);
+
+    useEffect(() => {
+        const persistableMessages = messages
+            .filter((message) => message.kind !== 'processing')
+            .map(({ kind: _kind, statusLabel: _statusLabel, ...message }) => message);
+        onPersistState?.({ conversationId, messages: persistableMessages });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [messages, conversationId]);
 
     useEffect(() => {
         const animation = Animated.loop(
@@ -115,7 +201,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
             kind: 'processing'
         };
 
-        const history = historyBase.map(({ kind: _kind, ...message }) => message);
+        const history = historyBase.map(({ kind: _kind, statusLabel: _statusLabel, ...message }) => message);
         setMessages([...historyBase, userMessage, processingMessage]);
         setIsSending(true);
         setStreamingMessageId(assistantId);
@@ -141,6 +227,13 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                 : message
                         )));
                         scrollToBottom(false);
+                    },
+                    onToolCall: (toolName) => {
+                        setMessages((current) => current.map((message) => (
+                            message.id === assistantId && message.kind === 'processing'
+                                ? { ...message, statusLabel: toolStatusLabel(toolName) }
+                                : message
+                        )));
                     }
                 }
             );
@@ -190,6 +283,11 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
         setPrompt('');
         void runExchange(trimmedPrompt, messages);
     }, [isSending, messages, prompt, runExchange]);
+
+    const sendQuickReply = useCallback((option: string) => {
+        if (isSending) return;
+        void runExchange(option, messages);
+    }, [isSending, messages, runExchange]);
 
     const regenerateLast = useCallback(() => {
         if (isSending) return;
@@ -297,40 +395,21 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                 <View style={styles.messageBody}>
                                     <View style={styles.botBubble}>
                                         {message.kind === 'processing' ? (
-                                            <ProcessingMessage pulse={processingPulse} />
+                                            <ProcessingMessage pulse={processingPulse} statusLabel={message.statusLabel} />
                                         ) : (
-                                            <>
-                                                <FormattedAssistantMessage content={message.content} isTyping={message.id === streamingMessageId} />
-                                            </>
+                                            <FormattedAssistantMessage content={message.kind === 'text' ? extractQuickReplies(message.content).cleanedContent : message.content} isTyping={message.id === streamingMessageId} />
                                         )}
-
-                                        {message.kind === 'grade-summary' ? (
-                                            <>
-                                                <View style={styles.summaryCard}>
-                                                    <View style={styles.summaryHeader}>
-                                                        <Text style={styles.summaryLabel}>Media atual</Text>
-                                                        <Text style={styles.summaryValue}>8.5</Text>
-                                                    </View>
-                                                    <Text style={styles.summaryHint}>Acima da media da turma: 7.2</Text>
-                                                </View>
-
-                                                <View style={styles.breakdownList}>
-                                                    <View style={styles.breakdownRow}>
-                                                        <Text style={styles.breakdownKey}>P1</Text>
-                                                        <Text style={styles.breakdownValue}>8.2</Text>
-                                                    </View>
-                                                    <View style={styles.breakdownRow}>
-                                                        <Text style={styles.breakdownKey}>P2</Text>
-                                                        <Text style={styles.breakdownValue}>8.8</Text>
-                                                    </View>
-                                                    <View style={styles.breakdownRow}>
-                                                        <Text style={styles.breakdownKey}>Exercicios</Text>
-                                                        <Text style={styles.breakdownValue}>9.0</Text>
-                                                    </View>
-                                                </View>
-                                            </>
-                                        ) : null}
                                     </View>
+
+                                    {!isSending && message.kind === 'text' && index === messages.length - 1 && extractQuickReplies(message.content).options.length > 0 ? (
+                                        <View style={styles.quickReplyRow}>
+                                            {extractQuickReplies(message.content).options.map((option) => (
+                                                <Pressable key={option} onPress={() => sendQuickReply(option)} style={styles.quickReplyChip}>
+                                                    <Text style={styles.quickReplyChipText}>{option}</Text>
+                                                </Pressable>
+                                            ))}
+                                        </View>
+                                    ) : null}
 
                                     {!isSending && message.kind === 'text' && index === messages.length - 1 ? (
                                         <Pressable onPress={regenerateLast} style={styles.messageActionButton}>
@@ -361,32 +440,62 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                         </Pressable>
                     </View>
                 ) : (
-                    <View style={styles.inputBar}>
-                        <View style={styles.inputShell}>
-                            <Brain color={colors.brand} size={18} />
-                            <TextInput
-                                style={styles.input}
-                                blurOnSubmit={false}
-                                editable={!isSending}
-                                onChangeText={setPrompt}
-                                onKeyPress={handleInputKeyPress}
-                                onSubmitEditing={sendPrompt}
-                                placeholder="Pergunte qualquer coisa..."
-                                placeholderTextColor={colors.textSubtle}
-                                returnKeyType="send"
-                                value={prompt}
-                            />
+                    <>
+                        {speech.isListening ? (
+                            <View style={styles.voiceListeningBar}>
+                                <Animated.View style={[styles.voiceListeningDot, { opacity: micPulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }]} />
+                                <Text numberOfLines={1} style={styles.voiceListeningText}>
+                                    {speech.interimText || 'Ouvindo...'}
+                                </Text>
+                            </View>
+                        ) : null}
+                        {showVoiceError && speech.errorReason ? (
+                            <View style={styles.voiceErrorBar}>
+                                <AlertCircle color={colors.brandDark} size={14} />
+                                <Text style={styles.voiceErrorText}>{voiceErrorMessage(speech.errorReason)}</Text>
+                            </View>
+                        ) : null}
+                        <View style={styles.inputBar}>
+                            <View style={styles.inputShell}>
+                                <Brain color={colors.brand} size={18} />
+                                <TextInput
+                                    style={styles.input}
+                                    blurOnSubmit={false}
+                                    editable={!isSending}
+                                    onChangeText={setPrompt}
+                                    onKeyPress={handleInputKeyPress}
+                                    onSubmitEditing={sendPrompt}
+                                    placeholder="Pergunte qualquer coisa..."
+                                    placeholderTextColor={colors.textSubtle}
+                                    returnKeyType="send"
+                                    value={prompt}
+                                />
+                            </View>
+                            {speech.isSupported ? (
+                                <Pressable
+                                    accessibilityLabel={speech.isListening ? 'Parar gravacao de voz' : 'Falar para digitar'}
+                                    disabled={isSending}
+                                    onPress={speech.toggle}
+                                    style={[styles.sendButton, styles.micButton, speech.isListening ? styles.micButtonActive : null, isSending ? styles.sendButtonDisabled : null]}
+                                >
+                                    {speech.isListening ? (
+                                        <Square color={colors.inverseText} fill={colors.inverseText} size={13} />
+                                    ) : (
+                                        <Mic color={colors.inverseText} size={18} />
+                                    )}
+                                </Pressable>
+                            ) : null}
+                            {isSending ? (
+                                <Pressable onPress={stopGenerating} style={[styles.sendButton, styles.stopButton]}>
+                                    <Square color={colors.inverseText} fill={colors.inverseText} size={14} />
+                                </Pressable>
+                            ) : (
+                                <Pressable disabled={!prompt.trim()} onPress={sendPrompt} style={[styles.sendButton, !prompt.trim() ? styles.sendButtonDisabled : null]}>
+                                    <Send color={colors.inverseText} size={18} />
+                                </Pressable>
+                            )}
                         </View>
-                        {isSending ? (
-                            <Pressable onPress={stopGenerating} style={[styles.sendButton, styles.stopButton]}>
-                                <Square color={colors.inverseText} fill={colors.inverseText} size={14} />
-                            </Pressable>
-                        ) : (
-                            <Pressable disabled={!prompt.trim()} onPress={sendPrompt} style={[styles.sendButton, !prompt.trim() ? styles.sendButtonDisabled : null]}>
-                                <Send color={colors.inverseText} size={18} />
-                            </Pressable>
-                        )}
-                    </View>
+                    </>
                 )}
             </View>
 
@@ -643,7 +752,7 @@ function UpgradeModal({ visible, onClose, onCreateCardCheckout, onCreatePixCheck
     );
 }
 
-function ProcessingMessage({ pulse }: { pulse: Animated.Value }) {
+function ProcessingMessage({ pulse, statusLabel }: { pulse: Animated.Value; statusLabel?: string }) {
     const opacity = pulse.interpolate({
         inputRange: [0, 1],
         outputRange: [0.42, 1]
@@ -653,7 +762,7 @@ function ProcessingMessage({ pulse }: { pulse: Animated.Value }) {
         <View style={styles.processingStack}>
             <View style={styles.processingHeader}>
                 <Animated.View style={[styles.processingDot, { opacity }]} />
-                <Text style={styles.processingText}>Processando sua mensagem</Text>
+                <Text style={styles.processingText}>{statusLabel || 'Processando sua mensagem'}</Text>
             </View>
             <Animated.View style={[styles.processingLineWide, { opacity }]} />
             <Animated.View style={[styles.processingLine, { opacity }]} />
@@ -687,6 +796,10 @@ function FormattedAssistantMessage({ content, isTyping = false }: { content: str
                     return <FormattedInlineText key={`heading-${index}`} content={block.content} style={styles.formattedHeading} showCursor={isTyping && isLastBlock} />;
                 }
 
+                if (block.type === 'table') {
+                    return <FormattedTable key={`table-${index}`} headers={block.headers} rows={block.rows} />;
+                }
+
                 return <FormattedInlineText key={`paragraph-${index}`} content={block.content} style={styles.messageText} showCursor={isTyping && isLastBlock} />;
             })}
         </View>
@@ -708,10 +821,61 @@ function FormattedInlineText({ content, style, showCursor = false }: { content: 
     );
 }
 
+function FormattedTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
+    return (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tableScroll}>
+            <View style={styles.table}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                    {headers.map((header, index) => (
+                        <Text key={`${header}-${index}`} style={[styles.tableCell, styles.tableHeaderCell]}>{header}</Text>
+                    ))}
+                </View>
+                {rows.map((row, rowIndex) => (
+                    <View key={`row-${rowIndex}`} style={[styles.tableRow, rowIndex % 2 === 1 ? styles.tableRowAlt : null]}>
+                        {row.map((cell, cellIndex) => (
+                            <Text key={`cell-${rowIndex}-${cellIndex}`} style={styles.tableCell}>{cell}</Text>
+                        ))}
+                    </View>
+                ))}
+            </View>
+        </ScrollView>
+    );
+}
+
 type FormattedBlock =
     | { type: 'heading'; content: string }
     | { type: 'paragraph'; content: string }
-    | { type: 'list'; items: string[] };
+    | { type: 'list'; items: string[] }
+    | { type: 'table'; headers: string[]; rows: string[][] };
+
+const QUICK_REPLIES_PATTERN = /\n?\[\[OPCOES:\s*([^\]]+)\]\]\s*$/i;
+
+function extractQuickReplies(content: string): { cleanedContent: string; options: string[] } {
+    const match = content.match(QUICK_REPLIES_PATTERN);
+    if (!match?.[1]) return { cleanedContent: content, options: [] };
+
+    const options = match[1]
+        .split('|')
+        .map((option) => option.trim())
+        .filter(Boolean)
+        .slice(0, 4);
+
+    if (options.length < 2) return { cleanedContent: content, options: [] };
+
+    return { cleanedContent: content.slice(0, match.index).trimEnd(), options };
+}
+
+function isTableRowLine(line: string): boolean {
+    return line.startsWith('|') && line.endsWith('|') && line.length > 1;
+}
+
+function isTableSeparatorLine(line: string): boolean {
+    return isTableRowLine(line) && line.split('|').slice(1, -1).every((cell) => /^\s*:?-+:?\s*$/.test(cell));
+}
+
+function splitTableRow(line: string): string[] {
+    return line.slice(1, -1).split('|').map((cell) => cell.trim());
+}
 
 function parseFormattedBlocks(content: string): FormattedBlock[] {
     const blocks: FormattedBlock[] = [];
@@ -732,11 +896,29 @@ function parseFormattedBlocks(content: string): FormattedBlock[] {
         }
     };
 
-    for (const rawLine of lines) {
-        const line = rawLine.trim();
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+        const line = (lines[lineIndex] ?? '').trim();
         if (!line) {
             flushParagraph();
             flushList();
+            continue;
+        }
+
+        const nextLine = (lines[lineIndex + 1] ?? '').trim();
+        if (isTableRowLine(line) && isTableSeparatorLine(nextLine)) {
+            flushParagraph();
+            flushList();
+
+            const headers = splitTableRow(line);
+            const rows: string[][] = [];
+            lineIndex += 2;
+            while (lineIndex < lines.length && isTableRowLine((lines[lineIndex] ?? '').trim())) {
+                rows.push(splitTableRow((lines[lineIndex] ?? '').trim()));
+                lineIndex += 1;
+            }
+            lineIndex -= 1;
+
+            blocks.push({ type: 'table', headers, rows });
             continue;
         }
 
@@ -990,59 +1172,62 @@ const styles = StyleSheet.create({
         fontSize: 15,
         lineHeight: 22
     },
-    summaryCard: {
+    tableScroll: {
+        marginVertical: spacing[1]
+    },
+    table: {
+        borderColor: colors.border,
+        borderRadius: 12,
+        borderWidth: 1,
+        overflow: 'hidden'
+    },
+    tableRow: {
+        borderTopColor: colors.border,
+        borderTopWidth: 1,
+        flexDirection: 'row'
+    },
+    tableHeaderRow: {
         backgroundColor: colors.brandSubtle,
-        borderRadius: 14,
-        gap: spacing[1],
-        padding: spacing[3]
+        borderTopWidth: 0
     },
-    summaryHeader: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'space-between'
+    tableRowAlt: {
+        backgroundColor: colors.canvas
     },
-    summaryLabel: {
-        color: colors.textMuted,
+    tableCell: {
+        color: colors.text,
+        fontFamily: fonts.sans,
+        fontSize: 13,
+        lineHeight: 18,
+        minWidth: 96,
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[2]
+    },
+    tableHeaderCell: {
+        color: colors.brandDark,
         fontFamily: fonts.medium,
-        fontSize: 11,
+        fontSize: 11.5,
         fontWeight: '800',
         textTransform: 'uppercase'
     },
-    summaryValue: {
+    quickReplyRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing[2],
+        marginTop: spacing[1]
+    },
+    quickReplyChip: {
+        backgroundColor: '#ffffff',
+        borderColor: colors.brand,
+        borderRadius: radii.pill,
+        borderWidth: 1.5,
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2]
+    },
+    quickReplyChipText: {
         color: colors.brandDark,
         fontFamily: fonts.medium,
-        fontSize: 22,
-        fontWeight: '800'
-    },
-    summaryHint: {
-        color: colors.brand,
-        fontFamily: fonts.sans,
-        fontSize: 14,
-        lineHeight: 20
-    },
-    breakdownList: {
-        borderTopColor: colors.border,
-        borderTopWidth: 1,
-        gap: spacing[2],
-        paddingTop: spacing[3]
-    },
-    breakdownRow: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'space-between'
-    },
-    breakdownKey: {
-        color: colors.textMuted,
-        fontFamily: fonts.medium,
-        fontSize: 12,
-        fontWeight: '700',
-        textTransform: 'uppercase'
-    },
-    breakdownValue: {
-        color: colors.text,
-        fontFamily: fonts.medium,
-        fontSize: 15,
-        fontWeight: '800'
+        fontSize: 13,
+        fontWeight: '700'
     },
     inputDock: {
         alignItems: 'center',
@@ -1111,6 +1296,58 @@ const styles = StyleSheet.create({
     },
     stopButton: {
         backgroundColor: colors.textMuted
+    },
+    micButton: {
+        backgroundColor: colors.brandDark
+    },
+    micButtonActive: {
+        backgroundColor: '#c0392b'
+    },
+    voiceListeningBar: {
+        alignItems: 'center',
+        alignSelf: 'center',
+        backgroundColor: '#ffffff',
+        borderColor: '#c0392b',
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: spacing[2],
+        marginBottom: spacing[2],
+        maxWidth: 640,
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2],
+        width: '100%'
+    },
+    voiceListeningDot: {
+        backgroundColor: '#c0392b',
+        borderRadius: radii.pill,
+        height: 8,
+        width: 8
+    },
+    voiceListeningText: {
+        color: colors.text,
+        flex: 1,
+        fontFamily: fonts.sans,
+        fontSize: 13
+    },
+    voiceErrorBar: {
+        alignItems: 'center',
+        alignSelf: 'center',
+        backgroundColor: colors.brandSubtle,
+        borderRadius: radii.pill,
+        flexDirection: 'row',
+        gap: spacing[2],
+        marginBottom: spacing[2],
+        maxWidth: 640,
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2],
+        width: '100%'
+    },
+    voiceErrorText: {
+        color: colors.brandDark,
+        flex: 1,
+        fontFamily: fonts.sans,
+        fontSize: 12.5
     },
     limitBanner: {
         alignItems: 'center',

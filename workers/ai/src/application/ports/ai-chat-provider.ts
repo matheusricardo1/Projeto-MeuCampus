@@ -3,6 +3,7 @@ import type { AiChatRequest } from '@/domain/value-objects/ai-chat-request';
 
 export interface AiChatStreamHandlers {
     onDelta: (delta: string) => void;
+    onToolCall?: (toolName: string) => void;
     signal: AbortSignal;
 }
 

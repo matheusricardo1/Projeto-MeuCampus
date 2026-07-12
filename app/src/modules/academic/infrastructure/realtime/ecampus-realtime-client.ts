@@ -13,6 +13,7 @@ const LOGIN_FAILED_EVENT = 'ecampus:login-failed';
 const AI_REPLY_EVENT = 'ecampus:ai-reply';
 const AI_FAILED_EVENT = 'ecampus:ai-failed';
 const AI_CHUNK_EVENT = 'ecampus:ai-chunk';
+const AI_TOOL_EVENT = 'ecampus:ai-tool';
 const LOGIN_TIMEOUT_MS = 35_000;
 const AI_REPLY_TIMEOUT_MS = 60_000;
 
@@ -184,7 +185,7 @@ export function waitForLoginResult(jobId: string): Promise<AuthSession> {
     });
 }
 
-export function waitForAiReply(jobId: string, onChunk?: (delta: string) => void): Promise<AiChatReply> {
+export function waitForAiReply(jobId: string, onChunk?: (delta: string) => void, onToolCall?: (toolName: string) => void): Promise<AiChatReply> {
     return new Promise((resolve, reject) => {
         const socket = activeSocket;
         if (!socket) {
@@ -207,6 +208,7 @@ export function waitForAiReply(jobId: string, onChunk?: (delta: string) => void)
             socket.off(AI_REPLY_EVENT, onReply);
             socket.off(AI_FAILED_EVENT, onFailed);
             socket.off(AI_CHUNK_EVENT, onChunkEvent);
+            socket.off(AI_TOOL_EVENT, onToolEvent);
         };
 
         const onReply = (event: { jobId: string; conversationId: string; message: AiChatReply['message'] }) => {
@@ -228,9 +230,17 @@ export function waitForAiReply(jobId: string, onChunk?: (delta: string) => void)
             onChunk?.(event.delta);
         };
 
+        const onToolEvent = (event: { jobId: string; toolName: string }) => {
+            if (event.jobId !== jobId) return;
+            clearTimeout(timeout);
+            timeout = setTimeout(onTimeout, AI_REPLY_TIMEOUT_MS);
+            onToolCall?.(event.toolName);
+        };
+
         socket.on(AI_REPLY_EVENT, onReply);
         socket.on(AI_FAILED_EVENT, onFailed);
         socket.on(AI_CHUNK_EVENT, onChunkEvent);
+        socket.on(AI_TOOL_EVENT, onToolEvent);
     });
 }
 

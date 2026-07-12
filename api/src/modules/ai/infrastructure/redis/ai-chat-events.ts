@@ -9,6 +9,13 @@ export interface AiChatChunkEvent {
     delta: string;
 }
 
+export interface AiChatToolEvent {
+    type: 'tool';
+    jobId: string;
+    userId: string;
+    toolName: string;
+}
+
 export interface AiChatReadyEvent {
     type: 'ready';
     jobId: string;
@@ -27,4 +34,4 @@ export interface AiChatFailedEvent {
     message: string;
 }
 
-export type AiChatResultEvent = AiChatChunkEvent | AiChatReadyEvent | AiChatFailedEvent;
+export type AiChatResultEvent = AiChatChunkEvent | AiChatToolEvent | AiChatReadyEvent | AiChatFailedEvent;

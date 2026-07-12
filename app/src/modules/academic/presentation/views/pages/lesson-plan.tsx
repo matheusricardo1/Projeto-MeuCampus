@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ClipboardList, Clock3, Filter, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
@@ -6,9 +6,8 @@ import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Translate } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { EmptyInline, SkeletonBlock } from '@/modules/academic/presentation/views/components';
-import { isApprovedStatus, isFinalExamWaived, isPfRepeatSimulationEligible, parseGrade } from '@/modules/academic/presentation/views/workspace.utils';
+import { isApprovedStatus, isFinalExamWaived, parseGrade } from '@/modules/academic/presentation/views/workspace.utils';
 import { useLessonPlanCourses, type CourseCard } from '@/modules/academic/presentation/hooks/use-lesson-plan-courses';
-import { readPfRepeatSimulation, writePfRepeatSimulation } from '@/modules/academic/presentation/views/pf-repeat-simulation-store';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
 export function LessonPlanListPage({
@@ -55,7 +54,6 @@ export function LessonPlanListPage({
     const isChangingPeriod = loading && grades.length === 0;
 
     const openCourse = (course: CourseCard) => {
-        if (!course.available) return;
         router.push(`/lesson-plan/${encodeURIComponent(course.code)}`);
     };
 
@@ -247,7 +245,6 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
                     </View>
                 </View>
 
-                <FinalExamStatusCard course={course} frequency={frequency ?? null} semester={semester} t={t} />
                 <AbsenceStatusCard course={course} frequency={frequency ?? null} t={t} />
                 <InfoCard icon={<Clock3 color="#003215" size={20} />} label={t('lesson.schedule')} value={scheduleLabel} />
                 <InfoCard icon={<Timer color="#003215" size={20} />} label={t('lesson.workload')} value={workloadLabel === null ? '-' : t('lesson.workloadHours', { hours: workloadLabel })} />
@@ -260,16 +257,18 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
                         <ClipboardList color="#003215" size={20} />
                         <Text style={styles.courseDetailsSectionTitle}>{t('lesson.syllabus')}</Text>
                     </View>
-                    {course.planItems.length > 3 ? (
+                    {course.available && course.planItems.length > 3 ? (
                         <Pressable onPress={onOpenFullContent} style={styles.courseDetailsSeeAllButton}>
                             <Text style={styles.courseDetailsSeeAllText}>{t('lesson.seeFull')}</Text>
                             <ArrowRight color="#003215" size={15} />
                         </Pressable>
-                    ) : loading ? <Text style={styles.courseDetailsMutedText}>{t('common.loading')}</Text> : null}
+                    ) : course.available && loading ? <Text style={styles.courseDetailsMutedText}>{t('common.loading')}</Text> : null}
                 </View>
 
                 <View style={styles.courseDetailsTimeline}>
-                    {previewItems.length > 0 ? previewItems.map((item, index) => (
+                    {!course.available ? (
+                        <EmptyInline text={t('lesson.planNotPublished')} />
+                    ) : previewItems.length > 0 ? previewItems.map((item, index) => (
                         <View key={`${item.date}-${index}`} style={styles.courseDetailsTimelineItem}>
                             <View style={styles.courseDetailsTimelineMarker}>
                                 <BookOpen color="#ffffff" size={16} />
@@ -286,84 +285,6 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
                     )) : <EmptyInline text={loading ? t('lesson.syllabusLoading') : t('lesson.syllabusUnavailable')} />}
                 </View>
             </View>
-        </View>
-    );
-}
-
-function FinalExamStatusCard({ course, frequency, semester, t }: { course: CourseCard; frequency: number | null; semester: string; t: Translate }) {
-    const mee = parseGrade(course.exerciseAverage);
-    const pf = parseGrade(course.finalExam);
-    const simulationEligible = isPfRepeatSimulationEligible(mee, pf);
-    const simulationKey = `${semester}::${course.code}::${course.classIdentifier}`;
-    const [simulate, setSimulate] = useState(false);
-
-    useEffect(() => {
-        let active = true;
-        if (!simulationEligible) {
-            setSimulate(false);
-            return;
-        }
-        void readPfRepeatSimulation(simulationKey).then((value) => {
-            if (active) setSimulate(value);
-        });
-        return () => {
-            active = false;
-        };
-    }, [simulationEligible, simulationKey]);
-
-    const toggleSimulation = () => {
-        const next = !simulate;
-        setSimulate(next);
-        void writePfRepeatSimulation(simulationKey, next);
-    };
-
-    const state = buildFinalExamStatus(course, frequency, t, simulate);
-    const Icon = state.tone === 'success' ? CheckCircle2 : AlertTriangle;
-
-    return (
-        <View style={[styles.courseDetailsPfCard, state.tone === 'success' ? styles.courseDetailsPfCardSuccess : state.tone === 'danger' ? styles.courseDetailsPfCardDanger : styles.courseDetailsPfCardWarning]}>
-            <View style={styles.courseDetailsPfHeader}>
-                <View style={[styles.courseDetailsPfIcon, state.tone === 'success' ? styles.courseDetailsPfIconSuccess : state.tone === 'danger' ? styles.courseDetailsPfIconDanger : styles.courseDetailsPfIconWarning]}>
-                    <Icon color={state.iconColor} size={20} />
-                </View>
-                <View style={styles.courseDetailsPfText}>
-                    <Text style={styles.courseDetailsPfKicker}>{t('lesson.situationPf')}</Text>
-                    <Text style={styles.courseDetailsPfTitle}>{state.title}</Text>
-                </View>
-                {state.isSimulated ? (
-                    <View style={styles.pfRepeatActiveBadge}>
-                        <Text style={styles.pfRepeatActiveBadgeText}>{t('lesson.pfRepeatActiveBadge')}</Text>
-                    </View>
-                ) : null}
-            </View>
-            <Text style={styles.courseDetailsPfDescription}>{state.description}</Text>
-            <View style={styles.courseDetailsPfMetrics}>
-                {state.metrics.map((metric) => (
-                    <View key={metric.label} style={styles.courseDetailsPfMetric}>
-                        <Text style={styles.courseDetailsPfMetricLabel}>{metric.label}</Text>
-                        <Text style={styles.courseDetailsPfMetricValue}>{metric.value}</Text>
-                    </View>
-                ))}
-            </View>
-
-            {simulationEligible ? (
-                <Pressable
-                    accessibilityRole="switch"
-                    accessibilityState={{ checked: simulate }}
-                    onPress={toggleSimulation}
-                    style={[styles.pfRepeatToggleRow, simulate ? styles.pfRepeatToggleRowActive : null]}
-                >
-                    <View style={[styles.pfRepeatToggleTrack, simulate ? styles.pfRepeatToggleTrackActive : null]}>
-                        <View style={[styles.pfRepeatToggleKnob, simulate ? styles.pfRepeatToggleKnobActive : null]}>
-                            {simulate ? <Check color="#ffffff" size={12} /> : null}
-                        </View>
-                    </View>
-                    <View style={styles.pfRepeatToggleText}>
-                        <Text style={styles.pfRepeatToggleLabel}>{t('lesson.pfRepeatToggleLabel')}</Text>
-                        <Text style={styles.pfRepeatToggleHint}>{simulate ? t('lesson.pfRepeatToggleOn') : t('lesson.pfRepeatToggleHint')}</Text>
-                    </View>
-                </Pressable>
-            ) : null}
         </View>
     );
 }
@@ -630,96 +551,6 @@ function buildGradeState(course: CourseCard, frequency: number | null, t: Transl
         label: meeState.numericGradeCount === 0 ? t('lesson.gradeStateNoGrade') : t('lesson.gradeStateWaitingGrades'),
         tone: 'neutral',
         value: 'S/N'
-    };
-}
-
-function buildFinalExamStatus(course: CourseCard, frequency: number | null, t: Translate, simulatePfRepeat: boolean): {
-    description: string;
-    iconColor: string;
-    isSimulated: boolean;
-    metrics: Array<{ label: string; value: string }>;
-    title: string;
-    tone: 'danger' | 'success' | 'warning';
-} {
-    const meeState = getValidatedMee(course);
-    const mee = meeState.value;
-    const pf = parseGrade(course.finalExam);
-    const providedFinalGrade = parseGrade(course.finalGrade);
-    const computedFinalGrade = mee !== null && pf !== null ? ((2 * mee) + pf) / 3 : null;
-    const finalGrade = computedFinalGrade ?? providedFinalGrade;
-    const hasEnoughPresence = frequency === null || frequency >= 75;
-    const metrics: Array<{ label: string; value: string }> = [
-        { label: 'MEE', value: mee === null ? 'S/N' : mee.toFixed(2) },
-        { label: t('nav.grades'), value: `${meeState.numericGradeCount}/2` },
-        { label: t('lesson.frequency'), value: frequency === null ? '-' : `${frequency}%` }
-    ];
-
-    if (!hasEnoughPresence) {
-        return {
-            description: t('lesson.finalExamFreqBelow'),
-            iconColor: '#ba1a1a',
-            isSimulated: false,
-            metrics: [...metrics, { label: t('lesson.minimum'), value: '75%' }],
-            title: t('lesson.finalExamAbsenceRiskTitle'),
-            tone: 'danger'
-        };
-    }
-
-    if (mee === null) {
-        return {
-            description: meeState.numericGradeCount === 0 ? t('lesson.finalExamNoGrades') : t('lesson.finalExamNeedTwoGrades'),
-            iconColor: '#7b5800',
-            isSimulated: false,
-            metrics,
-            title: t('lesson.finalExamUndefinedTitle'),
-            tone: 'warning'
-        };
-    }
-
-    if (isFinalExamWaived(mee, pf, hasEnoughPresence)) {
-        return {
-            description: t('lesson.finalExamMinFrequencyDescription'),
-            iconColor: '#003215',
-            isSimulated: false,
-            metrics: [...metrics, { label: t('lesson.finalGradeNeeded'), value: t('lesson.finalExamWaived') }],
-            title: t('lesson.finalExamApprovedNoPfTitle'),
-            tone: 'success'
-        };
-    }
-
-    if (simulatePfRepeat && isPfRepeatSimulationEligible(mee, pf)) {
-        return {
-            description: t('lesson.pfRepeatSimulatedDescription'),
-            iconColor: '#003215',
-            isSimulated: true,
-            metrics: [...metrics, { label: 'PF', value: t('lesson.pfRepeatSimulatedPfValue') }, { label: 'MF', value: mee.toFixed(2) }],
-            title: t('lesson.pfRepeatSimulatedTitle'),
-            tone: 'success'
-        };
-    }
-
-    if (pf !== null || finalGrade !== null) {
-        const approved = finalGrade !== null && finalGrade >= 5;
-        return {
-            description: approved ? t('lesson.finalExamApprovedDescription') : t('lesson.finalExamFailedDescription'),
-            iconColor: approved ? '#003215' : '#ba1a1a',
-            isSimulated: false,
-            metrics: [...metrics, { label: 'PF', value: pf === null ? '-' : pf.toFixed(2) }, { label: 'MF', value: finalGrade === null ? '-' : finalGrade.toFixed(2) }],
-            title: approved ? t('lesson.finalExamPassTitle') : t('lesson.finalExamFailTitle'),
-            tone: approved ? 'success' : 'danger'
-        };
-    }
-
-    const requiredFinalExam = 15 - (mee * 2);
-    const impossible = requiredFinalExam > 10;
-
-    return {
-        description: impossible ? t('lesson.finalExamImpossibleDescription') : t('lesson.finalExamFormulaDescription', { grade: Math.max(requiredFinalExam, 0).toFixed(2) }),
-        iconColor: impossible ? '#ba1a1a' : '#7b5800',
-        isSimulated: false,
-        metrics: [...metrics, { label: t('lesson.finalGradeNeeded'), value: impossible ? '> 10.00' : Math.max(requiredFinalExam, 0).toFixed(2) }],
-        title: impossible ? t('lesson.finalExamImpossibleTitle') : t('lesson.finalExamNeededTitle'),
-        tone: impossible ? 'danger' : 'warning'
     };
 }
 
