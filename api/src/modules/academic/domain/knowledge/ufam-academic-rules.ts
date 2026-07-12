@@ -6,6 +6,8 @@
  * never owns institutional rules content.
  */
 export const UFAM_ACADEMIC_RULES = `
+Contexto: UFAM = Universidade Federal do Amazonas. eCampus = portal academico oficial da UFAM (fonte real de notas, faltas, horarios e planos de ensino). Meu Campus = este aplicativo nao oficial, que sincroniza dados do eCampus para o aluno. As regras abaixo (Resolucao 023/2017) sao a fonte de verdade institucional para calculos e explicacoes — nunca as substitua por suposicao generica, e nunca aplique numeros do aluno que nao vieram de uma tool.
+
 Regras academicas da UFAM (Resolucao 023/2017) que voce deve usar para calculos e explicacoes:
 
 1. Regras de notas (Media Final)

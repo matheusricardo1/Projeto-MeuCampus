@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ClipboardList, Clock3, Filter, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
@@ -6,8 +6,9 @@ import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Translate } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { EmptyInline, SkeletonBlock } from '@/modules/academic/presentation/views/components';
-import { isApprovedStatus, parseGrade } from '@/modules/academic/presentation/views/workspace.utils';
+import { isApprovedStatus, isFinalExamWaived, isPfRepeatSimulationEligible, parseGrade } from '@/modules/academic/presentation/views/workspace.utils';
 import { useLessonPlanCourses, type CourseCard } from '@/modules/academic/presentation/hooks/use-lesson-plan-courses';
+import { readPfRepeatSimulation, writePfRepeatSimulation } from '@/modules/academic/presentation/views/pf-repeat-simulation-store';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
 export function LessonPlanListPage({
@@ -246,7 +247,7 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
                     </View>
                 </View>
 
-                <FinalExamStatusCard course={course} frequency={frequency ?? null} t={t} />
+                <FinalExamStatusCard course={course} frequency={frequency ?? null} semester={semester} t={t} />
                 <AbsenceStatusCard course={course} frequency={frequency ?? null} t={t} />
                 <InfoCard icon={<Clock3 color="#003215" size={20} />} label={t('lesson.schedule')} value={scheduleLabel} />
                 <InfoCard icon={<Timer color="#003215" size={20} />} label={t('lesson.workload')} value={workloadLabel === null ? '-' : t('lesson.workloadHours', { hours: workloadLabel })} />
@@ -289,8 +290,34 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
     );
 }
 
-function FinalExamStatusCard({ course, frequency, t }: { course: CourseCard; frequency: number | null; t: Translate }) {
-    const state = buildFinalExamStatus(course, frequency, t);
+function FinalExamStatusCard({ course, frequency, semester, t }: { course: CourseCard; frequency: number | null; semester: string; t: Translate }) {
+    const mee = parseGrade(course.exerciseAverage);
+    const pf = parseGrade(course.finalExam);
+    const simulationEligible = isPfRepeatSimulationEligible(mee, pf);
+    const simulationKey = `${semester}::${course.code}::${course.classIdentifier}`;
+    const [simulate, setSimulate] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        if (!simulationEligible) {
+            setSimulate(false);
+            return;
+        }
+        void readPfRepeatSimulation(simulationKey).then((value) => {
+            if (active) setSimulate(value);
+        });
+        return () => {
+            active = false;
+        };
+    }, [simulationEligible, simulationKey]);
+
+    const toggleSimulation = () => {
+        const next = !simulate;
+        setSimulate(next);
+        void writePfRepeatSimulation(simulationKey, next);
+    };
+
+    const state = buildFinalExamStatus(course, frequency, t, simulate);
     const Icon = state.tone === 'success' ? CheckCircle2 : AlertTriangle;
 
     return (
@@ -303,6 +330,11 @@ function FinalExamStatusCard({ course, frequency, t }: { course: CourseCard; fre
                     <Text style={styles.courseDetailsPfKicker}>{t('lesson.situationPf')}</Text>
                     <Text style={styles.courseDetailsPfTitle}>{state.title}</Text>
                 </View>
+                {state.isSimulated ? (
+                    <View style={styles.pfRepeatActiveBadge}>
+                        <Text style={styles.pfRepeatActiveBadgeText}>{t('lesson.pfRepeatActiveBadge')}</Text>
+                    </View>
+                ) : null}
             </View>
             <Text style={styles.courseDetailsPfDescription}>{state.description}</Text>
             <View style={styles.courseDetailsPfMetrics}>
@@ -313,6 +345,25 @@ function FinalExamStatusCard({ course, frequency, t }: { course: CourseCard; fre
                     </View>
                 ))}
             </View>
+
+            {simulationEligible ? (
+                <Pressable
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: simulate }}
+                    onPress={toggleSimulation}
+                    style={[styles.pfRepeatToggleRow, simulate ? styles.pfRepeatToggleRowActive : null]}
+                >
+                    <View style={[styles.pfRepeatToggleTrack, simulate ? styles.pfRepeatToggleTrackActive : null]}>
+                        <View style={[styles.pfRepeatToggleKnob, simulate ? styles.pfRepeatToggleKnobActive : null]}>
+                            {simulate ? <Check color="#ffffff" size={12} /> : null}
+                        </View>
+                    </View>
+                    <View style={styles.pfRepeatToggleText}>
+                        <Text style={styles.pfRepeatToggleLabel}>{t('lesson.pfRepeatToggleLabel')}</Text>
+                        <Text style={styles.pfRepeatToggleHint}>{simulate ? t('lesson.pfRepeatToggleOn') : t('lesson.pfRepeatToggleHint')}</Text>
+                    </View>
+                </Pressable>
+            ) : null}
         </View>
     );
 }
@@ -536,18 +587,18 @@ function buildGradeState(course: CourseCard, frequency: number | null, t: Transl
     const requiredFinalExam = mee === null ? null : Math.max(0, 15 - (mee * 2));
     const details: Array<{ label: string; value: string }> = [];
 
-    if (mee !== null) details.push({ label: 'MEE', value: mee.toFixed(1) });
-    if (pf !== null) details.push({ label: 'PF', value: pf.toFixed(1) });
-    if (finalGrade !== null) details.push({ label: 'MF', value: finalGrade.toFixed(1) });
-    if (needsFinalGrade && requiredFinalExam !== null) details.push({ label: t('lesson.finalGradeNeeded'), value: requiredFinalExam > 10 ? '> 10.0' : requiredFinalExam.toFixed(1) });
+    if (mee !== null) details.push({ label: 'MEE', value: mee.toFixed(2) });
+    if (pf !== null) details.push({ label: 'PF', value: pf.toFixed(2) });
+    if (finalGrade !== null) details.push({ label: 'MF', value: finalGrade.toFixed(2) });
+    if (needsFinalGrade && requiredFinalExam !== null) details.push({ label: t('lesson.finalGradeNeeded'), value: requiredFinalExam > 10 ? '> 10.00' : requiredFinalExam.toFixed(2) });
 
-    if (mee !== null && mee >= 8 && hasEnoughPresence && pf === null) {
+    if (mee !== null && isFinalExamWaived(mee, pf, hasEnoughPresence)) {
         return {
             color: '#003215',
             details,
             label: t('lesson.gradeStatePfWaived'),
             tone: 'success',
-            value: mee.toFixed(1)
+            value: mee.toFixed(2)
         };
     }
 
@@ -558,7 +609,7 @@ function buildGradeState(course: CourseCard, frequency: number | null, t: Transl
             details,
             label: t('lesson.gradeStateFinalAverage'),
             tone: approved ? 'success' : 'danger',
-            value: finalGrade.toFixed(1)
+            value: finalGrade.toFixed(2)
         };
     }
 
@@ -569,7 +620,7 @@ function buildGradeState(course: CourseCard, frequency: number | null, t: Transl
             details,
             label: needsFinalGrade ? t('lesson.gradeStatePartialGrade') : 'MEE',
             tone: impossibleFinal ? 'danger' : 'warning',
-            value: mee.toFixed(1)
+            value: mee.toFixed(2)
         };
     }
 
@@ -582,9 +633,10 @@ function buildGradeState(course: CourseCard, frequency: number | null, t: Transl
     };
 }
 
-function buildFinalExamStatus(course: CourseCard, frequency: number | null, t: Translate): {
+function buildFinalExamStatus(course: CourseCard, frequency: number | null, t: Translate, simulatePfRepeat: boolean): {
     description: string;
     iconColor: string;
+    isSimulated: boolean;
     metrics: Array<{ label: string; value: string }>;
     title: string;
     tone: 'danger' | 'success' | 'warning';
@@ -597,7 +649,7 @@ function buildFinalExamStatus(course: CourseCard, frequency: number | null, t: T
     const finalGrade = computedFinalGrade ?? providedFinalGrade;
     const hasEnoughPresence = frequency === null || frequency >= 75;
     const metrics: Array<{ label: string; value: string }> = [
-        { label: 'MEE', value: mee === null ? 'S/N' : mee.toFixed(1) },
+        { label: 'MEE', value: mee === null ? 'S/N' : mee.toFixed(2) },
         { label: t('nav.grades'), value: `${meeState.numericGradeCount}/2` },
         { label: t('lesson.frequency'), value: frequency === null ? '-' : `${frequency}%` }
     ];
@@ -606,6 +658,7 @@ function buildFinalExamStatus(course: CourseCard, frequency: number | null, t: T
         return {
             description: t('lesson.finalExamFreqBelow'),
             iconColor: '#ba1a1a',
+            isSimulated: false,
             metrics: [...metrics, { label: t('lesson.minimum'), value: '75%' }],
             title: t('lesson.finalExamAbsenceRiskTitle'),
             tone: 'danger'
@@ -616,9 +669,32 @@ function buildFinalExamStatus(course: CourseCard, frequency: number | null, t: T
         return {
             description: meeState.numericGradeCount === 0 ? t('lesson.finalExamNoGrades') : t('lesson.finalExamNeedTwoGrades'),
             iconColor: '#7b5800',
+            isSimulated: false,
             metrics,
             title: t('lesson.finalExamUndefinedTitle'),
             tone: 'warning'
+        };
+    }
+
+    if (isFinalExamWaived(mee, pf, hasEnoughPresence)) {
+        return {
+            description: t('lesson.finalExamMinFrequencyDescription'),
+            iconColor: '#003215',
+            isSimulated: false,
+            metrics: [...metrics, { label: t('lesson.finalGradeNeeded'), value: t('lesson.finalExamWaived') }],
+            title: t('lesson.finalExamApprovedNoPfTitle'),
+            tone: 'success'
+        };
+    }
+
+    if (simulatePfRepeat && isPfRepeatSimulationEligible(mee, pf)) {
+        return {
+            description: t('lesson.pfRepeatSimulatedDescription'),
+            iconColor: '#003215',
+            isSimulated: true,
+            metrics: [...metrics, { label: 'PF', value: t('lesson.pfRepeatSimulatedPfValue') }, { label: 'MF', value: mee.toFixed(2) }],
+            title: t('lesson.pfRepeatSimulatedTitle'),
+            tone: 'success'
         };
     }
 
@@ -627,19 +703,10 @@ function buildFinalExamStatus(course: CourseCard, frequency: number | null, t: T
         return {
             description: approved ? t('lesson.finalExamApprovedDescription') : t('lesson.finalExamFailedDescription'),
             iconColor: approved ? '#003215' : '#ba1a1a',
-            metrics: [...metrics, { label: 'PF', value: pf === null ? '-' : pf.toFixed(1) }, { label: 'MF', value: finalGrade === null ? '-' : finalGrade.toFixed(1) }],
+            isSimulated: false,
+            metrics: [...metrics, { label: 'PF', value: pf === null ? '-' : pf.toFixed(2) }, { label: 'MF', value: finalGrade === null ? '-' : finalGrade.toFixed(2) }],
             title: approved ? t('lesson.finalExamPassTitle') : t('lesson.finalExamFailTitle'),
             tone: approved ? 'success' : 'danger'
-        };
-    }
-
-    if (mee >= 8) {
-        return {
-            description: t('lesson.finalExamMinFrequencyDescription'),
-            iconColor: '#003215',
-            metrics: [...metrics, { label: t('lesson.finalGradeNeeded'), value: t('lesson.finalExamWaived') }],
-            title: t('lesson.finalExamApprovedNoPfTitle'),
-            tone: 'success'
         };
     }
 
@@ -647,9 +714,10 @@ function buildFinalExamStatus(course: CourseCard, frequency: number | null, t: T
     const impossible = requiredFinalExam > 10;
 
     return {
-        description: impossible ? t('lesson.finalExamImpossibleDescription') : t('lesson.finalExamFormulaDescription', { grade: Math.max(requiredFinalExam, 0).toFixed(1) }),
+        description: impossible ? t('lesson.finalExamImpossibleDescription') : t('lesson.finalExamFormulaDescription', { grade: Math.max(requiredFinalExam, 0).toFixed(2) }),
         iconColor: impossible ? '#ba1a1a' : '#7b5800',
-        metrics: [...metrics, { label: t('lesson.finalGradeNeeded'), value: impossible ? '> 10.0' : Math.max(requiredFinalExam, 0).toFixed(1) }],
+        isSimulated: false,
+        metrics: [...metrics, { label: t('lesson.finalGradeNeeded'), value: impossible ? '> 10.00' : Math.max(requiredFinalExam, 0).toFixed(2) }],
         title: impossible ? t('lesson.finalExamImpossibleTitle') : t('lesson.finalExamNeededTitle'),
         tone: impossible ? 'danger' : 'warning'
     };

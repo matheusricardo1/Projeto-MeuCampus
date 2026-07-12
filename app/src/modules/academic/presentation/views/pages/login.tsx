@@ -113,14 +113,8 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                                 ) : null}
                             </View>
                             <View style={styles.loginHeaderText}>
-                                <Text style={styles.eyebrow}>{t('login.eyebrow')}</Text>
                                 <Text style={styles.loginTitle}>Meu Campus</Text>
-                                <Text style={styles.loginSubtitle}>{t('login.subtitle')}</Text>
-                            </View>
-
-                            <View style={styles.loginTrustCard}>
-                                <Text style={styles.loginFeatureLabel}>{t('login.privacyLabel')}</Text>
-                                <Text style={styles.loginFeatureValue}>{t('login.privacyText')}</Text>
+                                <Text style={styles.loginSubtitle}>{t('login.disclaimer')}</Text>
                             </View>
                         </LinearGradient>
 
@@ -130,11 +124,6 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                                     <LanguageSelector compact />
                                 </View>
                             ) : null}
-
-                            <View style={styles.loginFormHeader}>
-                                <Text style={styles.loginFormTitle}>{t('login.title')}</Text>
-                                <Text style={styles.loginFormText}>{t('login.helper')}</Text>
-                            </View>
 
                             <View ref={cpfFieldRef}>
                                 <Field label={t('login.cpf')}>

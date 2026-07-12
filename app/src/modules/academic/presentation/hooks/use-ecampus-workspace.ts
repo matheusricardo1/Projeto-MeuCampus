@@ -101,6 +101,8 @@ export function useEcampusWorkspace() {
     const [lessonPlanSubjects, setLessonPlanSubjects] = useState<LessonPlanSubject[]>([]);
     const [selectedLessonPlanSubjectCode, setSelectedLessonPlanSubjectCode] = useState('');
     const [gradesInput, setGradesInput] = useState<GradesInput>(currentGradesInput);
+    const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>([]);
+    const [aiChatConversationId, setAiChatConversationId] = useState<string | undefined>();
     const [pendingInitialResources, setPendingInitialResources] = useState<Set<InitialResourceKey>>(new Set());
 
     const isInitialDataLoading = pendingInitialResources.size > 0;
@@ -121,6 +123,8 @@ export function useEcampusWorkspace() {
         setLessonPlan([]);
         setLessonPlanSubjects([]);
         setSelectedLessonPlanSubjectCode('');
+        setAiChatMessages([]);
+        setAiChatConversationId(undefined);
         pendingLessonPlanPlanIdRef.current = null;
         pendingGradesPeriodRef.current = null;
         loadedResourcesRef.current.clear();
@@ -860,6 +864,8 @@ export function useEcampusWorkspace() {
         isAuthenticated,
         isInitialDataLoading,
         isLoading,
+        aiChatConversationId,
+        aiChatMessages,
         cancelAiChatMessage,
         createCardCheckout,
         createPixCheckout,
@@ -882,6 +888,8 @@ export function useEcampusWorkspace() {
         schedule,
         selectedLessonPlanSubjectCode,
         sendAiChatMessage,
+        setAiChatConversationId,
+        setAiChatMessages,
         setGradesInput
     };
 }

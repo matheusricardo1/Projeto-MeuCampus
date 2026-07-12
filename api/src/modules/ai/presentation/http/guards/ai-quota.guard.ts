@@ -4,7 +4,7 @@ import { AiQuotaService } from '@ai/infrastructure/redis/ai-quota.service';
 import { UserPlanRepository } from '@billing/infrastructure/prisma/user-plan.repository';
 import { pseudonymousUserId } from '@/shared/security/pseudonymous-user-id';
 
-const FREE_DAILY_LIMIT = Number(process.env.AI_FREE_DAILY_LIMIT || 6);
+const FREE_DAILY_LIMIT = Number(process.env.AI_FREE_DAILY_LIMIT || 30);
 const PAID_DAILY_LIMIT = Number(process.env.AI_PAID_DAILY_LIMIT || 100);
 
 interface RequestWithAiUser {

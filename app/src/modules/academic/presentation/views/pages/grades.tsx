@@ -4,7 +4,7 @@ import { colors } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { EmptyInline, Field, MiniGrade, PanelHeader, SkeletonBlock } from '@/modules/academic/presentation/views/components';
-import { gradeToneStyle, isApprovedStatus, parseGrade, useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
+import { gradeToneStyle, isApprovedStatus, isFinalExamWaived, parseGrade, useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
 export function GradesPage({ grades, input, loading, onChange, onRefresh }: { grades: Workspace['grades']; input: Workspace['gradesInput']; loading: boolean; onChange: Workspace['setGradesInput']; onRefresh: () => Promise<void>; }) {
@@ -21,7 +21,7 @@ export function GradesPage({ grades, input, loading, onChange, onRefresh }: { gr
         <View style={styles.sectionStack}>
             <View style={styles.panel}>
                 <Text style={styles.sectionKicker}>{t('grades.periodReport')}</Text>
-                <Text style={styles.bigNumber}>{averageNumber === null ? '-' : averageNumber.toFixed(1)}</Text>
+                <Text style={styles.bigNumber}>{averageNumber === null ? '-' : averageNumber.toFixed(2)}</Text>
                 <Text style={styles.panelDescription}>{t('grades.generalAverage')}</Text>
                 <View style={[styles.gradeOverviewGrid, layout.isTablet ? styles.metricGridWide : null]}>
                     <MiniGrade label={t('grades.subjects')} value={String(grades.length)} helper={t('grades.displayedSubjects')} />
@@ -40,21 +40,29 @@ export function GradesPage({ grades, input, loading, onChange, onRefresh }: { gr
 
                 <View style={styles.listStack}>
                     {grades.length === 0 ? <EmptyInline text={t('grades.noGrades')} /> : null}
-                    {grades.map((grade) => (
-                        <View key={`${grade.code}-${grade.subject}`} style={styles.gradeCard}>
-                            <View style={styles.gradeHeader}>
-                                <View style={styles.gradeHeaderText}><Text style={styles.smallCaps}>{grade.code}{grade.class_identifier ? ` - ${grade.class_identifier}` : ''}</Text><Text style={styles.eventTitle}>{grade.subject}</Text></View>
-                                <View style={[styles.statusPill, gradeToneStyle(grade.status)]}><Text style={styles.statusPillText}>{grade.status || '-'}</Text></View>
-                            </View>
+                    {grades.map((grade) => {
+                        const mee = parseGrade(grade.exercise_average);
+                        const pf = parseGrade(grade.final_exam);
+                        const presencePercent = grade.attendance?.presence_percent ?? null;
+                        const hasEnoughPresence = presencePercent === null || presencePercent >= 75;
+                        const waived = isFinalExamWaived(mee, pf, hasEnoughPresence);
 
-                            <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
-                                <MiniGrade featured label="MF" value={grade.final_grade || '-'} helper={t('grades.finalAverage')} />
-                                <MiniGrade label="FT" value={grade.absences || '-'} helper={t('home.registeredAbsences')} />
-                                <MiniGrade label="AV" value={String(grade.evaluations?.length ?? 0)} helper={t('grades.evaluations')} />
-                                {grade.final_exam ? <MiniGrade label="PF" value={grade.final_exam} helper={t('grades.finalExam')} /> : null}
+                        return (
+                            <View key={`${grade.code}-${grade.subject}`} style={styles.gradeCard}>
+                                <View style={styles.gradeHeader}>
+                                    <View style={styles.gradeHeaderText}><Text style={styles.smallCaps}>{grade.code}{grade.class_identifier ? ` - ${grade.class_identifier}` : ''}</Text><Text style={styles.eventTitle}>{grade.subject}</Text></View>
+                                    <View style={[styles.statusPill, gradeToneStyle(grade.status)]}><Text style={styles.statusPillText}>{grade.status || '-'}</Text></View>
+                                </View>
+
+                                <View style={[styles.metricGrid, layout.isTablet ? styles.metricGridWide : null]}>
+                                    <MiniGrade featured label="MF" value={grade.final_grade || '-'} helper={t('grades.finalAverage')} />
+                                    <MiniGrade label="FT" value={grade.absences || '-'} helper={t('home.registeredAbsences')} />
+                                    <MiniGrade label="AV" value={String(grade.evaluations?.length ?? 0)} helper={t('grades.evaluations')} />
+                                    {grade.final_exam && !waived ? <MiniGrade label="PF" value={grade.final_exam} helper={t('grades.finalExam')} /> : null}
+                                </View>
                             </View>
-                        </View>
-                    ))}
+                        );
+                    })}
                 </View>
             </View>
         </View>
