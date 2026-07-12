@@ -18,6 +18,10 @@ type ResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects' | 'l
 type InitialResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects' | 'lessonPlan';
 type BootstrapResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects';
 
+// Upper bound on how long any single resource can stay "pending" before its
+// skeleton is force-cleared — see perResourceTimeoutsRef below.
+const RESOURCE_STUCK_TIMEOUT_MS = 25000;
+
 interface LoginInput {
     user: string;
     password: string;
@@ -89,6 +93,13 @@ export function useEcampusWorkspace() {
     const initialEventsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const inFlightRequests = useRef(new Map<ResourceKey, Promise<unknown>>());
     const pendingInitialResourcesRef = useRef(new Set<InitialResourceKey>());
+    // Safety net per resource: normally a resource clears itself via a
+    // realtime "resource-ready" event, but if that event is ever dropped
+    // (a WebSocket reconnect race, a job that silently fails server-side)
+    // the resource would stay "pending" — and its skeleton on screen —
+    // forever. This force-resolves it after a bounded wait no matter which
+    // code path marked it pending.
+    const perResourceTimeoutsRef = useRef(new Map<InitialResourceKey, ReturnType<typeof setTimeout>>());
     const realtimeHandlerRef = useRef<(event: EcampusResourceReadyEvent) => void>(() => undefined);
     const realtimeFailureHandlerRef = useRef<(event: EcampusResourceFailedEvent) => void>(() => undefined);
     const realtimeBootstrapReadyHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
@@ -135,6 +146,8 @@ export function useEcampusWorkspace() {
         pendingGradesPeriodRef.current = null;
         loadedResourcesRef.current.clear();
         pendingInitialResourcesRef.current.clear();
+        perResourceTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+        perResourceTimeoutsRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
         clearInitialEventsTimeout();
         setPendingInitialResources(new Set());
@@ -145,12 +158,22 @@ export function useEcampusWorkspace() {
         inFlightRequests.current.clear();
         loadedResourcesRef.current.clear();
         pendingInitialResourcesRef.current.clear();
+        perResourceTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+        perResourceTimeoutsRef.current.clear();
         isWaitingForInitialEventsRef.current = false;
         hasRealtimeConnectedRef.current = false;
         clearInitialEventsTimeout();
         setLoadingRequests(0);
         setPendingInitialResources(new Set());
         return sessionGeneration.current;
+    };
+
+    const clearPerResourceTimeout = (resource: InitialResourceKey) => {
+        const timeout = perResourceTimeoutsRef.current.get(resource);
+        if (timeout) {
+            clearTimeout(timeout);
+            perResourceTimeoutsRef.current.delete(resource);
+        }
     };
 
     const markInitialResourcesPending = (resources: InitialResourceKey[]) => {
@@ -160,9 +183,18 @@ export function useEcampusWorkspace() {
             resources.forEach((resource) => next.add(resource));
             return next;
         });
+
+        resources.forEach((resource) => {
+            clearPerResourceTimeout(resource);
+            perResourceTimeoutsRef.current.set(resource, setTimeout(() => {
+                perResourceTimeoutsRef.current.delete(resource);
+                markInitialResourceReady(resource);
+            }, RESOURCE_STUCK_TIMEOUT_MS));
+        });
     };
 
     const markInitialResourceReady = (resource: InitialResourceKey) => {
+        clearPerResourceTimeout(resource);
         pendingInitialResourcesRef.current.delete(resource);
         setPendingInitialResources((current) => {
             if (!current.has(resource)) {
@@ -205,6 +237,9 @@ export function useEcampusWorkspace() {
 
             isWaitingForInitialEventsRef.current = false;
             setTranslatedError('errors.generic');
+            pendingInitialResourcesRef.current.clear();
+            perResourceTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+            perResourceTimeoutsRef.current.clear();
             setPendingInitialResources(new Set());
         }, 30000);
     };

@@ -13,6 +13,11 @@ import { AcademicPeriod } from '@/modules/academic/domain/value-objects/academic
 
 const DEFAULT_API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://127.0.0.1:3001';
 const DEFAULT_APP_ENV = 'production';
+// Without this, a request that the server accepts but never answers (stalled
+// connection, hung backend) leaves fetch's promise pending forever — which
+// keeps this resource "loading" (and its skeleton on screen) indefinitely,
+// since nothing else in the app ever forces that promise to settle.
+const REQUEST_TIMEOUT_MS = 20000;
 
 export class EcampusHttpRepository implements EcampusRepository {
     private readonly baseUrl: string;
@@ -192,16 +197,22 @@ export class EcampusHttpRepository implements EcampusRepository {
             requestInit.cache = 'no-store';
         }
 
+        const timeoutController = new AbortController();
+        const timeout = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+
         let response: Response;
         try {
             response = await fetch(`${this.baseUrl}${path}`, {
-                ...requestInit
+                ...requestInit,
+                signal: timeoutController.signal
             });
         } catch {
             // fetch itself throws (not an HTTP error response) when there's no
             // network path to the server at all — offline, DNS failure, the
-            // API being unreachable, a timeout, etc.
+            // API being unreachable, or the timeout above firing.
             throw new Error('Sem conexao com a internet. Verifique sua rede e tente novamente.');
+        } finally {
+            clearTimeout(timeout);
         }
 
         const body = await response.text();
