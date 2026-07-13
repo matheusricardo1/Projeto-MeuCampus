@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { BookOpen, Calculator, Clock3, GraduationCap, Lightbulb, MapPin, Terminal, Utensils } from 'lucide-react-native';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
@@ -18,6 +19,7 @@ export function SchedulePage({
     schedule: Workspace['schedule'];
 }) {
     const { t } = useLanguage();
+    const router = useRouter();
     const groupedSchedule = groupScheduleByDay(schedule);
     const weekMap = buildWeekMap(groupedSchedule, t).filter((day) => weekdayOrder.includes(day.weekday as typeof weekdayOrder[number]));
     const nextClass = getNextScheduleClass(schedule, t);
@@ -54,6 +56,7 @@ export function SchedulePage({
                         index={index}
                         item={item}
                         key={`${item.weekday}-${item.start_time}-${item.class_identifier}`}
+                        onPress={() => router.push(`/lesson-plan/${encodeURIComponent(item.code)}`)}
                         t={t}
                     />
                 ))}
@@ -66,6 +69,7 @@ export function SchedulePage({
                         index={beforeLunch.length + index}
                         item={item}
                         key={`${item.weekday}-${item.start_time}-${item.class_identifier}`}
+                        onPress={() => router.push(`/lesson-plan/${encodeURIComponent(item.code)}`)}
                         t={t}
                     />
                 ))}
@@ -88,7 +92,7 @@ export function SchedulePage({
     );
 }
 
-function ScheduleTimelineCard({ active, index, item, t }: { active: boolean; index: number; item: Workspace['schedule'][number]; t: ReturnType<typeof useLanguage>['t'] }) {
+function ScheduleTimelineCard({ active, index, item, onPress, t }: { active: boolean; index: number; item: Workspace['schedule'][number]; onPress: () => void; t: ReturnType<typeof useLanguage>['t'] }) {
     const Icon = index % 3 === 0 ? BookOpen : index % 3 === 1 ? Calculator : Terminal;
 
     return (
@@ -99,7 +103,7 @@ function ScheduleTimelineCard({ active, index, item, t }: { active: boolean; ind
                 </View>
             </View>
 
-            <View style={styles.scheduleClassCard}>
+            <Pressable onPress={onPress} style={({ pressed }) => [styles.scheduleClassCard, pressed ? styles.pressedFeedback : null]}>
                 <View style={styles.scheduleClassHeader}>
                     <View style={styles.scheduleClassTitleBlock}>
                         <View style={styles.scheduleClassCodeBadge}>
@@ -124,7 +128,7 @@ function ScheduleTimelineCard({ active, index, item, t }: { active: boolean; ind
                         <Text style={styles.scheduleMetaText}>{item.class_identifier || t('schedule.roomUnknown')}</Text>
                     </View>
                 </View>
-            </View>
+            </Pressable>
         </View>
     );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, Easing, Linking, Modal, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputKeyPressEventData, View } from 'react-native';
 import { AlertCircle, AlertTriangle, Bot, Brain, Check, ExternalLink, Lock, Mic, Pencil, RotateCcw, Send, Sparkles, Square, X } from 'lucide-react-native';
 import type { AiChatMessage } from '@/modules/academic/domain/entities/ai-chat-message';
@@ -82,6 +82,11 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
     const inputRef = useRef<TextInput | null>(null);
     const lastSentPromptRef = useRef<{ prompt: string; sentAt: number } | null>(null);
     const processingPulse = useRef(new Animated.Value(0)).current;
+    // Ids of messages created during this session (as opposed to restored from
+    // persisted history on mount) — only these play the "rising from the
+    // input" entrance animation, so reopening a chat doesn't replay it for
+    // the whole history.
+    const freshMessageIdsRef = useRef(new Set<string>());
     const [messages, setMessages] = useState<ChatMessage[]>(() => (
         persistedMessages && persistedMessages.length > 0
             ? persistedMessages.map((message): ChatMessage => ({ ...message, kind: 'text' }))
@@ -273,6 +278,9 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
             kind: 'processing'
         };
 
+        freshMessageIdsRef.current.add(userMessage.id);
+        freshMessageIdsRef.current.add(assistantId);
+
         const history = historyBase.map(({ kind: _kind, statusLabel: _statusLabel, ...message }) => message);
         setMessages([...historyBase, userMessage, processingMessage]);
         setIsSending(true);
@@ -424,7 +432,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                 <View style={styles.chatSection}>
                     {messages.map((message, index) => (
                         message.role === 'user' ? (
-                            <View key={message.id} style={styles.messageRowUser}>
+                            <MessageEntry key={message.id} shouldAnimate={freshMessageIdsRef.current.has(message.id)} style={styles.messageRowUser}>
                                 <View style={styles.messageBodyUser}>
                                     {editingMessageId === message.id ? (
                                         <View style={styles.editBubble}>
@@ -456,7 +464,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                         </>
                                     )}
                                 </View>
-                            </View>
+                            </MessageEntry>
                         ) : (() => {
                             const isTextMessage = message.kind === 'text';
                             const isLastMessage = index === messages.length - 1;
@@ -467,7 +475,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                             const showWidgets = isTextMessage && !isRevealing;
 
                             return (
-                                <View key={message.id} style={styles.messageRow}>
+                                <MessageEntry key={message.id} shouldAnimate={freshMessageIdsRef.current.has(message.id)} style={styles.messageRow}>
                                     <View style={styles.botAvatar}>
                                         <Bot color={colors.inverseText} size={18} />
                                     </View>
@@ -539,7 +547,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                             </Pressable>
                                         ) : null}
                                     </View>
-                                </View>
+                                </MessageEntry>
                             );
                         })()
                     ))}
@@ -683,6 +691,41 @@ function UpgradeModal({ visible, onClose, onCreateCardCheckout, onCreatePixCheck
                 </View>
             </View>
         </Modal>
+    );
+}
+
+// Entrance animation for a newly sent/received chat bubble: rises up and
+// fades/scales in from where the input dock sits, instead of popping in at
+// full size. `shouldAnimate` is false for messages restored from persisted
+// history, which render at rest immediately.
+function MessageEntry({ children, shouldAnimate, style }: { children: ReactNode; shouldAnimate: boolean; style: object }) {
+    const progress = useRef(new Animated.Value(shouldAnimate ? 0 : 1)).current;
+
+    useEffect(() => {
+        if (!shouldAnimate) return;
+        Animated.timing(progress, {
+            toValue: 1,
+            duration: 260,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true
+        }).start();
+    }, [shouldAnimate, progress]);
+
+    return (
+        <Animated.View
+            style={[
+                style,
+                {
+                    opacity: progress,
+                    transform: [
+                        { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) },
+                        { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }
+                    ]
+                }
+            ]}
+        >
+            {children}
+        </Animated.View>
     );
 }
 

@@ -158,6 +158,7 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
     const isAbsenceRisk = course.attendance?.is_absence_risk === true;
     const gradeState = buildGradeState(course, frequency ?? null, t);
     const isRisk = isAbsenceRisk || gradeState.tone === 'danger';
+    const isApproved = gradeState.tone === 'success';
     // Grade color reflects grade status only, frequency color reflects
     // attendance risk only — they used to share one "statusColor", which made
     // the frequency number turn red/green based on the grade instead of on
@@ -182,6 +183,12 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
                     <Text style={styles.courseSubjectTitle}>{toSubjectTitle(course.subject)}</Text>
                 </View>
                 <View style={styles.courseGradeBlock}>
+                    {isApproved ? (
+                        <View style={styles.courseApprovedBadge}>
+                            <CheckCircle2 color="#003215" size={12} />
+                            <Text style={styles.courseApprovedBadgeText}>{t('lesson.approved')}</Text>
+                        </View>
+                    ) : null}
                     <Text style={[styles.courseGradeValue, { color: gradeColor }]}>{animatedGrade === null ? gradeState.value : animatedGrade.toFixed(2)}</Text>
                     <Text style={styles.courseGradeLabel}>{gradeState.label}</Text>
                 </View>
