@@ -54,28 +54,62 @@ export class EcampusHttpRepository implements EcampusRepository {
 
     async getCurrentPeriod(credentials: EcampusCredentials): Promise<CurrentAcademicPeriod> {
         return this.runExclusive(credentials.cpf, async () => {
-            const client = await this.authService.getAuthenticatedClient(credentials);
             logger.info("Resolving the current academic period from eCampus...");
 
-            const response = await client.get<string>('/notasEFrequencia/index', { timeout: 15000 });
-            const tree = parse(response.data);
-            const resolved = this.extractSelectedPeriod(tree);
+            // In production this reliably fails on the very first hit right
+            // after login and then succeeds on a manual refresh — eCampus's
+            // session-scoped "selected year/period" apparently isn't
+            // established yet immediately post-login, and only settles after
+            // another request against the same session (exactly what a
+            // refresh does). A few fresh attempts against a live session
+            // reproduces that instead of forcing the user to refresh by hand.
+            const attempts = 3;
+            let lastDiagnostics: { yearInputHtml: string | null; periodoSelectHtml: string | null } | null = null;
 
-            if (!resolved) {
-                // No test fixture exists for this page yet (nothing ever
-                // captured real eCampus markup for it) — log enough of the
-                // actual response to build one from the next occurrence
-                // instead of guessing blind again.
-                logger.error('Could not resolve the current academic period: no year input or periodo option found.', {
+            for (let attempt = 1; attempt <= attempts; attempt += 1) {
+                const client = await this.authService.getAuthenticatedClient(credentials);
+                const response = await client.get<string>('/notasEFrequencia/index', { timeout: 15000 });
+                const tree = parse(response.data);
+                const resolved = this.extractSelectedPeriod(tree);
+
+                if (resolved) {
+                    if (attempt > 1) {
+                        logger.info(`Resolved current academic period on retry ${attempt}/${attempts}.`, { year: resolved.year, period: resolved.period });
+                    } else {
+                        logger.info(`Resolved current academic period: ${resolved.year}/${resolved.period}.`);
+                    }
+                    return resolved;
+                }
+
+                lastDiagnostics = {
                     yearInputHtml: tree.querySelector('input#ano')?.outerHTML ?? null,
                     periodoSelectHtml: tree.querySelector('select[name="periodo"]')?.outerHTML ?? null
-                });
-                throw new Error('Unable to determine the current academic period from eCampus.');
+                };
+
+                if (attempt < attempts) {
+                    logger.warning(`eCampus did not return a resolvable academic period on attempt ${attempt}/${attempts}; retrying.`, lastDiagnostics);
+                    await this.delay(700 * attempt);
+                }
             }
 
-            logger.info(`Resolved current academic period: ${resolved.year}/${resolved.period}.`);
-            return resolved;
+            // Every attempt came back without a resolvable period — fall
+            // back to a calendar guess instead of hard-failing the whole
+            // grades load. Grades for a mis-guessed period simply won't be
+            // cached yet, which the caller already handles as a normal
+            // "needs scrape" state instead of a dead end requiring a manual
+            // user refresh.
+            const guess = AcademicPeriod.guessCurrent();
+            logger.error('Could not resolve the current academic period from eCampus after retries; falling back to a calendar guess.', {
+                ...lastDiagnostics,
+                guessedYear: guess.year,
+                guessedPeriod: guess.period
+            });
+            return { year: guess.year, period: guess.period };
         });
+    }
+
+    private delay(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     private extractSelectedPeriod(tree: HTMLElement): CurrentAcademicPeriod | null {
