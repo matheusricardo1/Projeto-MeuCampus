@@ -6,7 +6,7 @@ import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Translate } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { EmptyInline, SkeletonBlock } from '@/modules/academic/presentation/views/components';
-import { isApprovedStatus, isFinalExamWaived, parseGrade } from '@/modules/academic/presentation/views/workspace.utils';
+import { isApprovedStatus, isFinalExamWaived, parseGrade, toSubjectTitle } from '@/modules/academic/presentation/views/workspace.utils';
 import { useLessonPlanCourses, type CourseCard } from '@/modules/academic/presentation/hooks/use-lesson-plan-courses';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
@@ -146,19 +146,24 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
     const isAbsenceRisk = course.attendance?.is_absence_risk === true;
     const gradeState = buildGradeState(course, frequency ?? null, t);
     const isRisk = isAbsenceRisk || gradeState.tone === 'danger';
-    const statusColor = isAbsenceRisk ? '#ba1a1a' : gradeState.color;
+    // Grade color reflects grade status only, frequency color reflects
+    // attendance risk only — they used to share one "statusColor", which made
+    // the frequency number turn red/green based on the grade instead of on
+    // actual absences (and vice versa).
+    const gradeColor = gradeState.color;
+    const frequencyColor = isAbsenceRisk ? '#ba1a1a' : '#003215';
 
     return (
-        <Pressable onPress={onPress} style={({ pressed }) => [styles.courseCard, !course.available ? styles.courseCardUnavailable : null, pressed ? styles.pressedFeedback : null]}>
+        <Pressable onPress={onPress} style={({ pressed }) => [styles.courseCard, pressed ? styles.pressedFeedback : null]}>
             <View style={styles.courseCardHeader}>
                 <View style={styles.courseCardTitleBlock}>
                     <View style={[styles.courseCodeBadge, isRisk ? styles.courseCodeBadgeDanger : null]}>
-                        <Text style={[styles.courseCodeText, isRisk ? styles.courseCodeTextDanger : null]}>{course.classIdentifier || course.code}</Text>
+                        <Text style={[styles.courseCodeText, isRisk ? styles.courseCodeTextDanger : null]}>{course.code}</Text>
                     </View>
-                    <Text style={styles.courseSubjectTitle}>{course.subject}</Text>
+                    <Text style={styles.courseSubjectTitle}>{toSubjectTitle(course.subject)}</Text>
                 </View>
                 <View style={styles.courseGradeBlock}>
-                    <Text style={[styles.courseGradeValue, { color: statusColor }]}>{gradeState.value}</Text>
+                    <Text style={[styles.courseGradeValue, { color: gradeColor }]}>{gradeState.value}</Text>
                     <Text style={styles.courseGradeLabel}>{gradeState.label}</Text>
                 </View>
             </View>
@@ -166,7 +171,7 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
             <View style={styles.courseFrequencyBlock}>
                 <View style={styles.courseFrequencyHeader}>
                     <Text style={styles.courseMetaLabel}>{t('lesson.frequency')}</Text>
-                    <Text style={[styles.courseFrequencyValue, { color: statusColor }]}>{frequency === null || frequency === undefined ? '--' : `${frequency}%`}</Text>
+                    <Text style={[styles.courseFrequencyValue, { color: frequencyColor }]}>{frequency === null || frequency === undefined ? '--' : `${frequency}%`}</Text>
                 </View>
                 <View style={[styles.courseProgressTrack, !hasFrequency ? styles.courseProgressTrackUnavailable : isAbsenceRisk ? styles.courseProgressTrackDanger : null]}>
                     <View style={[styles.courseProgressFill, !hasFrequency ? styles.courseProgressFillUnavailable : isAbsenceRisk ? styles.courseProgressFillDanger : null, { width: `${frequency ?? 100}%` }]} />
@@ -210,10 +215,10 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
 
             <View style={styles.courseDetailsHero}>
                 <View style={styles.courseDetailsBadgeRow}>
-                    <Text style={styles.courseDetailsCodeBadge}>{course.classIdentifier || course.code}</Text>
+                    <Text style={styles.courseDetailsCodeBadge}>{course.code}</Text>
                     <Text style={styles.courseDetailsSemesterBadge}>{semester}</Text>
                 </View>
-                <Text style={styles.courseDetailsTitle}>{course.subject}</Text>
+                <Text style={styles.courseDetailsTitle}>{toSubjectTitle(course.subject)}</Text>
                 <View style={styles.courseDetailsTeacherRow}>
                     <School color="rgba(255,255,255,0.82)" size={18} />
                     <Text style={styles.courseDetailsTeacher}>{course.professor || t('lesson.teacherUnknown')}</Text>
@@ -308,8 +313,8 @@ export function CourseContentScreen({ course, loading, onBack, t }: { course: Co
             </View>
 
             <View style={styles.courseContentHero}>
-                <Text style={styles.courseContentCode}>{t('lesson.code', { code: course.classIdentifier || course.code })}</Text>
-                <Text style={styles.courseContentTitle}>{course.subject}</Text>
+                <Text style={styles.courseContentCode}>{t('lesson.code', { code: course.code })}</Text>
+                <Text style={styles.courseContentTitle}>{toSubjectTitle(course.subject)}</Text>
                 <View style={styles.courseContentProgressBlock}>
                     <View style={styles.courseContentProgressHeader}>
                         <Text style={styles.courseContentProgressLabel}>{t('lesson.contentProgress')}</Text>

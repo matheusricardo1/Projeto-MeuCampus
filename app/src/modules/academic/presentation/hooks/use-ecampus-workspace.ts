@@ -476,8 +476,11 @@ export function useEcampusWorkspace() {
         setSelectedLessonPlanSubjectCode(selectedSubject.code);
 
         if (!selectedSubject.planId) {
+            // Not every subject has a published teaching plan yet — that's a normal
+            // state the course details screen already renders inline, not something
+            // that should also raise the workspace-wide error banner.
             setLessonPlan([]);
-            setTranslatedError('errors.lessonPlanUnavailable', { code: selectedSubject.code, subject: selectedSubject.subject });
+            markInitialResourceReady('lessonPlan');
             return;
         }
 
@@ -852,7 +855,9 @@ export function useEcampusWorkspace() {
         }
 
         if (!selectedSubject.planId) {
-            setTranslatedError('errors.lessonPlanUnavailable', { code: selectedSubject.code, subject: selectedSubject.subject });
+            // Not every subject has a published teaching plan yet — that's a normal
+            // state the course details screen already renders inline, not something
+            // that should also raise the workspace-wide error banner.
             return;
         }
 

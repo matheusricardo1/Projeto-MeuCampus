@@ -4,7 +4,7 @@ import { BookOpen, Calculator, Clock3, GraduationCap, Lightbulb, MapPin, Termina
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { EmptyInline, SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
-import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, parseTimeToMinutes } from '@/modules/academic/presentation/views/workspace.utils';
+import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, parseTimeToMinutes, toSubjectTitle } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
 const weekdayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
@@ -76,7 +76,7 @@ export function SchedulePage({
                             <Lightbulb color="#6e4f00" size={20} />
                             <Text style={styles.scheduleTipLabel}>{t('schedule.academicTip')}</Text>
                         </View>
-                        <Text style={styles.scheduleTipText}>{selectedItems[0] ? t('schedule.reviewMaterials', { subject: selectedItems[0].subject }) : t('schedule.organizeMaterials')}</Text>
+                        <Text style={styles.scheduleTipText}>{selectedItems[0] ? t('schedule.reviewMaterials', { subject: toSubjectTitle(selectedItems[0].subject) }) : t('schedule.organizeMaterials')}</Text>
                         <Pressable style={({ pressed }) => [styles.scheduleTipButton, pressed ? styles.pressedFeedback : null]}>
                             <Text style={styles.scheduleTipButtonText}>{t('schedule.seeMaterials')}</Text>
                         </Pressable>
@@ -105,7 +105,7 @@ function ScheduleTimelineCard({ active, index, item, t }: { active: boolean; ind
                         <View style={styles.scheduleClassCodeBadge}>
                             <Text style={styles.scheduleClassCodeText}>{item.code}</Text>
                         </View>
-                        <Text style={styles.scheduleClassTitle}>{item.subject}</Text>
+                        <Text style={styles.scheduleClassTitle}>{toSubjectTitle(item.subject)}</Text>
                     </View>
                     {active ? (
                         <View style={styles.scheduleActiveBadge}>

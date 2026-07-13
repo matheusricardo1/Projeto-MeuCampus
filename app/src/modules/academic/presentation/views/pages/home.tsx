@@ -1,15 +1,15 @@
 import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { BookOpen, CalendarDays, CheckCircle2, ClipboardList, FileText, GraduationCap, Star, TrendingUp } from 'lucide-react-native';
-import { colors } from '@/shared/design-system';
+import { LinearGradient } from 'expo-linear-gradient';
+import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, Clock3, GraduationCap, Sparkles, Star } from 'lucide-react-native';
+import { colors, gradients } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
-import { SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
-import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, isApprovedStatus, parseAbsences, parseGrade, toTitleName, useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
+import { ProgressRing, SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
+import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, isApprovedStatus, parseAbsences, parseGrade, toSubjectTitle, toTitleName } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
 export function DashboardPage({ workspace }: { workspace: Workspace }) {
-    const layout = useResponsiveLayout();
     const { t } = useLanguage();
     const router = useRouter();
     const { grades, isInitialDataLoading, isLoading, lessonPlanSubjects, profile, schedule } = workspace;
@@ -21,7 +21,9 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
     const approved = grades.filter((grade) => isApprovedStatus(grade.status)).length;
     const totalAbsences = grades.reduce((sum, grade) => sum + parseAbsences(grade.absences), 0);
     const subjectCount = Math.max(lessonPlanSubjects.length, grades.length, new Set(schedule.map((item) => item.code)).size);
-    const firstName = profile?.personal?.full_name ? toTitleName(profile.personal.full_name).split(/\s+/)[0] : t('home.studentFallback');
+    const classDaysCount = weekMap.filter((day) => day.items.length > 0).length;
+    const studentName = profile?.personal?.full_name ? toTitleName(profile.personal.full_name) : t('home.studentFallback');
+    const firstName = studentName.split(/\s+/)[0];
     const courseProgress = lessonPlanSubjects.length > 0 && grades.length > 0 ? Math.min(99, Math.round((approved / lessonPlanSubjects.length) * 100)) : null;
     const pendingSubjects = lessonPlanSubjects.length > 0 ? Math.max(lessonPlanSubjects.length - approved, 0) : null;
     const computedFrequencies = grades
@@ -33,20 +35,16 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
         .filter((entry): entry is { grade: Workspace['grades'][number]; parsedFinal: number } => entry.parsedFinal !== null)
         .sort((a, b) => a.parsedFinal - b.parsedFinal)
         .slice(0, 3);
-    const shortcuts = [
-        { label: t('nav.grades'), icon: Star, action: () => router.push('/grades'), tone: styles.homeShortcutTonePrimary },
-        { label: t('nav.schedule'), icon: CalendarDays, action: () => router.push('/schedule'), tone: styles.homeShortcutToneSecondary },
-        { label: t('nav.lessonPlan'), icon: ClipboardList, action: () => router.push('/lesson-plan'), tone: styles.homeShortcutToneNeutral },
-        { label: t('nav.profile'), icon: FileText, action: () => router.push('/profile'), tone: styles.homeShortcutToneNeutral }
-    ];
 
     if (isInitialDataLoading || (isLoading && !profile && schedule.length === 0 && grades.length === 0)) return <DashboardSkeleton />;
 
     return (
         <View style={styles.homeScreenStack}>
-            <View style={styles.homeGreeting}>
-                <Text style={styles.homeGreetingTitle}>{t('home.greetingTitle', { name: firstName })}</Text>
-                <Text style={styles.homeGreetingText}>{profile?.academic?.course || t('home.welcomeFallback')}</Text>
+            <View style={styles.homeHero}>
+                <View style={styles.homeHeroTextStack}>
+                    <Text numberOfLines={1} style={styles.homeGreetingTitle}>{t('home.greeting', { name: firstName })}</Text>
+                    <Text numberOfLines={1} style={styles.homeGreetingText}>{profile?.academic?.course || t('home.welcomeFallback')}</Text>
+                </View>
             </View>
 
             <View style={styles.homeSection}>
@@ -61,7 +59,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                     <View style={styles.homeNextClassTop}>
                         <View style={styles.homeNextClassBody}>
                             <Text numberOfLines={1} style={styles.homeNextClassCode}>{nextClass?.item.code || t('home.scheduleCodeFallback')}</Text>
-                            <Text numberOfLines={2} style={styles.homeNextClassTitle}>{nextClass?.item.subject || t('home.noClassLoaded')}</Text>
+                            <Text numberOfLines={2} style={styles.homeNextClassTitle}>{nextClass ? toSubjectTitle(nextClass.item.subject) : t('home.noClassLoaded')}</Text>
                             <Text style={styles.homeNextClassText}>{nextClass ? `${nextClass.label} - ${t('home.classGroup', { group: nextClass.item.class_identifier || '-' })}` : t('home.updateSchedule')}</Text>
                         </View>
                         <View style={styles.homeTimePill}>
@@ -80,84 +78,120 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                 </View>
             </View>
 
-            <View style={styles.homeSection}>
-                <Text style={styles.homeSectionTitle}>{t('home.semesterSummary')}</Text>
-                <View style={[styles.homeBentoGrid, layout.isTablet ? styles.homeBentoGridWide : null]}>
-                    <View style={[styles.homeBentoCard, styles.homeBentoHalf]}>
-                        <View style={styles.homeBentoLabelRow}>
-                            <Star color={colors.brand} fill={colors.brand} size={17} />
-                            <Text style={styles.homeBentoLabel}>CRA</Text>
+            <View style={styles.homeKpiRow}>
+                <View style={styles.homeKpiCard}>
+                    <View style={[styles.homeKpiAccent, { backgroundColor: colors.brand }]} />
+                    <View style={styles.homeKpiTopRow}>
+                        <View style={[styles.homeKpiIconBadge, styles.homeKpiTonePrimary]}>
+                            <Star color={colors.brand} fill={colors.brand} size={11} />
                         </View>
-                        <Text style={styles.homeBentoValue}>{averageNumber === null ? '-' : averageNumber.toFixed(2)}</Text>
-                        <Text style={styles.homeBentoHint}>{t('home.subjectCount', { count: subjectCount })}</Text>
+                        <Text numberOfLines={1} style={styles.homeKpiLabel}>CRA</Text>
                     </View>
+                    <Text style={styles.homeKpiValue}>{averageNumber === null ? '-' : averageNumber.toFixed(2)}</Text>
+                    <Text numberOfLines={1} style={styles.homeKpiHint}>{t('home.subjectCount', { count: subjectCount })}</Text>
+                </View>
 
-                    <View style={[styles.homeBentoCard, styles.homeBentoHalf]}>
-                        <View style={styles.homeBentoLabelRow}>
-                            <CheckCircle2 color={colors.warning} fill={colors.warning} size={17} />
-                            <Text style={styles.homeBentoLabel}>{t('home.frequency')}</Text>
+                <View style={styles.homeKpiCard}>
+                    <View style={[styles.homeKpiAccent, { backgroundColor: colors.warning }]} />
+                    <View style={styles.homeKpiTopRow}>
+                        <View style={[styles.homeKpiIconBadge, styles.homeKpiToneWarning]}>
+                            <CheckCircle2 color={colors.warning} fill={colors.warning} size={11} />
                         </View>
-                        <Text style={styles.homeBentoValue}>{frequency === null ? '-' : `${frequency}%`}</Text>
-                        <View style={styles.homeProgressTrack}>
-                            <View style={[styles.homeProgressFillSecondary, { width: `${frequency ?? 0}%` }]} />
-                        </View>
+                        <Text numberOfLines={1} style={styles.homeKpiLabel}>{t('home.frequency')}</Text>
                     </View>
+                    <Text style={styles.homeKpiValue}>{frequency === null ? '-' : `${frequency}%`}</Text>
+                    <View style={styles.homeProgressTrack}>
+                        <View style={[styles.homeProgressFillWarning, { width: `${frequency ?? 0}%` }]} />
+                    </View>
+                </View>
 
-                    <View style={styles.homeBentoWide}>
-                        <View style={styles.homeProgressHeader}>
-                            <Text style={styles.homeBentoLabel}>{t('home.courseProgress')}</Text>
-                            <Text style={styles.homeProgressValue}>{courseProgress === null ? '-' : `${courseProgress}%`}</Text>
+                <View style={styles.homeKpiCard}>
+                    <View style={[styles.homeKpiAccent, { backgroundColor: colors.danger }]} />
+                    <View style={styles.homeKpiTopRow}>
+                        <View style={[styles.homeKpiIconBadge, styles.homeKpiToneDanger]}>
+                            <AlertTriangle color={colors.danger} size={11} />
                         </View>
-                        <View style={styles.homeProgressTrack}>
-                            <View style={[styles.homeProgressFillPrimary, { width: `${courseProgress ?? 0}%` }]} />
-                        </View>
-                        <Text style={styles.homeBentoHint}>{pendingSubjects === null ? t('home.coursePlanPending') : t('home.pendingSubjects', { count: pendingSubjects })}</Text>
+                        <Text numberOfLines={1} style={styles.homeKpiLabel}>{t('home.registeredAbsences')}</Text>
                     </View>
+                    <Text style={styles.homeKpiValue}>{totalAbsences}</Text>
+                    <Text numberOfLines={1} style={styles.homeKpiHint}>{classDaysCount} {t('home.classDays').toLowerCase()}</Text>
                 </View>
             </View>
 
             <View style={styles.homeSection}>
-                <Text style={styles.homeSectionTitle}>{t('home.quickAccess')}</Text>
-                <View style={styles.homeShortcutRow}>
-                    {shortcuts.map((shortcut) => {
-                        const Icon = shortcut.icon;
+                <Text style={styles.homeSectionTitle}>{t('home.courseProgress')}</Text>
+                <View style={styles.homeProgressCard}>
+                    <ProgressRing color={colors.brand} percent={courseProgress ?? 0} size={100} strokeWidth={10}>
+                        <Text numberOfLines={1} style={styles.homeProgressRingValue}>{courseProgress === null ? '-' : `${courseProgress}%`}</Text>
+                    </ProgressRing>
+                    <View style={styles.homeProgressTextStack}>
+                        <View style={styles.homeStatRow}>
+                            <View style={[styles.homeStatIconBadge, styles.homeKpiTonePrimary]}>
+                                <CheckCircle2 color={colors.brand} size={18} />
+                            </View>
+                            <View style={styles.homeStatTextStack}>
+                                <Text style={styles.homeStatValue}>{grades.length ? `${approved}/${grades.length}` : '-'}</Text>
+                                <Text style={styles.homeStatLabel}>{t('home.subjectsApproved')}</Text>
+                            </View>
+                        </View>
+                        <View style={styles.homeStatRow}>
+                            <View style={[styles.homeStatIconBadge, styles.homeKpiToneWarning]}>
+                                <Clock3 color={colors.warning} size={18} />
+                            </View>
+                            <View style={styles.homeStatTextStack}>
+                                <Text style={styles.homeStatValue}>{pendingSubjects === null ? '-' : pendingSubjects}</Text>
+                                <Text numberOfLines={1} style={styles.homeStatLabel}>{pendingSubjects === null ? t('home.coursePlanPending') : t('home.pendingSubjects', { count: pendingSubjects })}</Text>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </View>
+
+            <Pressable onPress={() => router.push('/ai')} style={({ pressed }) => [styles.homeAiCta, pressed ? styles.pressedFeedback : null]}>
+                <LinearGradient colors={gradients.brand} end={{ x: 1, y: 1 }} start={{ x: 0, y: 0 }} style={styles.homeAiCtaGradient}>
+                    <Sparkles color="rgba(255,255,255,0.14)" size={140} style={styles.homeAiCtaGlow} />
+                    <View style={styles.homeAiCtaIconBadge}>
+                        <Sparkles color={colors.inverseText} size={24} />
+                    </View>
+                    <View style={styles.homeAiCtaTextStack}>
+                        <Text style={styles.homeAiCtaEyebrow}>{t('home.aiCtaEyebrow')}</Text>
+                        <Text numberOfLines={1} style={styles.homeAiCtaTitle}>{t('home.aiCtaTitle')}</Text>
+                        <Text numberOfLines={2} style={styles.homeAiCtaText}>{t('home.aiCtaText')}</Text>
+                    </View>
+                    <View style={styles.homeAiCtaArrow}>
+                        <ArrowRight color={colors.inverseText} size={18} />
+                    </View>
+                </LinearGradient>
+            </Pressable>
+
+            <View style={styles.homeSection}>
+                <View style={styles.homeInsightHeader}>
+                    <AlertTriangle color={colors.danger} size={18} />
+                    <Text style={styles.homeSectionTitle}>{t('home.attentionPoints')}</Text>
+                </View>
+                <View style={[styles.panel, styles.listStack]}>
+                    {weakestGrades.length === 0 ? <Text style={styles.panelDescription}>{t('home.noGradesLoaded')}</Text> : null}
+                    {weakestGrades.map(({ grade, parsedFinal }) => {
+                        const isDanger = parsedFinal < 5;
+                        const isWarning = !isDanger && parsedFinal < 7;
                         return (
-                            <Pressable key={shortcut.label} onPress={shortcut.action} style={({ pressed }) => [styles.homeShortcutCard, pressed ? styles.pressedFeedback : null]}>
-                                <View style={[styles.homeShortcutIcon, shortcut.tone]}>
-                                    <Icon color={shortcut.tone === styles.homeShortcutToneSecondary ? colors.warning : shortcut.tone === styles.homeShortcutTonePrimary ? colors.brand : colors.textMuted} size={22} />
+                            <View
+                                key={`${grade.code}-${grade.subject}`}
+                                style={[styles.attentionCard, isDanger ? styles.attentionCardDanger : isWarning ? styles.attentionCardWarning : null]}
+                            >
+                                <View style={styles.attentionCardRow}>
+                                    <View style={[styles.attentionBadge, isDanger ? styles.homeKpiToneDanger : isWarning ? styles.homeKpiToneWarning : styles.homeKpiTonePrimary]}>
+                                        <AlertTriangle color={isDanger ? colors.danger : isWarning ? colors.warning : colors.brand} size={16} />
+                                    </View>
+                                    <View style={styles.attentionCardBody}>
+                                        <Text style={styles.smallCaps}>{grade.code}</Text>
+                                        <Text numberOfLines={1} style={styles.attentionTitle}>{toSubjectTitle(grade.subject)}</Text>
+                                    </View>
+                                    <Text style={[styles.attentionText, isDanger ? styles.attentionTextDanger : isWarning ? styles.attentionTextWarning : null]}>MF {grade.final_grade || '-'}</Text>
                                 </View>
-                                <Text numberOfLines={1} style={styles.homeShortcutText}>{shortcut.label}</Text>
-                            </Pressable>
+                            </View>
                         );
                     })}
-                </View>
-            </View>
-
-            <View style={[styles.homeInsightGrid, layout.isTablet ? styles.twoColumnGridWide : null]}>
-                <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
-                    <View style={styles.homeInsightHeader}>
-                        <TrendingUp color={colors.brand} size={18} />
-                        <Text style={styles.panelTitle}>{t('home.academicSituation')}</Text>
-                    </View>
-                    <View style={styles.summaryRows}>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>{t('home.subjectsApproved')}</Text><Text style={styles.summaryValue}>{grades.length ? `${approved}/${grades.length}` : '-'}</Text></View>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>{t('home.registeredAbsences')}</Text><Text style={styles.summaryValue}>{totalAbsences}</Text></View>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>{t('home.classDays')}</Text><Text style={styles.summaryValue}>{weekMap.filter((day) => day.items.length > 0).length}</Text></View>
-                    </View>
-                </View>
-
-                <View style={[styles.panel, layout.isTablet ? styles.gridPanel : null]}>
-                    <Text style={styles.panelTitle}>{t('home.attentionPoints')}</Text>
-                    <View style={styles.listStack}>
-                        {weakestGrades.length === 0 ? <Text style={styles.panelDescription}>{t('home.noGradesLoaded')}</Text> : null}
-                        {weakestGrades.map(({ grade }) => (
-                            <View key={`${grade.code}-${grade.subject}`} style={styles.attentionCard}>
-                                <Text style={styles.smallCaps}>{grade.code}</Text>
-                                <Text style={styles.attentionTitle}>{grade.subject}</Text>
-                                <Text style={styles.attentionText}>MF {grade.final_grade || '-'}</Text>
-                            </View>
-                        ))}
-                    </View>
                 </View>
             </View>
         </View>
@@ -167,9 +201,11 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
 function DashboardSkeleton() {
     return (
         <View style={styles.homeScreenStack}>
-            <View style={styles.homeGreeting}>
-                <SkeletonBlock height={32} style={{ width: '62%' }} />
-                <SkeletonBlock height={17} style={{ width: '40%' }} />
+            <View style={styles.homeHero}>
+                <View style={[styles.homeHeroTextStack, { gap: 6 }]}>
+                    <SkeletonBlock height={26} style={{ width: '50%' }} />
+                    <SkeletonBlock height={15} style={{ width: '65%' }} />
+                </View>
             </View>
 
             <View style={styles.homeSection}>
@@ -196,54 +232,39 @@ function DashboardSkeleton() {
                 </View>
             </View>
 
+            <View style={styles.homeKpiRow}>
+                {[0, 1, 2].map((index) => (
+                    <View key={index} style={[styles.homeKpiCard, { gap: 6 }]}>
+                        <View style={{ alignItems: 'center', flexDirection: 'row', gap: 6 }}>
+                            <SkeletonCircle size={20} />
+                            <SkeletonBlock height={10} style={{ width: '55%' }} />
+                        </View>
+                        <SkeletonBlock height={20} style={{ width: '45%' }} />
+                        <SkeletonBlock height={9} style={{ width: '80%' }} />
+                    </View>
+                ))}
+            </View>
+
             <View style={styles.homeSection}>
                 <SkeletonBlock height={16} style={{ width: 150 }} />
-                <View style={styles.homeBentoGrid}>
-                    <View style={[styles.homeBentoCard, styles.homeBentoHalf, { gap: 10 }]}>
-                        <SkeletonBlock height={13} style={{ width: '50%' }} />
-                        <SkeletonBlock height={26} style={{ width: '40%' }} />
-                        <SkeletonBlock height={12} style={{ width: '70%' }} />
-                    </View>
-                    <View style={[styles.homeBentoCard, styles.homeBentoHalf, { gap: 10 }]}>
-                        <SkeletonBlock height={13} style={{ width: '50%' }} />
-                        <SkeletonBlock height={26} style={{ width: '40%' }} />
-                        <SkeletonBlock height={8} style={{ width: '100%' }} />
-                    </View>
-                    <View style={[styles.homeBentoWide, { gap: 10 }]}>
-                        <SkeletonBlock height={13} style={{ width: '35%' }} />
-                        <SkeletonBlock height={8} style={{ width: '100%' }} />
-                        <SkeletonBlock height={12} style={{ width: '55%' }} />
+                <View style={[styles.homeProgressCard, { gap: 16 }]}>
+                    <SkeletonCircle size={100} />
+                    <View style={[styles.homeProgressTextStack, { gap: 8 }]}>
+                        <SkeletonBlock height={56} style={{ width: '100%' }} />
+                        <SkeletonBlock height={56} style={{ width: '100%' }} />
                     </View>
                 </View>
+            </View>
+
+            <View style={[styles.homeAiCta, { minHeight: 96 }]}>
+                <SkeletonBlock height={96} style={{ width: '100%' }} />
             </View>
 
             <View style={styles.homeSection}>
-                <SkeletonBlock height={16} style={{ width: 130 }} />
-                <View style={styles.homeShortcutRow}>
-                    {[0, 1, 2, 3].map((index) => (
-                        <View key={index} style={[styles.homeShortcutCard, { gap: 8 }]}>
-                            <SkeletonCircle size={48} />
-                            <SkeletonBlock height={11} style={{ width: '70%' }} />
-                        </View>
-                    ))}
-                </View>
-            </View>
-
-            <View style={styles.homeInsightGrid}>
-                <View style={styles.panel}>
-                    <SkeletonBlock height={16} style={{ marginBottom: 14, width: 160 }} />
-                    <View style={styles.summaryRows}>
-                        <SkeletonBlock height={14} style={{ width: '100%' }} />
-                        <SkeletonBlock height={14} style={{ width: '100%' }} />
-                        <SkeletonBlock height={14} style={{ width: '100%' }} />
-                    </View>
-                </View>
-                <View style={styles.panel}>
-                    <SkeletonBlock height={16} style={{ marginBottom: 14, width: 150 }} />
-                    <View style={styles.listStack}>
-                        <SkeletonBlock height={64} />
-                        <SkeletonBlock height={64} />
-                    </View>
+                <SkeletonBlock height={16} style={{ width: 150 }} />
+                <View style={[styles.panel, styles.listStack]}>
+                    <SkeletonBlock height={64} />
+                    <SkeletonBlock height={64} />
                 </View>
             </View>
         </View>

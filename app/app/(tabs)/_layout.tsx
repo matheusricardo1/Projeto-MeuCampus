@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Bell, BookOpen, Calendar, GraduationCap, History, LayoutDashboard, Send, User, Brain } from 'lucide-react-native';
+import { ArrowLeft, Bell, BookOpen, Calendar, GraduationCap, History, LayoutDashboard, Mic, Send, User, Brain } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import { colors, gradients } from '@/shared/design-system';
@@ -9,9 +9,11 @@ import { useLanguage } from '@/shared/i18n/language-provider';
 import { useWorkspace } from '@/modules/academic/presentation/context/workspace-context';
 import { useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
+import { aiInputBarStyles } from '@/modules/academic/presentation/views/pages/ai-input-bar.styles';
+import { AiOnboardingModal } from '@/modules/academic/presentation/views/components';
 import { hapticTap } from '@/shared/haptics';
 
-type TabId = 'home' | 'lessonPlan' | 'ai' | 'schedule' | 'profile' | 'grades' | 'notifications';
+type TabId = 'home' | 'lessonPlan' | 'ai' | 'schedule' | 'profile' | 'notifications';
 
 /** UI-only chrome state routes need from this layout — not workspace data, so it stays out of WorkspaceContext. */
 interface TabsChrome {
@@ -39,10 +41,11 @@ type ChatHistoryEntry = {
 };
 
 const CHAT_HISTORY_STORAGE_KEY = 'ecampus.ai-chat-history';
+const AI_ONBOARDING_STORAGE_KEY = 'ecampus.ai-onboarding-seen';
 const DEFAULT_CHAT_TITLE = 'Meu Campus AI';
 const IS_AI_FEATURE_ENABLED = true;
 
-const TAB_PATHS: Record<Exclude<TabId, 'grades' | 'notifications'>, string> = {
+const TAB_PATHS: Record<Exclude<TabId, 'notifications'>, string> = {
     home: '/',
     lessonPlan: '/lesson-plan',
     ai: '/ai',
@@ -54,7 +57,6 @@ function getActiveTab(pathname: string): TabId {
     if (pathname === '/') return 'home';
     if (pathname.startsWith('/schedule')) return 'schedule';
     if (pathname.startsWith('/profile')) return 'profile';
-    if (pathname.startsWith('/grades')) return 'grades';
     if (pathname.startsWith('/notifications')) return 'notifications';
     if (pathname.startsWith('/ai')) return 'ai';
     if (pathname.startsWith('/lesson-plan')) return 'lessonPlan';
@@ -85,6 +87,56 @@ function clearChatHistory(): void {
     localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
 }
 
+function hasSeenAiOnboarding(): boolean {
+    if (typeof localStorage === 'undefined') return true;
+    return localStorage.getItem(AI_ONBOARDING_STORAGE_KEY) === '1';
+}
+
+function markAiOnboardingSeen(): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(AI_ONBOARDING_STORAGE_KEY, '1');
+}
+
+// A small pulsing "look here" ring around the AI nav icon, shown only until
+// the user's first visit to the AI tab — driven the same manual-reset way as
+// the skeleton shimmer (see ui.tsx): Animated.loop's built-in reset was
+// unreliable here, an explicit setValue(0) before each restart is not.
+function NavAiBadge() {
+    const pulse = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        let isActive = true;
+
+        const runCycle = () => {
+            pulse.setValue(0);
+            Animated.timing(pulse, {
+                toValue: 1,
+                duration: 1400,
+                easing: Easing.out(Easing.ease),
+                useNativeDriver: true
+            }).start(({ finished }) => {
+                if (isActive && finished) runCycle();
+            });
+        };
+
+        runCycle();
+        return () => {
+            isActive = false;
+            pulse.stopAnimation();
+        };
+    }, [pulse]);
+
+    const ringScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 2.6] });
+    const ringOpacity = pulse.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.55, 0.18, 0] });
+
+    return (
+        <View pointerEvents="none" style={styles.navAiBadgeWrap}>
+            <Animated.View style={[styles.navAiBadgeRing, { opacity: ringOpacity, transform: [{ scale: ringScale }] }]} />
+            <View style={styles.navAiBadgeDot} />
+        </View>
+    );
+}
+
 export default function TabsLayout() {
     const workspace = useWorkspace();
     const layout = useResponsiveLayout();
@@ -95,6 +147,8 @@ export default function TabsLayout() {
     const [showChatHistory, setShowChatHistory] = useState(false);
     const [chatHistory, setChatHistory] = useState<ChatHistoryEntry[]>([]);
     const [isAILaunching, setIsAILaunching] = useState(false);
+    const [aiIntroSeen, setAiIntroSeen] = useState(() => hasSeenAiOnboarding());
+    const [showAiOnboarding, setShowAiOnboarding] = useState(false);
     const pageTransition = useRef(new Animated.Value(1)).current;
     const aiLaunchProgress = useRef(new Animated.Value(0)).current;
     const aiLaunchCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,7 +170,6 @@ export default function TabsLayout() {
     }, [pathname, scrollToTop]);
 
     const tabLabels: Record<TabId, string> = {
-        grades: t('nav.grades'),
         home: t('nav.panel'),
         lessonPlan: t('nav.subjects'),
         profile: t('nav.profile'),
@@ -133,7 +186,6 @@ export default function TabsLayout() {
     ];
     const activeTabLabel = tabLabels[activeTab];
     const tabActions: Record<TabId, () => Promise<void>> = {
-        grades: workspace.loadGrades,
         home: workspace.refreshDashboard,
         lessonPlan: workspace.loadLessonPlanSubjects,
         profile: workspace.loadProfile,
@@ -141,7 +193,7 @@ export default function TabsLayout() {
         ai: async () => undefined,
         notifications: async () => undefined
     };
-    const navigateToTab = (tabId: Exclude<TabId, 'grades' | 'notifications'>) => {
+    const navigateToTab = (tabId: Exclude<TabId, 'notifications'>) => {
         setShowChatHistory(false);
         if (tabId !== activeTab) hapticTap();
 
@@ -206,6 +258,14 @@ export default function TabsLayout() {
     const isCourseDetailsPage = pathname.startsWith('/lesson-plan/');
     const bottomNavInset = isAIPage || isCourseDetailsPage ? 0 : layout.isTablet ? 88 : 96;
     const chatTitle = chatHistory[0]?.title || DEFAULT_CHAT_TITLE;
+
+    useEffect(() => {
+        if (!isAIPage || aiIntroSeen) return;
+
+        setShowAiOnboarding(true);
+        markAiOnboardingSeen();
+        setAiIntroSeen(true);
+    }, [isAIPage, aiIntroSeen]);
 
     useEffect(() => {
         if (!workspace.isAuthenticated) {
@@ -333,7 +393,10 @@ export default function TabsLayout() {
                     const active = activeTab === tab.id;
                     return (
                         <Pressable key={tab.id} onPress={() => navigateToTab(tab.id)} style={({ pressed }) => [styles.navItem, layout.isTablet ? styles.navItemDesktop : null, active ? styles.navItemActive : null, pressed ? styles.navItemPressed : null]}>
-                            <Icon color={active ? colors.brandMuted : colors.textMuted} size={20} />
+                            <View style={styles.navIconWrap}>
+                                <Icon color={active ? colors.brandMuted : colors.textMuted} size={20} />
+                                {tab.id === 'ai' && !aiIntroSeen ? <NavAiBadge /> : null}
+                            </View>
                             <Text numberOfLines={1} style={[styles.navText, active ? styles.navTextActive : null]}>{tab.label}</Text>
                         </Pressable>
                     );
@@ -420,14 +483,20 @@ export default function TabsLayout() {
 
                 {isAILaunching ? (
                     <Animated.View pointerEvents="none" style={[styles.aiLaunchOverlay, aiLaunchBarStyle]}>
-                        <View style={[styles.aiLaunchBar, layout.isTablet ? styles.aiLaunchBarDesktop : null]}>
-                            <View style={styles.aiLaunchPrompt}>
+                        {/* Mirrors the real AI chat input dock (ai.tsx) exactly via the
+                            shared aiInputBarStyles — this fake bar stands in for it during
+                            the tab-launch transition, so it must never visually drift. */}
+                        <View style={[aiInputBarStyles.inputBar, layout.isTablet ? styles.aiLaunchBarDesktop : null]}>
+                            <View style={aiInputBarStyles.inputShell}>
                                 <Animated.View style={[styles.aiLaunchPromptContent, aiLaunchPromptContentStyle]}>
                                     <Brain color={colors.brand} size={18} />
-                                    <Text numberOfLines={1} style={styles.aiLaunchPromptText}>Pergunte qualquer coisa...</Text>
+                                    <Text numberOfLines={1} style={aiInputBarStyles.input}>Pergunte qualquer coisa...</Text>
                                 </Animated.View>
                             </View>
-                            <View style={styles.aiLaunchSendButton}>
+                            <View style={[aiInputBarStyles.sendButton, aiInputBarStyles.micButton]}>
+                                <Mic color={colors.inverseText} size={18} />
+                            </View>
+                            <View style={aiInputBarStyles.sendButton}>
                                 <Send color={colors.inverseText} size={18} />
                             </View>
                         </View>
@@ -436,6 +505,8 @@ export default function TabsLayout() {
 
                 {sharedBottomNav}
             </View>
+
+            <AiOnboardingModal onDismiss={() => setShowAiOnboarding(false)} visible={showAiOnboarding} />
         </SafeAreaView>
         </TabsChromeContext.Provider>
     );

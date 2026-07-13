@@ -10,6 +10,7 @@ import type { CardBrickTokenResult } from '@/modules/academic/presentation/views
 import type { CreateCardCheckoutRequest } from '@/modules/academic/domain/repositories/ecampus-repository';
 import { useSpeechToText, type SpeechToTextErrorReason } from '@/modules/academic/presentation/hooks/use-speech-to-text';
 import { hapticConfirm, hapticTap } from '@/shared/haptics';
+import { aiInputBarStyles } from '@/modules/academic/presentation/views/pages/ai-input-bar.styles';
 
 type SendMessageHandlers = {
     onJobId?: (jobId: string) => void;
@@ -536,7 +537,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                             </Pressable>
                                         ) : null}
 
-                                        {!isSending && showWidgets && isLastMessage ? (
+                                        {!isSending && showWidgets && isLastMessage && message.id !== 'welcome' ? (
                                             <Pressable onPress={regenerateLast} style={({ pressed }) => [styles.messageActionButton, pressed ? styles.pressedFeedback : null]}>
                                                 <RotateCcw color={colors.textSubtle} size={13} />
                                                 <Text style={styles.messageActionText}>Refazer resposta</Text>
@@ -573,8 +574,8 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                 <Text style={styles.voiceErrorText}>{voiceErrorMessage(speech.errorReason)}</Text>
                             </View>
                         ) : null}
-                        <View style={styles.inputBar}>
-                            <View style={[styles.inputShell, speech.isListening ? styles.inputShellListening : null]}>
+                        <View style={aiInputBarStyles.inputBar}>
+                            <View style={[aiInputBarStyles.inputShell, speech.isListening ? styles.inputShellListening : null]}>
                                 {speech.isListening ? (
                                     <View style={styles.waveformRow}>
                                         <View style={styles.waveformBars}>
@@ -591,7 +592,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                         <Brain color={colors.brand} size={18} />
                                         <TextInput
                                             ref={inputRef}
-                                            style={[styles.input, { height: inputHeight, maxHeight: INPUT_MAX_HEIGHT }]}
+                                            style={[aiInputBarStyles.input, { height: inputHeight, maxHeight: INPUT_MAX_HEIGHT }]}
                                             blurOnSubmit={false}
                                             editable={!isSending}
                                             multiline
@@ -615,7 +616,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                     accessibilityLabel={speech.isListening ? 'Parar gravacao de voz' : 'Falar para digitar'}
                                     disabled={isSending}
                                     onPress={() => { hapticTap(); speech.toggle(); }}
-                                    style={({ pressed }) => [styles.sendButton, styles.micButton, speech.isListening ? styles.micButtonActive : null, isSending ? styles.sendButtonDisabled : null, pressed ? styles.sendButtonPressed : null]}
+                                    style={({ pressed }) => [aiInputBarStyles.sendButton, aiInputBarStyles.micButton, speech.isListening ? aiInputBarStyles.micButtonActive : null, isSending ? aiInputBarStyles.sendButtonDisabled : null, pressed ? aiInputBarStyles.sendButtonPressed : null]}
                                 >
                                     {speech.isListening ? (
                                         <Animated.View style={{ opacity: micPulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }) }}>
@@ -627,11 +628,11 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                 </Pressable>
                             ) : null}
                             {isSending ? (
-                                <Pressable onPress={stopGenerating} style={({ pressed }) => [styles.sendButton, styles.stopButton, pressed ? styles.sendButtonPressed : null]}>
+                                <Pressable onPress={stopGenerating} style={({ pressed }) => [aiInputBarStyles.sendButton, styles.stopButton, pressed ? aiInputBarStyles.sendButtonPressed : null]}>
                                     <Square color={colors.inverseText} fill={colors.inverseText} size={14} />
                                 </Pressable>
                             ) : !speech.isListening ? (
-                                <Pressable disabled={!prompt.trim()} onPress={sendPrompt} style={({ pressed }) => [styles.sendButton, !prompt.trim() ? styles.sendButtonDisabled : null, pressed ? styles.sendButtonPressed : null]}>
+                                <Pressable disabled={!prompt.trim()} onPress={sendPrompt} style={({ pressed }) => [aiInputBarStyles.sendButton, !prompt.trim() ? aiInputBarStyles.sendButtonDisabled : null, pressed ? aiInputBarStyles.sendButtonPressed : null]}>
                                     <Send color={colors.inverseText} size={18} />
                                 </Pressable>
                             ) : null}
@@ -1406,32 +1407,6 @@ const styles = StyleSheet.create({
     inputDockHidden: {
         opacity: 0
     },
-    inputBar: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        gap: spacing[2],
-        maxWidth: 640,
-        width: '100%'
-    },
-    inputShell: {
-        alignItems: 'center',
-        backgroundColor: '#ffffff',
-        borderColor: '#c0c9be',
-        borderRadius: 18,
-        borderWidth: 1,
-        elevation: 18,
-        flex: 1,
-        flexDirection: 'row',
-        gap: 10,
-        minHeight: 52,
-        overflow: 'hidden',
-        paddingLeft: spacing[4],
-        paddingRight: spacing[4],
-        shadowColor: '#101828',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.08,
-        shadowRadius: 24
-    },
     inputShellListening: {
         borderColor: '#c0392b'
     },
@@ -1460,47 +1435,11 @@ const styles = StyleSheet.create({
         fontFamily: fonts.sans,
         fontSize: 13
     },
-    input: {
-        color: colors.text,
-        flex: 1,
-        fontFamily: fonts.sans,
-        fontSize: 15,
-        lineHeight: 22,
-        minHeight: 36,
-        outlineStyle: 'none',
-        paddingVertical: 7
-    } as object,
-    sendButton: {
-        alignItems: 'center',
-        backgroundColor: colors.brand,
-        borderRadius: 14,
-        elevation: 18,
-        height: 40,
-        justifyContent: 'center',
-        shadowColor: '#101828',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.14,
-        shadowRadius: 24,
-        width: 40
-    },
-    sendButtonDisabled: {
-        opacity: 0.55
-    },
-    sendButtonPressed: {
-        opacity: 0.8,
-        transform: [{ scale: 0.94 }]
-    },
     pressedFeedback: {
         opacity: 0.6
     },
     stopButton: {
         backgroundColor: colors.textMuted
-    },
-    micButton: {
-        backgroundColor: colors.brandDark
-    },
-    micButtonActive: {
-        backgroundColor: '#c0392b'
     },
     voiceErrorBar: {
         alignItems: 'center',

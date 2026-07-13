@@ -28,6 +28,87 @@ export function toTitleName(value: string): string {
         .replace(/(^|[\s'-])([\p{L}])/gu, (_, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase('pt-BR')}`);
 }
 
+// Course/subject codes from eCampus end in a Roman numeral revision ("... II",
+// "... III") — plain title-casing lowercases every letter but the first, so
+// "II" becomes "Ii". This whitelist is intentionally capped at XX: course
+// numbering never goes higher, and matching a generic Roman-numeral regex
+// against arbitrary Portuguese words produces false positives (e.g. "MIL").
+const ROMAN_NUMERALS = new Set([
+    'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X',
+    'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX'
+]);
+// Portuguese minor words that stay lowercase mid-title (but not at the edges).
+const LOWERCASE_CONNECTORS = new Set(['a', 'ao', 'aos', 'as', 'com', 'da', 'das', 'de', 'do', 'dos', 'e', 'em', 'o', 'os', 'para', 'um', 'uma']);
+
+// eCampus subject names are sometimes scraped without diacritics ("INTRODUCAO A
+// ORGANIZACAO DE COMPUTADORES"). This is a curated (not exhaustive) dictionary
+// of common Brazilian academic vocabulary, keyed by the accent-stripped
+// uppercase form, so the correct pt-BR accents can be restored automatically.
+const ACCENTED_WORDS: Record<string, string> = {
+    ADMINISTRACAO: 'administração', ALGEBRA: 'álgebra', ANALISE: 'análise', ANALISES: 'análises',
+    ANALITICA: 'analítica', ANALITICO: 'analítico', ARQUEOLOGICA: 'arqueológica', ARTISTICA: 'artística',
+    ARTISTICO: 'artístico', ATOMICA: 'atômica', ATOMICO: 'atômico', AUTOMATICA: 'automática',
+    AUTOMATICO: 'automático', AUTOMATOS: 'autômatos', BASICA: 'básica', BASICO: 'básico',
+    BIOLOGICA: 'biológica', BIOLOGICO: 'biológico', BIOQUIMICA: 'bioquímica', CALCULO: 'cálculo',
+    CARDIOLOGICA: 'cardiológica', CERAMICA: 'cerâmica', CIENCIA: 'ciência', CIENCIAS: 'ciências',
+    CINETICA: 'cinética', CIRURGICA: 'cirúrgica', CLASSICA: 'clássica', CLASSICO: 'clássico',
+    CLINICA: 'clínica', CLINICO: 'clínico', COMUNICACAO: 'comunicação', CONTEMPORANEA: 'contemporânea',
+    CRITICA: 'crítica', CRITICO: 'crítico', DEMOGRAFICA: 'demográfica', DIAGNOSTICO: 'diagnóstico',
+    DIDATICA: 'didática', DIDATICO: 'didático', DINAMICA: 'dinâmica', DINAMICO: 'dinâmico',
+    DISTRIBUIDA: 'distribuída', DISTRIBUIDOS: 'distribuídos', ECONOMICA: 'econômica', ECONOMICO: 'econômico',
+    EDUCACAO: 'educação', ELETRICA: 'elétrica', ELETRICO: 'elétrico', ELETROMAGNETICA: 'eletromagnética',
+    ELETROMAGNETICO: 'eletromagnético', ELETRONICA: 'eletrônica', ELETRONICO: 'eletrônico',
+    ENERGETICA: 'energética', EPIDEMIOLOGICA: 'epidemiológica', EQUACOES: 'equações', ESPECIFICA: 'específica',
+    ESPECIFICO: 'específico', ESTATISTICA: 'estatística', ESTATISTICO: 'estatístico', ESTRATEGICA: 'estratégica',
+    ESTRATEGICO: 'estratégico', ETICA: 'ética', ETICO: 'ético', FILOSOFICA: 'filosófica', FISICA: 'física',
+    FISICO: 'físico', FONETICA: 'fonética', FUNCOES: 'funções', GENETICA: 'genética', GENETICO: 'genético',
+    GEOGRAFICA: 'geográfica', GEOMETRICA: 'geométrica', GEOMETRICO: 'geométrico', GESTAO: 'gestão',
+    GRAFICA: 'gráfica', GRAFICO: 'gráfico', GRAFICOS: 'gráficos', HERANCA: 'herança', HIDRAULICA: 'hidráulica',
+    HISTOLOGICA: 'histológica', HISTORIA: 'história', HISTORICA: 'histórica', HISTORICO: 'histórico',
+    HOLISTICA: 'holística', HUMANISTICA: 'humanística', INDUSTRIA: 'indústria', INFORMATICA: 'informática',
+    INTEGRACAO: 'integração', INTELIGENCIA: 'inteligência', INTRODUCAO: 'introdução', JURIDICA: 'jurídica',
+    JURIDICO: 'jurídico', LEGISLACAO: 'legislação', LINGUISTICA: 'linguística', LOGICA: 'lógica',
+    LOGICO: 'lógico', MAGNETICA: 'magnética', MAGNETICO: 'magnético', MATEMATICA: 'matemática',
+    MATEMATICO: 'matemático', MECANICA: 'mecânica', MECANICO: 'mecânico', MEDICA: 'médica', MEDICO: 'médico',
+    NUCLEAR: 'nuclear', NUMERICA: 'numérica', NUMERICO: 'numérico', NUTRICAO: 'nutrição', OPERACAO: 'operação',
+    OPERACOES: 'operações', OPTICA: 'óptica', ORGANICA: 'orgânica', ORGANICO: 'orgânico',
+    ORGANIZACAO: 'organização', OTICA: 'ótica', OTIMIZACAO: 'otimização', PEDAGOGICA: 'pedagógica',
+    PEDIATRICA: 'pediátrica', POLIMEROS: 'polímeros', POLITICA: 'política', POLITICAS: 'políticas',
+    PRATICA: 'prática', PRATICO: 'prático', PROBABILISTICA: 'probabilística', PSICOLOGICA: 'psicológica',
+    PSIQUIATRICA: 'psiquiátrica', PUBLICA: 'pública', PUBLICO: 'público', QUANTICA: 'quântica',
+    QUANTICO: 'quântico', QUIMICA: 'química', QUIMICO: 'químico', RADIOLOGICA: 'radiológica', SAUDE: 'saúde',
+    SANITARIA: 'sanitária', SEGURANCA: 'segurança', SIMULACAO: 'simulação', SISMICA: 'sísmica',
+    SISTEMATICA: 'sistemática', SOCIOECONOMICA: 'socioeconômica', SOCIOLOGICA: 'sociológica',
+    TECNICA: 'técnica', TECNICAS: 'técnicas', TECNICO: 'técnico', TECNICOS: 'técnicos',
+    TECNOLOGICA: 'tecnológica', TECNOLOGICO: 'tecnológico', TELECOMUNICACOES: 'telecomunicações',
+    TEORICA: 'teórica', TEORICO: 'teórico', TERAPEUTICA: 'terapêutica', TERMICA: 'térmica', TERMICO: 'térmico',
+    TERMODINAMICA: 'termodinâmica', TOPICOS: 'tópicos', TRANSICAO: 'transição', URBANISTICA: 'urbanística',
+    VARIAVEIS: 'variáveis', VARIAVEL: 'variável'
+};
+
+function stripAccentsUpper(word: string): string {
+    return word.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+}
+
+export function toSubjectTitle(value: string): string {
+    const words = value.toLocaleLowerCase('pt-BR').replace(/\s+/g, ' ').trim().split(' ');
+    return words
+        .map((word, index) => {
+            if (!word) return word;
+
+            const upperWord = word.toUpperCase();
+            if (ROMAN_NUMERALS.has(upperWord)) return upperWord;
+
+            const resolvedWord = ACCENTED_WORDS[stripAccentsUpper(word)] ?? word;
+
+            const isEdgeWord = index === 0 || index === words.length - 1;
+            if (!isEdgeWord && LOWERCASE_CONNECTORS.has(resolvedWord)) return resolvedWord;
+
+            return resolvedWord.charAt(0).toLocaleUpperCase('pt-BR') + resolvedWord.slice(1);
+        })
+        .join(' ');
+}
+
 export function onlyDigits(value: string): string {
     return value.replace(/\D/g, '');
 }

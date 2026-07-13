@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle } from 'react-native-svg';
 import { RefreshCw } from 'lucide-react-native';
 import { colors, radii } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
@@ -160,4 +161,68 @@ export function SkeletonBlock({ borderRadius, height, style }: { borderRadius?: 
 
 export function SkeletonCircle({ size, style }: { size: number; style?: StyleProp<ViewStyle> }) {
     return <SkeletonBlock borderRadius={radii.pill} height={size} style={[{ width: size }, style]} />;
+}
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+export function ProgressRing({
+    children,
+    color = colors.brand,
+    percent,
+    size = 88,
+    strokeWidth = 10,
+    trackColor = colors.border
+}: {
+    children?: ReactNode;
+    color?: string;
+    percent: number;
+    size?: number;
+    strokeWidth?: number;
+    trackColor?: string;
+}) {
+    const clamped = Math.max(0, Math.min(100, percent));
+    const radius = (size - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const progress = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        // strokeDashoffset isn't animatable on the native driver, so this one
+        // fill-in animation runs on the JS thread — a single non-looping value,
+        // not the repeating shimmer, so the cost is negligible.
+        const animation = Animated.timing(progress, {
+            toValue: clamped,
+            duration: 900,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false
+        });
+        animation.start();
+        return () => animation.stop();
+    }, [clamped, progress]);
+
+    const strokeDashoffset = progress.interpolate({ inputRange: [0, 100], outputRange: [circumference, 0] });
+
+    return (
+        <View style={{ height: size, width: size }}>
+            <Svg height={size} width={size}>
+                <Circle cx={size / 2} cy={size / 2} fill="none" r={radius} stroke={trackColor} strokeWidth={strokeWidth} />
+                <AnimatedCircle
+                    cx={size / 2}
+                    cy={size / 2}
+                    fill="none"
+                    r={radius}
+                    stroke={color}
+                    strokeDasharray={circumference}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                    strokeWidth={strokeWidth}
+                    transform={`rotate(-90 ${size / 2} ${size / 2})`}
+                />
+            </Svg>
+            {children ? (
+                <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.progressRingCenter]}>
+                    {children}
+                </View>
+            ) : null}
+        </View>
+    );
 }
