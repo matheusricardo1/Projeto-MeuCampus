@@ -1,12 +1,5 @@
 import type { AiChatReply } from '@/domain/value-objects/ai-chat-reply';
 
-export interface AiChatChunkEvent {
-    type: 'chunk';
-    jobId: string;
-    userId: string;
-    delta: string;
-}
-
 export interface AiChatToolEvent {
     type: 'tool';
     jobId: string;
@@ -30,7 +23,6 @@ export interface AiChatFailedEvent {
 }
 
 export interface AiChatEventPublisher {
-    publishChunk(event: AiChatChunkEvent): Promise<void>;
     publishTool(event: AiChatToolEvent): Promise<void>;
     publishReady(event: AiChatReadyEvent): Promise<void>;
     publishFailed(event: AiChatFailedEvent): Promise<void>;

@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { BookOpen, Calculator, Clock3, GraduationCap, Lightbulb, MapPin, Terminal, Utensils } from 'lucide-react-native';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
-import { EmptyInline, SkeletonBlock } from '@/modules/academic/presentation/views/components';
+import { EmptyInline, SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
 import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, parseTimeToMinutes } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
@@ -36,7 +36,7 @@ export function SchedulePage({
                 {weekMap.map((day) => {
                     const active = selectedWeekday === day.weekday;
                     return (
-                        <Pressable key={day.weekday} onPress={() => setSelectedWeekday(day.weekday)} style={[styles.scheduleDayButton, active ? styles.scheduleDayButtonActive : null]}>
+                        <Pressable key={day.weekday} onPress={() => setSelectedWeekday(day.weekday)} style={({ pressed }) => [styles.scheduleDayButton, active ? styles.scheduleDayButtonActive : null, pressed ? styles.pressedFeedback : null]}>
                             <Text style={styles.scheduleDayLabel}>{day.short.toUpperCase()}</Text>
                             <Text style={[styles.scheduleDayNumber, active ? styles.scheduleDayNumberActive : null]}>{weekDates[day.weekday] || '--'}</Text>
                             {active ? <View style={styles.scheduleDayIndicator} /> : null}
@@ -77,7 +77,7 @@ export function SchedulePage({
                             <Text style={styles.scheduleTipLabel}>{t('schedule.academicTip')}</Text>
                         </View>
                         <Text style={styles.scheduleTipText}>{selectedItems[0] ? t('schedule.reviewMaterials', { subject: selectedItems[0].subject }) : t('schedule.organizeMaterials')}</Text>
-                        <Pressable style={styles.scheduleTipButton}>
+                        <Pressable style={({ pressed }) => [styles.scheduleTipButton, pressed ? styles.pressedFeedback : null]}>
                             <Text style={styles.scheduleTipButtonText}>{t('schedule.seeMaterials')}</Text>
                         </Pressable>
                     </View>
@@ -170,9 +170,37 @@ function isSameClass(a: Workspace['schedule'][number] | undefined, b: Workspace[
 
 function ScheduleSkeleton() {
     return (
-        <View style={styles.sectionStack}>
-            <SkeletonBlock height={88} />
-            <SkeletonBlock height={360} />
+        <View style={styles.schedulePage}>
+            <View style={styles.scheduleDaySelector}>
+                {[0, 1, 2, 3, 4].map((index) => (
+                    <View key={index} style={styles.scheduleDayButton}>
+                        <SkeletonBlock height={10} style={{ width: 22 }} />
+                        <SkeletonBlock height={16} style={{ marginTop: 6, width: 18 }} />
+                    </View>
+                ))}
+            </View>
+
+            <View style={styles.scheduleTimeline}>
+                {[0, 1, 2].map((index) => (
+                    <View key={index} style={styles.scheduleTimelineItem}>
+                        <View style={styles.scheduleTimelineMarkerColumn}>
+                            <SkeletonCircle size={40} />
+                        </View>
+                        <View style={styles.scheduleClassCard}>
+                            <View style={styles.scheduleClassHeader}>
+                                <View style={[styles.scheduleClassTitleBlock, { gap: 6 }]}>
+                                    <SkeletonBlock height={16} style={{ width: 60 }} />
+                                    <SkeletonBlock height={15} style={{ width: '75%' }} />
+                                </View>
+                            </View>
+                            <View style={styles.scheduleClassMeta}>
+                                <SkeletonBlock height={12} style={{ width: '50%' }} />
+                                <SkeletonBlock height={12} style={{ width: '40%' }} />
+                            </View>
+                        </View>
+                    </View>
+                ))}
+            </View>
         </View>
     );
 }

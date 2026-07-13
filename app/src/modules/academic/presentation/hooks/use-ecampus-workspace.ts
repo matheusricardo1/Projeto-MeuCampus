@@ -6,6 +6,7 @@ import type { LessonPlanSubject } from '@/modules/academic/domain/entities/lesso
 import type { ScheduleClass } from '@/modules/academic/domain/entities/schedule-class';
 import type { StudentProfile } from '@/modules/academic/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/shared/auth/auth-session-expired.error';
+import { ServerError } from '@/shared/errors/server.error';
 import { EcampusResourcePendingError } from '@/modules/academic/domain/errors/ecampus-resource-pending.error';
 import { AcademicPeriod } from '@/modules/academic/domain/value-objects/academic-period';
 import { createEcampusUseCases } from '@/modules/academic/presentation/composition/create-ecampus-use-cases';
@@ -40,7 +41,6 @@ interface SendAiChatMessageInput {
 
 interface SendAiChatMessageHandlers {
     onJobId?: (jobId: string) => void;
-    onChunk?: (delta: string) => void;
     onToolCall?: (toolName: string) => void;
 }
 
@@ -61,8 +61,8 @@ interface PrefetchOptions extends RequestOptions {
 }
 
 type WorkspaceError =
-    | { kind: 'raw'; message: string }
-    | { kind: 'translated'; key: TranslationKey; values?: TranslationValues };
+    | { kind: 'raw'; message: string; retryable?: boolean }
+    | { kind: 'translated'; key: TranslationKey; values?: TranslationValues; retryable?: boolean };
 
 const DEFAULT_REQUEST_OPTIONS: Required<Pick<RequestOptions, 'reportError' | 'showGlobalLoading'>> = {
     reportError: true,
@@ -129,9 +129,10 @@ export function useEcampusWorkspace() {
             ? t(errorState.key, errorState.values)
             : errorState.message
         : null;
+    const isErrorRetryable = errorState?.retryable ?? false;
     const clearError = () => setErrorState(null);
-    const setRawError = (message: string) => setErrorState({ kind: 'raw', message });
-    const setTranslatedError = (key: TranslationKey, values?: TranslationValues) => setErrorState({ kind: 'translated', key, values });
+    const setRawError = (message: string, retryable?: boolean) => setErrorState({ kind: 'raw', message, retryable });
+    const setTranslatedError = (key: TranslationKey, values?: TranslationValues, retryable?: boolean) => setErrorState({ kind: 'translated', key, values, retryable });
 
     const clearWorkspaceData = () => {
         setProfile(null);
@@ -322,7 +323,9 @@ export function useEcampusWorkspace() {
             }
 
             if (requestOptions.reportError) {
-                if (caught instanceof Error) {
+                if (caught instanceof ServerError) {
+                    setTranslatedError('errors.server', undefined, true);
+                } else if (caught instanceof Error) {
                     setRawError(caught.message);
                 } else {
                     setTranslatedError('errors.generic');
@@ -903,6 +906,7 @@ export function useEcampusWorkspace() {
         changeGradesInputAndLoad,
         currentGradesInput,
         error,
+        isErrorRetryable,
         grades,
         gradesInput,
         isAuthenticated,

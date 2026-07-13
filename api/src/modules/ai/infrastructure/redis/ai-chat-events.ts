@@ -2,13 +2,6 @@ import type { AiChatMessage } from '@ai/domain/entities/ai-chat-message.entity';
 
 export const AI_CHAT_RESULT_CHANNEL = process.env.AI_CHAT_RESULT_CHANNEL || 'ai:chat:result';
 
-export interface AiChatChunkEvent {
-    type: 'chunk';
-    jobId: string;
-    userId: string;
-    delta: string;
-}
-
 export interface AiChatToolEvent {
     type: 'tool';
     jobId: string;
@@ -34,4 +27,4 @@ export interface AiChatFailedEvent {
     message: string;
 }
 
-export type AiChatResultEvent = AiChatChunkEvent | AiChatToolEvent | AiChatReadyEvent | AiChatFailedEvent;
+export type AiChatResultEvent = AiChatToolEvent | AiChatReadyEvent | AiChatFailedEvent;

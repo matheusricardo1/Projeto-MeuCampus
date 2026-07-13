@@ -13,7 +13,6 @@ export interface SendAiChatMessageInput {
 
 export interface SendAiChatMessageHandlers {
     onJobId?: (jobId: string) => void;
-    onChunk?: (delta: string) => void;
     onToolCall?: (toolName: string) => void;
 }
 
@@ -29,6 +28,6 @@ export class SendAiChatMessageUseCase {
 
         const { jobId } = await this.repository.sendAiChatMessage(session.accessToken, input);
         handlers?.onJobId?.(jobId);
-        return waitForAiReply(jobId, handlers?.onChunk, handlers?.onToolCall);
+        return waitForAiReply(jobId, handlers?.onToolCall);
     }
 }

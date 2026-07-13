@@ -10,6 +10,7 @@ import { LanguageSelector } from '@/modules/academic/presentation/views/componen
 import { useLanguage } from '@/shared/i18n/language-provider';
 import { formatCpf, onlyDigits, useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
+import { hapticConfirm } from '@/shared/haptics';
 
 export function LoginPage({ workspace }: { workspace: Workspace }) {
     const [user, setUser] = useState('');
@@ -157,7 +158,7 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                                             style={[styles.textInput, styles.passwordInput]}
                                             value={password}
                                         />
-                                        <Pressable onPress={() => setShowPassword((current) => !current)} style={styles.passwordToggle}>
+                                        <Pressable onPress={() => setShowPassword((current) => !current)} style={({ pressed }) => [styles.passwordToggle, pressed ? styles.pressedFeedback : null]}>
                                             {showPassword ? <EyeOff color={colors.textMuted} size={18} /> : <Eye color={colors.textMuted} size={18} />}
                                         </Pressable>
                                     </View>
@@ -172,8 +173,8 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
 
                             <Pressable
                                 disabled={workspace.isLoading || onlyDigits(user).length === 0 || password.length === 0}
-                                onPress={() => void workspace.login({ password, user: onlyDigits(user) })}
-                                style={[styles.primaryButton, (onlyDigits(user).length === 0 || password.length === 0) && !workspace.isLoading ? styles.primaryButtonDisabled : null]}
+                                onPress={() => { hapticConfirm(); void workspace.login({ password, user: onlyDigits(user) }); }}
+                                style={({ pressed }) => [styles.primaryButton, (onlyDigits(user).length === 0 || password.length === 0) && !workspace.isLoading ? styles.primaryButtonDisabled : null, pressed ? styles.primaryButtonPressed : null]}
                             >
                                 {workspace.isLoading ? <ActivityIndicator color={colors.inverseText} /> : <KeyRound color={colors.inverseText} size={18} />}
                                 <Text style={styles.primaryButtonText}>{workspace.isLoading ? t('login.submitting') : t('login.submit')}</Text>

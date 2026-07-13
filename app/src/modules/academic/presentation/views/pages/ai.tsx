@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Image, Modal, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputKeyPressEventData, View } from 'react-native';
-import { AlertCircle, Bot, Brain, Check, Lock, Mic, Pencil, RotateCcw, Send, Square, X } from 'lucide-react-native';
+import { ActivityIndicator, Animated, Easing, Image, Linking, Modal, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputKeyPressEventData, View } from 'react-native';
+import { AlertCircle, AlertTriangle, Bot, Brain, Check, ExternalLink, Lock, Mic, Pencil, RotateCcw, Send, Sparkles, Square, X } from 'lucide-react-native';
 import type { AiChatMessage } from '@/modules/academic/domain/entities/ai-chat-message';
 import type { AiChatReply } from '@/modules/academic/domain/entities/ai-chat-reply';
 import { AiDailyLimitReachedError } from '@/shared/errors/ai-daily-limit-reached.error';
@@ -9,10 +9,10 @@ import { MercadoPagoCardBrick } from '@/modules/academic/presentation/views/comp
 import type { CardBrickTokenResult } from '@/modules/academic/presentation/views/components/mercadopago-card-brick.types';
 import type { CreateCardCheckoutRequest } from '@/modules/academic/domain/repositories/ecampus-repository';
 import { useSpeechToText, type SpeechToTextErrorReason } from '@/modules/academic/presentation/hooks/use-speech-to-text';
+import { hapticConfirm, hapticTap } from '@/shared/haptics';
 
 type SendMessageHandlers = {
     onJobId?: (jobId: string) => void;
-    onChunk?: (delta: string) => void;
     onToolCall?: (toolName: string) => void;
 };
 
@@ -36,7 +36,7 @@ type AIPageProps = {
 };
 
 type ChatMessage = AiChatMessage & {
-    kind?: 'text' | 'processing';
+    kind?: 'text' | 'processing' | 'error';
     statusLabel?: string;
 };
 
@@ -51,6 +51,11 @@ const TOOL_STATUS_LABELS: Record<string, string> = {
 function toolStatusLabel(toolName: string): string {
     return TOOL_STATUS_LABELS[toolName] || 'Buscando seus dados academicos...';
 }
+
+const INPUT_LINE_HEIGHT = 22;
+const INPUT_MAX_LINES = 4;
+const INPUT_MIN_HEIGHT = 36;
+const INPUT_MAX_HEIGHT = INPUT_LINE_HEIGHT * INPUT_MAX_LINES;
 
 const initialMessages: ChatMessage[] = [
     {
@@ -78,6 +83,7 @@ function voiceErrorMessage(reason: SpeechToTextErrorReason): string {
 
 export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessage, onChatScroll, onCreateCardCheckout, onCreatePixCheckout, onGetCheckoutStatus, onGetMercadoPagoPublicKey, onPersistState, onSendMessage, persistedConversationId, persistedMessages }: AIPageProps) {
     const scrollRef = useRef<ScrollView | null>(null);
+    const inputRef = useRef<TextInput | null>(null);
     const lastSentPromptRef = useRef<{ prompt: string; sentAt: number } | null>(null);
     const processingPulse = useRef(new Animated.Value(0)).current;
     const [messages, setMessages] = useState<ChatMessage[]>(() => (
@@ -92,10 +98,14 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const [editingText, setEditingText] = useState('');
+    const [revealedLength, setRevealedLength] = useState(0);
+    const [revealTarget, setRevealTarget] = useState<{ id: string; length: number } | null>(null);
     const [dailyLimit, setDailyLimit] = useState<{ limit: number } | null>(null);
     const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
     const micPulse = useRef(new Animated.Value(0)).current;
+    const waveformBars = useRef([0, 1, 2, 3, 4].map(() => new Animated.Value(0.3))).current;
     const [showVoiceError, setShowVoiceError] = useState(false);
+    const [inputHeight, setInputHeight] = useState(INPUT_MIN_HEIGHT);
 
     const handleVoiceTranscript = useCallback((transcript: string) => {
         const trimmedTranscript = transcript.trim();
@@ -134,6 +144,31 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
         animation.start();
         return () => animation.stop();
     }, [micPulse, speech.isListening]);
+
+    useEffect(() => {
+        if (!speech.isListening) {
+            waveformBars.forEach((bar) => {
+                bar.stopAnimation();
+                bar.setValue(0.3);
+            });
+            return undefined;
+        }
+
+        // Each bar bounces at a slightly different duration and start delay so the
+        // row reads as an organic voice waveform rather than bars moving in lockstep.
+        const animations = waveformBars.map((bar, index) => Animated.loop(
+            Animated.sequence([
+                Animated.timing(bar, { toValue: 1, duration: 380 + index * 65, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                Animated.timing(bar, { toValue: 0.25, duration: 380 + index * 65, easing: Easing.inOut(Easing.quad), useNativeDriver: true })
+            ])
+        ));
+        const timeouts = animations.map((animation, index) => setTimeout(() => animation.start(), index * 60));
+
+        return () => {
+            timeouts.forEach(clearTimeout);
+            animations.forEach((animation) => animation.stop());
+        };
+    }, [speech.isListening, waveformBars]);
 
     const scrollToBottom = useCallback((animated = false) => {
         const scheduleFrame = typeof requestAnimationFrame === 'function'
@@ -181,6 +216,47 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
         return () => animation.stop();
     }, [processingPulse]);
 
+    // The backend no longer streams tokens over the network — it sends the
+    // complete, already-structured reply in one shot. This simulates the
+    // "typing" feel client-side by revealing a few characters at a time.
+    useEffect(() => {
+        if (!revealTarget) return undefined;
+
+        const timer = setInterval(() => {
+            setRevealedLength((current) => {
+                const next = Math.min(current + 3, revealTarget.length);
+                if (next >= revealTarget.length) {
+                    clearInterval(timer);
+                    setStreamingMessageId(null);
+                    setRevealTarget(null);
+                }
+                return next;
+            });
+            scrollToBottom(false);
+        }, 16);
+
+        return () => clearInterval(timer);
+    }, [revealTarget, scrollToBottom]);
+
+    useEffect(() => {
+        if (Platform.OS !== 'web' || typeof document === 'undefined') return undefined;
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== '/') return;
+
+            const active = document.activeElement;
+            const isTypingElsewhere = active instanceof HTMLElement
+                && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+            if (isTypingElsewhere) return;
+
+            event.preventDefault();
+            inputRef.current?.focus();
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
     const runExchange = useCallback(async (promptText: string, historyBase: ChatMessage[]) => {
         const trimmedPrompt = promptText.trim();
         if (!trimmedPrompt || isSending) return;
@@ -205,10 +281,9 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
         setMessages([...historyBase, userMessage, processingMessage]);
         setIsSending(true);
         setStreamingMessageId(assistantId);
+        setRevealedLength(0);
         setActiveJobId(null);
         scrollToBottom(true);
-
-        let hasStreamedContent = false;
 
         try {
             const reply = await onSendMessage?.(
@@ -219,15 +294,6 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                 },
                 {
                     onJobId: (jobId) => setActiveJobId(jobId),
-                    onChunk: (delta) => {
-                        hasStreamedContent = true;
-                        setMessages((current) => current.map((message) => (
-                            message.id === assistantId
-                                ? { ...message, kind: 'text', content: message.content + delta }
-                                : message
-                        )));
-                        scrollToBottom(false);
-                    },
                     onToolCall: (toolName) => {
                         setMessages((current) => current.map((message) => (
                             message.id === assistantId && message.kind === 'processing'
@@ -243,29 +309,33 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
             }
 
             setConversationId(reply.conversationId);
+            setRevealedLength(0);
             setMessages((current) => current.map((message) => (
                 message.id === assistantId
                     ? { ...reply.message, id: assistantId, kind: 'text' }
                     : message
             )));
+            // streamingMessageId stays set — setting revealTarget arms the
+            // reveal effect above, which owns clearing it once the
+            // typewriter animation finishes.
+            setRevealTarget({ id: assistantId, length: reply.message.content.length });
             scrollToBottom(true);
         } catch (error) {
+            setStreamingMessageId(null);
+
             if (error instanceof AiDailyLimitReachedError) {
                 setMessages(historyBase);
                 setPrompt(trimmedPrompt);
                 setDailyLimit({ limit: error.limit });
-            } else if (hasStreamedContent) {
-                setMessages((current) => current.map((message) => (
-                    message.id === assistantId ? { ...message, kind: 'text' } : message
-                )));
             } else {
-                setMessages(historyBase);
-                setPrompt(trimmedPrompt);
+                const errorText = error instanceof Error ? error.message : 'Nao foi possivel responder agora.';
+                setMessages((current) => current.map((message) => (
+                    message.id === assistantId ? { ...message, kind: 'error', content: errorText } : message
+                )));
             }
         } finally {
             setIsSending(false);
             setActiveJobId(null);
-            setStreamingMessageId(null);
         }
     }, [conversationId, isSending, onSendMessage, scrollToBottom]);
 
@@ -281,6 +351,8 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
 
         lastSentPromptRef.current = { prompt: trimmedPrompt, sentAt: now };
         setPrompt('');
+        setInputHeight(INPUT_MIN_HEIGHT);
+        hapticConfirm();
         void runExchange(trimmedPrompt, messages);
     }, [isSending, messages, prompt, runExchange]);
 
@@ -334,7 +406,9 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
     }, [activeJobId, onCancelMessage]);
 
     const handleInputKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
-        if (event.nativeEvent.key === 'Enter') {
+        const nativeEvent = event.nativeEvent as TextInputKeyPressEventData & { preventDefault?: () => void; shiftKey?: boolean };
+        if (nativeEvent.key === 'Enter' && !nativeEvent.shiftKey) {
+            nativeEvent.preventDefault?.();
             sendPrompt();
         }
     };
@@ -366,10 +440,10 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                                 value={editingText}
                                             />
                                             <View style={styles.editActions}>
-                                                <Pressable onPress={cancelEditing} style={styles.editActionButton}>
+                                                <Pressable onPress={cancelEditing} style={({ pressed }) => [styles.editActionButton, pressed ? styles.pressedFeedback : null]}>
                                                     <X color={colors.textMuted} size={16} />
                                                 </Pressable>
-                                                <Pressable disabled={!editingText.trim()} onPress={submitEdit} style={[styles.editActionButton, styles.editActionButtonPrimary]}>
+                                                <Pressable disabled={!editingText.trim()} onPress={submitEdit} style={({ pressed }) => [styles.editActionButton, styles.editActionButtonPrimary, pressed ? styles.pressedFeedback : null]}>
                                                     <Check color={colors.inverseText} size={16} />
                                                 </Pressable>
                                             </View>
@@ -379,7 +453,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                             <View style={styles.userBubble}>
                                                 <Text style={styles.userMessageText}>{message.content}</Text>
                                             </View>
-                                            <Pressable disabled={isSending} onPress={() => startEditing(message)} style={styles.messageActionButton}>
+                                            <Pressable disabled={isSending} onPress={() => startEditing(message)} style={({ pressed }) => [styles.messageActionButton, pressed ? styles.pressedFeedback : null]}>
                                                 <Pencil color={colors.textSubtle} size={13} />
                                                 <Text style={styles.messageActionText}>Editar</Text>
                                             </Pressable>
@@ -387,39 +461,91 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                     )}
                                 </View>
                             </View>
-                        ) : (
-                            <View key={message.id} style={styles.messageRow}>
-                                <View style={styles.botAvatar}>
-                                    <Bot color={colors.inverseText} size={18} />
-                                </View>
-                                <View style={styles.messageBody}>
-                                    <View style={styles.botBubble}>
-                                        {message.kind === 'processing' ? (
-                                            <ProcessingMessage pulse={processingPulse} statusLabel={message.statusLabel} />
-                                        ) : (
-                                            <FormattedAssistantMessage content={message.kind === 'text' ? extractQuickReplies(message.content).cleanedContent : message.content} isTyping={message.id === streamingMessageId} />
-                                        )}
+                        ) : (() => {
+                            const isTextMessage = message.kind === 'text';
+                            const isLastMessage = index === messages.length - 1;
+                            const isRevealing = message.id === streamingMessageId;
+                            const displayContent = isTextMessage && isRevealing ? message.content.slice(0, revealedLength) : message.content;
+                            // Widgets land once the typewriter finishes revealing the
+                            // text above them — showing buttons mid-"typing" felt off.
+                            const showWidgets = isTextMessage && !isRevealing;
+
+                            return (
+                                <View key={message.id} style={styles.messageRow}>
+                                    <View style={styles.botAvatar}>
+                                        <Bot color={colors.inverseText} size={18} />
                                     </View>
-
-                                    {!isSending && message.kind === 'text' && index === messages.length - 1 && extractQuickReplies(message.content).options.length > 0 ? (
-                                        <View style={styles.quickReplyRow}>
-                                            {extractQuickReplies(message.content).options.map((option) => (
-                                                <Pressable key={option} onPress={() => sendQuickReply(option)} style={styles.quickReplyChip}>
-                                                    <Text style={styles.quickReplyChipText}>{option}</Text>
-                                                </Pressable>
-                                            ))}
+                                    <View style={styles.messageBody}>
+                                        <View style={[styles.botBubble, message.kind === 'error' ? styles.botBubbleError : null]}>
+                                            {message.kind === 'processing' ? (
+                                                <ProcessingMessage pulse={processingPulse} statusLabel={message.statusLabel} />
+                                            ) : message.kind === 'error' ? (
+                                                <View style={styles.errorMessageRow}>
+                                                    <AlertTriangle color="#ba1a1a" size={16} />
+                                                    <Text style={styles.errorMessageText}>{message.content}</Text>
+                                                </View>
+                                            ) : (
+                                                <>
+                                                    <FormattedAssistantMessage content={displayContent} isTyping={isRevealing} />
+                                                    {showWidgets && message.table ? <FormattedTable headers={message.table.headers} rows={message.table.rows} /> : null}
+                                                </>
+                                            )}
                                         </View>
-                                    ) : null}
 
-                                    {!isSending && message.kind === 'text' && index === messages.length - 1 ? (
-                                        <Pressable onPress={regenerateLast} style={styles.messageActionButton}>
-                                            <RotateCcw color={colors.textSubtle} size={13} />
-                                            <Text style={styles.messageActionText}>Refazer resposta</Text>
-                                        </Pressable>
-                                    ) : null}
+                                        {showWidgets && message.links?.length ? (
+                                            <View style={styles.linkRow}>
+                                                {message.links.map((url) => (
+                                                    <Pressable key={url} onPress={() => void Linking.openURL(url)} style={({ pressed }) => [styles.linkChip, pressed ? styles.pressedFeedback : null]}>
+                                                        <ExternalLink color={colors.brandDark} size={13} />
+                                                        <Text numberOfLines={1} style={styles.linkChipText}>{linkLabel(url)}</Text>
+                                                    </Pressable>
+                                                ))}
+                                            </View>
+                                        ) : null}
+
+                                        {!isSending && showWidgets && isLastMessage && message.quickReplies?.length ? (
+                                            <View style={styles.quickReplyRow}>
+                                                {message.quickReplies.map((option) => (
+                                                    <Pressable key={option} onPress={() => sendQuickReply(option)} style={({ pressed }) => [styles.quickReplyChip, pressed ? styles.pressedFeedback : null]}>
+                                                        <Text style={styles.quickReplyChipText}>{option}</Text>
+                                                    </Pressable>
+                                                ))}
+                                            </View>
+                                        ) : null}
+
+                                        {!isSending && showWidgets && isLastMessage && message.suggestions?.length ? (
+                                            <View style={styles.followupBlock}>
+                                                <View style={styles.followupLabelRow}>
+                                                    <Sparkles color={colors.textSubtle} size={12} />
+                                                    <Text style={styles.followupLabelText}>Perguntas relacionadas</Text>
+                                                </View>
+                                                <View style={styles.quickReplyRow}>
+                                                    {message.suggestions.map((suggestion) => (
+                                                        <Pressable key={suggestion} onPress={() => sendQuickReply(suggestion)} style={({ pressed }) => [styles.followupChip, pressed ? styles.pressedFeedback : null]}>
+                                                            <Text style={styles.followupChipText}>{suggestion}</Text>
+                                                        </Pressable>
+                                                    ))}
+                                                </View>
+                                            </View>
+                                        ) : null}
+
+                                        {!isSending && message.kind === 'error' && isLastMessage ? (
+                                            <Pressable onPress={regenerateLast} style={({ pressed }) => [styles.messageActionButton, pressed ? styles.pressedFeedback : null]}>
+                                                <RotateCcw color={colors.textSubtle} size={13} />
+                                                <Text style={styles.messageActionText}>Tentar novamente</Text>
+                                            </Pressable>
+                                        ) : null}
+
+                                        {!isSending && showWidgets && isLastMessage ? (
+                                            <Pressable onPress={regenerateLast} style={({ pressed }) => [styles.messageActionButton, pressed ? styles.pressedFeedback : null]}>
+                                                <RotateCcw color={colors.textSubtle} size={13} />
+                                                <Text style={styles.messageActionText}>Refazer resposta</Text>
+                                            </Pressable>
+                                        ) : null}
+                                    </View>
                                 </View>
-                            </View>
-                        )
+                            );
+                        })()
                     ))}
                 </View>
 
@@ -435,20 +561,12 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                             <Text style={styles.limitBannerTitle}>Limite diario de {dailyLimit.limit} mensagens atingido</Text>
                             <Text style={styles.limitBannerSubtitle}>Assine por R$ 20/mes e tenha 100 mensagens por dia</Text>
                         </View>
-                        <Pressable onPress={() => setIsUpgradeModalOpen(true)} style={styles.limitBannerButton}>
+                        <Pressable onPress={() => setIsUpgradeModalOpen(true)} style={({ pressed }) => [styles.limitBannerButton, pressed ? styles.pressedFeedback : null]}>
                             <Text style={styles.limitBannerButtonText}>Assinar</Text>
                         </Pressable>
                     </View>
                 ) : (
                     <>
-                        {speech.isListening ? (
-                            <View style={styles.voiceListeningBar}>
-                                <Animated.View style={[styles.voiceListeningDot, { opacity: micPulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }]} />
-                                <Text numberOfLines={1} style={styles.voiceListeningText}>
-                                    {speech.interimText || 'Ouvindo...'}
-                                </Text>
-                            </View>
-                        ) : null}
                         {showVoiceError && speech.errorReason ? (
                             <View style={styles.voiceErrorBar}>
                                 <AlertCircle color={colors.brandDark} size={14} />
@@ -456,44 +574,67 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                             </View>
                         ) : null}
                         <View style={styles.inputBar}>
-                            <View style={styles.inputShell}>
-                                <Brain color={colors.brand} size={18} />
-                                <TextInput
-                                    style={styles.input}
-                                    blurOnSubmit={false}
-                                    editable={!isSending}
-                                    onChangeText={setPrompt}
-                                    onKeyPress={handleInputKeyPress}
-                                    onSubmitEditing={sendPrompt}
-                                    placeholder="Pergunte qualquer coisa..."
-                                    placeholderTextColor={colors.textSubtle}
-                                    returnKeyType="send"
-                                    value={prompt}
-                                />
+                            <View style={[styles.inputShell, speech.isListening ? styles.inputShellListening : null]}>
+                                {speech.isListening ? (
+                                    <View style={styles.waveformRow}>
+                                        <View style={styles.waveformBars}>
+                                            {waveformBars.map((bar, index) => (
+                                                <Animated.View key={index} style={[styles.waveformBar, { transform: [{ scaleY: bar }] }]} />
+                                            ))}
+                                        </View>
+                                        <Text numberOfLines={1} style={styles.waveformHint}>
+                                            {speech.interimText || 'Ouvindo...'}
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <>
+                                        <Brain color={colors.brand} size={18} />
+                                        <TextInput
+                                            ref={inputRef}
+                                            style={[styles.input, { height: inputHeight, maxHeight: INPUT_MAX_HEIGHT }]}
+                                            blurOnSubmit={false}
+                                            editable={!isSending}
+                                            multiline
+                                            onChangeText={setPrompt}
+                                            onContentSizeChange={(event) => {
+                                                const nextHeight = Math.min(Math.max(INPUT_MIN_HEIGHT, event.nativeEvent.contentSize.height), INPUT_MAX_HEIGHT);
+                                                setInputHeight(nextHeight);
+                                            }}
+                                            onKeyPress={handleInputKeyPress}
+                                            placeholder="Pergunte qualquer coisa... (/ para focar)"
+                                            placeholderTextColor={colors.textSubtle}
+                                            returnKeyType="send"
+                                            scrollEnabled={inputHeight >= INPUT_MAX_HEIGHT}
+                                            value={prompt}
+                                        />
+                                    </>
+                                )}
                             </View>
                             {speech.isSupported ? (
                                 <Pressable
                                     accessibilityLabel={speech.isListening ? 'Parar gravacao de voz' : 'Falar para digitar'}
                                     disabled={isSending}
-                                    onPress={speech.toggle}
-                                    style={[styles.sendButton, styles.micButton, speech.isListening ? styles.micButtonActive : null, isSending ? styles.sendButtonDisabled : null]}
+                                    onPress={() => { hapticTap(); speech.toggle(); }}
+                                    style={({ pressed }) => [styles.sendButton, styles.micButton, speech.isListening ? styles.micButtonActive : null, isSending ? styles.sendButtonDisabled : null, pressed ? styles.sendButtonPressed : null]}
                                 >
                                     {speech.isListening ? (
-                                        <Square color={colors.inverseText} fill={colors.inverseText} size={13} />
+                                        <Animated.View style={{ opacity: micPulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }) }}>
+                                            <Square color={colors.inverseText} fill={colors.inverseText} size={13} />
+                                        </Animated.View>
                                     ) : (
                                         <Mic color={colors.inverseText} size={18} />
                                     )}
                                 </Pressable>
                             ) : null}
                             {isSending ? (
-                                <Pressable onPress={stopGenerating} style={[styles.sendButton, styles.stopButton]}>
+                                <Pressable onPress={stopGenerating} style={({ pressed }) => [styles.sendButton, styles.stopButton, pressed ? styles.sendButtonPressed : null]}>
                                     <Square color={colors.inverseText} fill={colors.inverseText} size={14} />
                                 </Pressable>
-                            ) : (
-                                <Pressable disabled={!prompt.trim()} onPress={sendPrompt} style={[styles.sendButton, !prompt.trim() ? styles.sendButtonDisabled : null]}>
+                            ) : !speech.isListening ? (
+                                <Pressable disabled={!prompt.trim()} onPress={sendPrompt} style={({ pressed }) => [styles.sendButton, !prompt.trim() ? styles.sendButtonDisabled : null, pressed ? styles.sendButtonPressed : null]}>
                                     <Send color={colors.inverseText} size={18} />
                                 </Pressable>
-                            )}
+                            ) : null}
                         </View>
                     </>
                 )}
@@ -662,7 +803,7 @@ function UpgradeModal({ visible, onClose, onCreateCardCheckout, onCreatePixCheck
                 <View style={styles.modalCard}>
                     <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>Plano de 100 mensagens/dia</Text>
-                        <Pressable onPress={onClose} style={styles.modalCloseButton}>
+                        <Pressable onPress={onClose} style={({ pressed }) => [styles.modalCloseButton, pressed ? styles.pressedFeedback : null]}>
                             <X color={colors.textMuted} size={18} />
                         </Pressable>
                     </View>
@@ -674,13 +815,13 @@ function UpgradeModal({ visible, onClose, onCreateCardCheckout, onCreatePixCheck
                     <View style={styles.tabRow}>
                         <Pressable
                             onPress={() => setMethod('pix')}
-                            style={[styles.tabButton, method === 'pix' ? styles.tabButtonActive : null]}
+                            style={({ pressed }) => [styles.tabButton, method === 'pix' ? styles.tabButtonActive : null, pressed ? styles.pressedFeedback : null]}
                         >
                             <Text style={[styles.tabButtonText, method === 'pix' ? styles.tabButtonTextActive : null]}>PIX</Text>
                         </Pressable>
                         <Pressable
                             onPress={() => setMethod('card')}
-                            style={[styles.tabButton, method === 'card' ? styles.tabButtonActive : null]}
+                            style={({ pressed }) => [styles.tabButton, method === 'card' ? styles.tabButtonActive : null, pressed ? styles.pressedFeedback : null]}
                         >
                             <Text style={[styles.tabButtonText, method === 'card' ? styles.tabButtonTextActive : null]}>Cartao</Text>
                         </Pressable>
@@ -738,7 +879,7 @@ function UpgradeModal({ visible, onClose, onCreateCardCheckout, onCreatePixCheck
                                     ) : null}
                                     {cardError ? <Text style={styles.modalError}>{cardError}</Text> : null}
                                     {cardStatus === 'rejected' ? (
-                                        <Pressable onPress={retryCard} style={styles.limitBannerButton}>
+                                        <Pressable onPress={retryCard} style={({ pressed }) => [styles.limitBannerButton, pressed ? styles.pressedFeedback : null]}>
                                             <Text style={styles.limitBannerButtonText}>Tentar novamente</Text>
                                         </Pressable>
                                     ) : null}
@@ -796,10 +937,6 @@ function FormattedAssistantMessage({ content, isTyping = false }: { content: str
                     return <FormattedInlineText key={`heading-${index}`} content={block.content} style={styles.formattedHeading} showCursor={isTyping && isLastBlock} />;
                 }
 
-                if (block.type === 'table') {
-                    return <FormattedTable key={`table-${index}`} headers={block.headers} rows={block.rows} />;
-                }
-
                 return <FormattedInlineText key={`paragraph-${index}`} content={block.content} style={styles.messageText} showCursor={isTyping && isLastBlock} />;
             })}
         </View>
@@ -845,36 +982,14 @@ function FormattedTable({ headers, rows }: { headers: string[]; rows: string[][]
 type FormattedBlock =
     | { type: 'heading'; content: string }
     | { type: 'paragraph'; content: string }
-    | { type: 'list'; items: string[] }
-    | { type: 'table'; headers: string[]; rows: string[][] };
+    | { type: 'list'; items: string[] };
 
-const QUICK_REPLIES_PATTERN = /\n?\[\[OPCOES:\s*([^\]]+)\]\]\s*$/i;
-
-function extractQuickReplies(content: string): { cleanedContent: string; options: string[] } {
-    const match = content.match(QUICK_REPLIES_PATTERN);
-    if (!match?.[1]) return { cleanedContent: content, options: [] };
-
-    const options = match[1]
-        .split('|')
-        .map((option) => option.trim())
-        .filter(Boolean)
-        .slice(0, 4);
-
-    if (options.length < 2) return { cleanedContent: content, options: [] };
-
-    return { cleanedContent: content.slice(0, match.index).trimEnd(), options };
-}
-
-function isTableRowLine(line: string): boolean {
-    return line.startsWith('|') && line.endsWith('|') && line.length > 1;
-}
-
-function isTableSeparatorLine(line: string): boolean {
-    return isTableRowLine(line) && line.split('|').slice(1, -1).every((cell) => /^\s*:?-+:?\s*$/.test(cell));
-}
-
-function splitTableRow(line: string): string[] {
-    return line.slice(1, -1).split('|').map((cell) => cell.trim());
+function linkLabel(url: string): string {
+    try {
+        return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+        return url;
+    }
 }
 
 function parseFormattedBlocks(content: string): FormattedBlock[] {
@@ -901,24 +1016,6 @@ function parseFormattedBlocks(content: string): FormattedBlock[] {
         if (!line) {
             flushParagraph();
             flushList();
-            continue;
-        }
-
-        const nextLine = (lines[lineIndex + 1] ?? '').trim();
-        if (isTableRowLine(line) && isTableSeparatorLine(nextLine)) {
-            flushParagraph();
-            flushList();
-
-            const headers = splitTableRow(line);
-            const rows: string[][] = [];
-            lineIndex += 2;
-            while (lineIndex < lines.length && isTableRowLine((lines[lineIndex] ?? '').trim())) {
-                rows.push(splitTableRow((lines[lineIndex] ?? '').trim()));
-                lineIndex += 1;
-            }
-            lineIndex -= 1;
-
-            blocks.push({ type: 'table', headers, rows });
             continue;
         }
 
@@ -1023,6 +1120,72 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         gap: spacing[3],
         padding: spacing[4]
+    },
+    botBubbleError: {
+        backgroundColor: 'rgba(255,218,214,0.35)',
+        borderColor: 'rgba(186,26,26,0.28)'
+    },
+    errorMessageRow: {
+        alignItems: 'flex-start',
+        flexDirection: 'row',
+        gap: spacing[2]
+    },
+    errorMessageText: {
+        color: '#7a1414',
+        flex: 1,
+        fontFamily: fonts.sans,
+        fontSize: 14,
+        lineHeight: 20
+    },
+    linkRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing[2]
+    },
+    linkChip: {
+        alignItems: 'center',
+        backgroundColor: '#ffffff',
+        borderColor: colors.border,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: spacing[1],
+        maxWidth: 220,
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[1] + 2
+    },
+    linkChipText: {
+        color: colors.brandDark,
+        fontFamily: fonts.medium,
+        fontSize: 12.5,
+        fontWeight: '700'
+    },
+    followupBlock: {
+        gap: spacing[1]
+    },
+    followupLabelRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 4
+    },
+    followupLabelText: {
+        color: colors.textSubtle,
+        fontFamily: fonts.medium,
+        fontSize: 11,
+        fontWeight: '700',
+        textTransform: 'uppercase'
+    },
+    followupChip: {
+        backgroundColor: colors.brandSubtle,
+        borderRadius: radii.pill,
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2]
+    },
+    followupChipText: {
+        color: colors.brandDark,
+        fontFamily: fonts.medium,
+        fontSize: 13,
+        fontWeight: '700'
     },
     messageActionButton: {
         alignItems: 'center',
@@ -1269,14 +1432,43 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.08,
         shadowRadius: 24
     },
+    inputShellListening: {
+        borderColor: '#c0392b'
+    },
+    waveformRow: {
+        alignItems: 'center',
+        flex: 1,
+        flexDirection: 'row',
+        gap: spacing[3],
+        height: 36
+    },
+    waveformBars: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 4,
+        height: 24
+    },
+    waveformBar: {
+        backgroundColor: '#c0392b',
+        borderRadius: radii.pill,
+        height: 24,
+        width: 4
+    },
+    waveformHint: {
+        color: colors.textMuted,
+        flex: 1,
+        fontFamily: fonts.sans,
+        fontSize: 13
+    },
     input: {
         color: colors.text,
         flex: 1,
         fontFamily: fonts.sans,
         fontSize: 15,
+        lineHeight: 22,
         minHeight: 36,
         outlineStyle: 'none',
-        paddingVertical: 0
+        paddingVertical: 7
     } as object,
     sendButton: {
         alignItems: 'center',
@@ -1294,6 +1486,13 @@ const styles = StyleSheet.create({
     sendButtonDisabled: {
         opacity: 0.55
     },
+    sendButtonPressed: {
+        opacity: 0.8,
+        transform: [{ scale: 0.94 }]
+    },
+    pressedFeedback: {
+        opacity: 0.6
+    },
     stopButton: {
         backgroundColor: colors.textMuted
     },
@@ -1302,33 +1501,6 @@ const styles = StyleSheet.create({
     },
     micButtonActive: {
         backgroundColor: '#c0392b'
-    },
-    voiceListeningBar: {
-        alignItems: 'center',
-        alignSelf: 'center',
-        backgroundColor: '#ffffff',
-        borderColor: '#c0392b',
-        borderRadius: radii.pill,
-        borderWidth: 1,
-        flexDirection: 'row',
-        gap: spacing[2],
-        marginBottom: spacing[2],
-        maxWidth: 640,
-        paddingHorizontal: spacing[4],
-        paddingVertical: spacing[2],
-        width: '100%'
-    },
-    voiceListeningDot: {
-        backgroundColor: '#c0392b',
-        borderRadius: radii.pill,
-        height: 8,
-        width: 8
-    },
-    voiceListeningText: {
-        color: colors.text,
-        flex: 1,
-        fontFamily: fonts.sans,
-        fontSize: 13
     },
     voiceErrorBar: {
         alignItems: 'center',

@@ -85,10 +85,21 @@ function AuthGate() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [workspace.isAuthenticated]);
 
+    const inAuthenticatedArea = segments[0] === '(tabs)';
+    // True for exactly one render right after isReady flips true when the
+    // landing URL doesn't match the auth state (e.g. opening "/" — which
+    // resolves inside the (tabs) group — while logged out). Without this,
+    // <Slot/> would mount the authenticated screens for that one render
+    // before router.replace() below catches up, and their own mount effects
+    // (dashboard prefetch, etc.) would fire against a session that doesn't
+    // exist — surfacing a confusing "session expired" error on a user who
+    // was never logged in.
+    const authAreaMismatch = workspace.isReady
+        && ((!workspace.isAuthenticated && inAuthenticatedArea) || (workspace.isAuthenticated && !inAuthenticatedArea));
+
     useEffect(() => {
         if (!workspace.isReady) return;
 
-        const inAuthenticatedArea = segments[0] === '(tabs)';
         if (!workspace.isAuthenticated && inAuthenticatedArea) {
             router.replace('/login');
             return;
@@ -97,9 +108,9 @@ function AuthGate() {
         if (workspace.isAuthenticated && !inAuthenticatedArea) {
             router.replace('/');
         }
-    }, [workspace.isReady, workspace.isAuthenticated, segments, router]);
+    }, [workspace.isReady, workspace.isAuthenticated, inAuthenticatedArea, router]);
 
-    if (!workspace.isReady) return <BootPage />;
+    if (!workspace.isReady || authAreaMismatch) return <BootPage />;
 
     return <Slot />;
 }

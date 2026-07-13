@@ -6,6 +6,8 @@
 [![Architecture](https://img.shields.io/badge/architecture-Hexagonal%20+%20DDD-blue?style=flat-square)](https://en.wikipedia.org/wiki/Hexagonal_architecture_(software))
 [![Redis](https://img.shields.io/badge/queues-BullMQ%20%2B%20Redis-DC382D?style=flat-square&logo=redis)](https://redis.io/)
 [![MCP](https://img.shields.io/badge/AI-Model%20Context%20Protocol-6E56CF?style=flat-square)](https://modelcontextprotocol.io/)
+[![PostgreSQL](https://img.shields.io/badge/billing-PostgreSQL%20%2B%20Prisma-4169E1?style=flat-square&logo=postgresql)](https://www.postgresql.org/)
+[![Mercado Pago](https://img.shields.io/badge/payments-Mercado%20Pago-00B1EA?style=flat-square)](https://www.mercadopago.com.br/)
 
 O **UFAM Academics** (codinome: *Meu Campus*) é uma plataforma independente desenvolvida para modernizar a experiência de acesso às informações acadêmicas do eCampus da Universidade Federal do Amazonas (UFAM). O projeto atua como uma camada de experiência (**UX Layer**), oferecendo uma interface limpa, rápida e otimizada para dispositivos móveis, mantendo o sistema oficial como única fonte da verdade. Além do proxy de dados acadêmicos, o sistema conta com um **assistente de IA acadêmica** que conversa em tempo real e consulta notas, horários e planos de ensino do próprio usuário via **MCP (Model Context Protocol)**.
 
@@ -22,6 +24,7 @@ O sistema eCampus original, embora centralize dados vitais, possui uma interface
 - **Assistente de IA com Contexto Real:** Um servidor MCP na API expõe ferramentas (notas, horário, plano de ensino) que o worker de IA consulta sob demanda para responder com dados reais do usuário.
 - **Consumo Inteligente:** Redução drástica no tráfego de dados ao carregar apenas o essencial para a interface.
 - **Segurança Transparente:** Autenticação direta com o sistema institucional sem intermediários de armazenamento.
+- **Cota Diária de IA com Upgrade Pago:** 6 mensagens de IA grátis por dia (100/dia no plano pago), com checkout via Mercado Pago (PIX ou cartão de crédito/débito) direto no app.
 
 ---
 
@@ -31,10 +34,11 @@ O projeto foi construído sob princípios de **Engenharia de Software de alta qu
 
 ### Stack Técnica
 - **Frontend (`app/`):** React Native, Expo, React Native Web, TypeScript, Lucide Icons.
-- **API (`api/`):** NestJS, TypeScript, Axios, Tough Cookie, Node HTML Parser, JWT, Socket.IO (WebSocket), servidor MCP.
+- **API (`api/`):** NestJS, TypeScript, Axios, Tough Cookie, Node HTML Parser, JWT, Socket.IO (WebSocket), servidor MCP, Prisma (Postgres) para o módulo de billing, SDK do Mercado Pago.
 - **Worker de eCampus (`workers/ecampus/`):** Node.js, TypeScript, BullMQ — faz o *web scraping* do portal oficial de forma assíncrona.
 - **Worker de IA (`workers/ai/`):** Node.js, TypeScript, BullMQ, Vercel AI SDK — processa o chat e integra provedores de LLM (Gemini, DeepSeek, OpenAI).
-- **Infraestrutura:** Redis (filas BullMQ + Pub/Sub + cache de curta duração), Docker/Docker Compose.
+- **Infraestrutura:** Redis (filas BullMQ + Pub/Sub + cache de curta duração), PostgreSQL (dados de billing/assinatura), Docker/Docker Compose.
+- **Pagamentos:** Mercado Pago (PIX e Card Payment Brick) para upgrade da cota diária de IA.
 - **Arquitetura:** Hexagonal (Ports and Adapters) e Domain-Driven Design (DDD), organizada como monorepo com 4 serviços independentes.
 
 ### Diagrama de Arquitetura
@@ -48,6 +52,8 @@ flowchart LR
     Redis <--> AiWorker[Worker de IA]
     AiWorker -->|MCP tool calls| API
     AiWorker <-->|LLM| Providers[[Gemini / DeepSeek / OpenAI]]
+    API <-->|Cota diária / assinatura| Postgres[(PostgreSQL)]
+    API <-->|Checkout PIX / Cartão| MercadoPago[[Mercado Pago]]
 ```
 
 Fluxo assíncrono típico (ex.: chat de IA): o app envia a mensagem para a API, que responde `202 Accepted` de imediato e enfileira o job no Redis; o `ai-worker` processa a mensagem (consultando dados acadêmicos reais via MCP quando necessário) e publica o resultado em um canal Redis Pub/Sub; a API está inscrita nesse canal e repassa a resposta ao app em tempo real via WebSocket, na sala específica daquele usuário. O mesmo padrão (fila → processamento → pub/sub → WebSocket) é usado para eventos de scraping do eCampus (login, notas, bootstrap prontos).
@@ -59,6 +65,8 @@ O processamento pesado (scraping, chamadas a LLMs) foi extraído da API para **w
 
 A integração com IA usa o **Model Context Protocol (MCP)**: a API expõe um servidor MCP com ferramentas de consulta a dados acadêmicos (perfil, notas, horário, plano de ensino), e o `ai-worker` atua como cliente MCP, permitindo que o LLM consulte dados reais e atualizados do usuário durante a conversa (tool calling), em vez de depender apenas do conhecimento estático do modelo.
 
+O módulo de **billing** é o único ponto do sistema com estado persistente em banco relacional: usa **PostgreSQL via Prisma** para controlar a cota diária de mensagens de IA (6 grátis / 100 no plano pago) e o status da assinatura, e integra com a API do **Mercado Pago** para checkout via PIX ou Card Payment Brick (crédito/débito). Todo o restante do sistema permanece *stateless*, sem persistência de dados acadêmicos ou credenciais.
+
 ---
 
 ## ✨ Funcionalidades
@@ -69,8 +77,9 @@ A integração com IA usa o **Model Context Protocol (MCP)**: a API expõe um se
 - [x] **Grade Horária:** Visualização clara das aulas da semana.
 - [x] **Planos de Ensino:** Consulta detalhada de disciplinas, conteúdos e critérios de avaliação.
 - [x] **Sessão Persistente:** Gerenciamento de sessão via JWT com tempo de vida sincronizado ao portal oficial.
-- [x] **Assistente de IA Acadêmica:** Chat assíncrono em tempo real (Redis + WebSocket) com acesso a notas, horário e planos de ensino do usuário via MCP.
+- [x] **Assistente de IA Acadêmica:** Chat assíncrono em tempo real (Redis + WebSocket), com streaming real de tokens, edição/regeneração de mensagens e acesso a notas, horário e planos de ensino do usuário via MCP.
 - [x] **Notificações em Tempo Real:** Eventos de scraping e respostas de IA entregues por WebSocket assim que ficam prontos.
+- [x] **Cota Diária e Assinatura de IA:** 6 mensagens grátis por dia / 100 no plano pago, com checkout via Mercado Pago (PIX ou cartão).
 
 ---
 
@@ -113,9 +122,11 @@ Sem Docker, dá pra fazer o mesmo por serviço com `npm run dev:prod-env` (usa `
 cd api
 npm install
 cp .env.example .env.local
-# Configure ECAMPUS_JWT_SECRET, FRONTEND_ORIGIN e REDIS_URL no .env.local
+# Configure ECAMPUS_JWT_SECRET, FRONTEND_ORIGIN, REDIS_URL e DATABASE_URL (Postgres) no .env.local
+npx prisma migrate deploy   # aplica o schema do módulo de billing no Postgres local
 npm run dev
 ```
+> O módulo de `billing` (cota diária de IA + assinatura) requer uma instância Postgres — aponte `DATABASE_URL` para um banco local (ex.: via Docker) ou gerenciado. Para o checkout funcionar de ponta a ponta em dev, configure também `MERCADOPAGO_ACCESS_TOKEN` no `.env.local`.
 
 ### 2. Worker de eCampus (scraping assíncrono)
 ```bash

@@ -7,6 +7,7 @@ import type { ScheduleClass } from '@/modules/academic/domain/entities/schedule-
 import type { StudentProfile } from '@/modules/academic/domain/entities/student-profile';
 import { AuthSessionExpiredError } from '@/shared/auth/auth-session-expired.error';
 import { AiDailyLimitReachedError } from '@/shared/errors/ai-daily-limit-reached.error';
+import { ServerError } from '@/shared/errors/server.error';
 import { EcampusResourcePendingError } from '@/modules/academic/domain/errors/ecampus-resource-pending.error';
 import type { CreateCardCheckoutRequest, EcampusRepository, EcampusScrapeJobType, LoginCredentials, SendAiChatMessageRequest } from '@/modules/academic/domain/repositories/ecampus-repository';
 import { AcademicPeriod } from '@/modules/academic/domain/value-objects/academic-period';
@@ -224,6 +225,9 @@ export class EcampusHttpRepository implements EcampusRepository {
                 // A non-JSON body means we're not even talking to our API
                 // anymore (a proxy/gateway error page, an HTML 502, etc.) —
                 // the status code alone still tells us enough to respond.
+                if (!response.ok && response.status >= 500) {
+                    throw new ServerError(response.status, describeHttpFailure(response.status));
+                }
                 throw new Error(response.ok
                     ? 'O servidor respondeu de forma inesperada. Tente novamente em instantes.'
                     : describeHttpFailure(response.status));
@@ -244,6 +248,13 @@ export class EcampusHttpRepository implements EcampusRepository {
                 const plan = payload.plan === 'PAID' ? 'PAID' : 'FREE';
                 const message = typeof payload.message === 'string' ? payload.message : 'Limite diario de mensagens atingido.';
                 throw new AiDailyLimitReachedError(limit, plan, message);
+            }
+
+            // 5xx bodies come from our own NestJS exception filter, but their
+            // "message" is meant for logs/devs, not end users — always show the
+            // generic friendly copy here instead of surfacing it verbatim.
+            if (response.status >= 500) {
+                throw new ServerError(response.status, describeHttpFailure(response.status));
             }
 
             const message = isPlainObject(payload) ? payload.message : undefined;

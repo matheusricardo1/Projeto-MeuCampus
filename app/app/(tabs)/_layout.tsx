@@ -9,6 +9,7 @@ import { useLanguage } from '@/shared/i18n/language-provider';
 import { useWorkspace } from '@/modules/academic/presentation/context/workspace-context';
 import { useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
+import { hapticTap } from '@/shared/haptics';
 
 type TabId = 'home' | 'lessonPlan' | 'ai' | 'schedule' | 'profile' | 'grades' | 'notifications';
 
@@ -142,6 +143,7 @@ export default function TabsLayout() {
     };
     const navigateToTab = (tabId: Exclude<TabId, 'grades' | 'notifications'>) => {
         setShowChatHistory(false);
+        if (tabId !== activeTab) hapticTap();
 
         if (tabId === 'ai' && !IS_AI_FEATURE_ENABLED) {
             router.push('/');
@@ -199,7 +201,10 @@ export default function TabsLayout() {
     const leaveAIChat = () => navigateToTab('home');
     const closeChatHistory = () => setShowChatHistory(false);
     const isAIPage = IS_AI_FEATURE_ENABLED && activeTab === 'ai';
-    const bottomNavInset = isAIPage ? 0 : layout.isTablet ? 88 : 96;
+    // Course details/content pages ship their own top bar with a back button —
+    // the shared "Meu Campus" header and bottom nav would just be redundant chrome there.
+    const isCourseDetailsPage = pathname.startsWith('/lesson-plan/');
+    const bottomNavInset = isAIPage || isCourseDetailsPage ? 0 : layout.isTablet ? 88 : 96;
     const chatTitle = chatHistory[0]?.title || DEFAULT_CHAT_TITLE;
 
     useEffect(() => {
@@ -256,10 +261,10 @@ export default function TabsLayout() {
         if (isAIPage) {
             return (
                 <View style={styles.headerIdentity}>
-                    <Pressable onPress={leaveAIChat} style={styles.headerNotificationButton}>
+                    <Pressable onPress={leaveAIChat} style={({ pressed }) => [styles.headerNotificationButton, pressed ? styles.pressedFeedback : null]}>
                         <ArrowLeft color={colors.textMuted} size={22} />
                     </Pressable>
-                    <Pressable onPress={() => setShowChatHistory((current) => !current)} style={styles.headerNotificationButton}>
+                    <Pressable onPress={() => setShowChatHistory((current) => !current)} style={({ pressed }) => [styles.headerNotificationButton, pressed ? styles.pressedFeedback : null]}>
                         <History color={colors.textMuted} size={21} />
                     </Pressable>
                     <Text numberOfLines={1} style={styles.headerTitle}>{chatTitle}</Text>
@@ -279,7 +284,7 @@ export default function TabsLayout() {
                     </View>
 
                     <View style={styles.headerActions}>
-                        <Pressable onPress={openNotifications} style={styles.headerNotificationButton}>
+                        <Pressable onPress={openNotifications} style={({ pressed }) => [styles.headerNotificationButton, pressed ? styles.pressedFeedback : null]}>
                             <Bell color={colors.textMuted} size={22} />
                         </Pressable>
                     </View>
@@ -295,7 +300,7 @@ export default function TabsLayout() {
                 </View>
 
                 <View style={styles.headerActions}>
-                    <Pressable onPress={openNotifications} style={styles.headerNotificationButton}>
+                    <Pressable onPress={openNotifications} style={({ pressed }) => [styles.headerNotificationButton, pressed ? styles.pressedFeedback : null]}>
                         <Bell color={colors.textMuted} size={22} />
                     </Pressable>
                 </View>
@@ -320,14 +325,14 @@ export default function TabsLayout() {
             outputRange: [0, 1, 1]
         })
     };
-    const sharedBottomNav = isAIPage || isAILaunching ? null : (
+    const sharedBottomNav = isAIPage || isAILaunching || isCourseDetailsPage ? null : (
         <View style={styles.bottomNavShell}>
             <View style={[styles.bottomNav, layout.isTablet ? styles.bottomNavDesktop : null]}>
                 {bottomTabs.map((tab) => {
                     const Icon = tab.icon;
                     const active = activeTab === tab.id;
                     return (
-                        <Pressable key={tab.id} onPress={() => navigateToTab(tab.id)} style={[styles.navItem, layout.isTablet ? styles.navItemDesktop : null, active ? styles.navItemActive : null]}>
+                        <Pressable key={tab.id} onPress={() => navigateToTab(tab.id)} style={({ pressed }) => [styles.navItem, layout.isTablet ? styles.navItemDesktop : null, active ? styles.navItemActive : null, pressed ? styles.navItemPressed : null]}>
                             <Icon color={active ? colors.brandMuted : colors.textMuted} size={20} />
                             <Text numberOfLines={1} style={[styles.navText, active ? styles.navTextActive : null]}>{tab.label}</Text>
                         </Pressable>
@@ -343,13 +348,25 @@ export default function TabsLayout() {
     ) : (
         <ScrollView
             ref={pageScrollRef}
-            contentContainerStyle={[styles.content, { paddingBottom: layout.isTablet ? 112 : 112, paddingHorizontal: layout.pagePadding }]}
+            contentContainerStyle={[styles.content, { paddingBottom: isCourseDetailsPage ? 16 : 112, paddingHorizontal: layout.pagePadding }]}
             refreshControl={<RefreshControl refreshing={activeTab !== 'notifications' && workspace.isLoading} onRefresh={() => void tabActions[activeTab]()} tintColor={colors.brand} />}
             showsVerticalScrollIndicator={Platform.OS === 'web' && !layout.isMobileWeb}
             style={Platform.OS === 'web' ? styles.webFreeScroll : styles.flexScroll}
         >
             <View style={[styles.contentShell, { maxWidth: layout.contentMaxWidth }]}>
-                {activeTab !== 'notifications' && workspace.error ? <View style={styles.errorBanner}><Text style={styles.errorText}>{workspace.error}</Text></View> : null}
+                {activeTab !== 'notifications' && workspace.error ? (
+                    <View style={styles.errorBanner}>
+                        <Text style={styles.errorText}>{workspace.error}</Text>
+                        {workspace.isErrorRetryable ? (
+                            <Pressable
+                                onPress={() => { hapticTap(); void tabActions[activeTab](); }}
+                                style={({ pressed }) => [styles.errorRetryButton, pressed ? styles.pressedFeedback : null]}
+                            >
+                                <Text style={styles.errorRetryText}>{t('common.retry')}</Text>
+                            </Pressable>
+                        ) : null}
+                    </View>
+                ) : null}
                 <Slot />
             </View>
         </ScrollView>
@@ -360,11 +377,13 @@ export default function TabsLayout() {
         <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
             <LinearGradient colors={gradients.app} style={StyleSheet.absoluteFill} />
             <View style={[styles.appShell, layout.isDesktop ? styles.appShellDesktop : null]}>
-                <View style={styles.headerShell}>
-                    <View style={styles.header}>
-                        {renderHeaderContent()}
+                {isCourseDetailsPage ? null : (
+                    <View style={styles.headerShell}>
+                        <View style={styles.header}>
+                            {renderHeaderContent()}
+                        </View>
                     </View>
-                </View>
+                )}
 
                 <Animated.View
                     style={[
@@ -389,7 +408,7 @@ export default function TabsLayout() {
                             <Text style={styles.chatHistoryTitle}>Historico</Text>
                             <View style={styles.chatHistoryList}>
                                 {chatHistory.map((chat) => (
-                                    <Pressable key={chat.id} onPress={closeChatHistory} style={styles.chatHistoryItem}>
+                                    <Pressable key={chat.id} onPress={closeChatHistory} style={({ pressed }) => [styles.chatHistoryItem, pressed ? styles.pressedFeedback : null]}>
                                         <Text numberOfLines={1} style={styles.chatHistoryItemTitle}>{chat.title}</Text>
                                         <Text numberOfLines={1} style={styles.chatHistoryItemMeta}>Sessao atual</Text>
                                     </Pressable>

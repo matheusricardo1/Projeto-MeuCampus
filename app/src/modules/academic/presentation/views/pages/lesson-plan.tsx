@@ -80,13 +80,13 @@ export function LessonPlanListPage({
                 <View style={styles.coursesSelectorRow}>
                     <View style={styles.coursesSelectorColumn}>
                         <Text style={styles.coursesSelectorLabel}>{t('lesson.year')}</Text>
-                        <Pressable onPress={() => setOpenSelector(openSelector === 'year' ? null : 'year')} style={styles.coursesSelectorButton}>
+                        <Pressable onPress={() => setOpenSelector(openSelector === 'year' ? null : 'year')} style={({ pressed }) => [styles.coursesSelectorButton, pressed ? styles.pressedFeedback : null]}>
                             <Text style={styles.coursesSelectorValue}>{gradesInput.year}</Text>
                         </Pressable>
                         {openSelector === 'year' ? (
                             <View style={styles.coursesOptionsPanel}>
                                 {yearOptions.map((year) => (
-                                    <Pressable key={year} onPress={() => changeYear(year)} style={[styles.coursesOptionItem, year === gradesInput.year ? styles.coursesOptionItemActive : null]}>
+                                    <Pressable key={year} onPress={() => changeYear(year)} style={({ pressed }) => [styles.coursesOptionItem, year === gradesInput.year ? styles.coursesOptionItemActive : null, pressed ? styles.pressedFeedback : null]}>
                                         <Text style={[styles.coursesOptionText, year === gradesInput.year ? styles.coursesOptionTextActive : null]}>{year}</Text>
                                     </Pressable>
                                 ))}
@@ -96,13 +96,13 @@ export function LessonPlanListPage({
 
                     <View style={styles.coursesSelectorColumn}>
                         <Text style={styles.coursesSelectorLabel}>{t('lesson.semester')}</Text>
-                        <Pressable onPress={() => setOpenSelector(openSelector === 'period' ? null : 'period')} style={styles.coursesSelectorButton}>
+                        <Pressable onPress={() => setOpenSelector(openSelector === 'period' ? null : 'period')} style={({ pressed }) => [styles.coursesSelectorButton, pressed ? styles.pressedFeedback : null]}>
                             <Text style={styles.coursesSelectorValue}>{formatPeriodOption(gradesInput.period, gradesInput.year, currentGradesInput, t)}</Text>
                         </Pressable>
                         {openSelector === 'period' ? (
                             <View style={styles.coursesOptionsPanel}>
                                 {periodOptions.map((period) => (
-                                    <Pressable key={period} onPress={() => changePeriod(period)} style={[styles.coursesOptionItem, period === gradesInput.period ? styles.coursesOptionItemActive : null]}>
+                                    <Pressable key={period} onPress={() => changePeriod(period)} style={({ pressed }) => [styles.coursesOptionItem, period === gradesInput.period ? styles.coursesOptionItemActive : null, pressed ? styles.pressedFeedback : null]}>
                                         <Text style={[styles.coursesOptionText, period === gradesInput.period ? styles.coursesOptionTextActive : null]}>{formatPeriodOption(period, gradesInput.year, currentGradesInput, t)}</Text>
                                     </Pressable>
                                 ))}
@@ -130,7 +130,7 @@ export function LessonPlanListPage({
                     <Text style={styles.coursesAnalyticsKicker}>{t('lesson.premium')}</Text>
                     <Text style={styles.coursesAnalyticsTitle}>{t('lesson.performanceCharts')}</Text>
                     <Text style={styles.coursesAnalyticsText}>{t('lesson.analyticsText')}</Text>
-                    <Pressable onPress={() => void onRefreshSubjects()} style={styles.coursesAnalyticsButton}>
+                    <Pressable onPress={() => void onRefreshSubjects()} style={({ pressed }) => [styles.coursesAnalyticsButton, pressed ? styles.pressedFeedback : null]}>
                         <Text style={styles.coursesAnalyticsButtonText}>{t('lesson.viewAnalytics')}</Text>
                     </Pressable>
                 </View>
@@ -149,7 +149,7 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
     const statusColor = isAbsenceRisk ? '#ba1a1a' : gradeState.color;
 
     return (
-        <Pressable onPress={onPress} style={[styles.courseCard, !course.available ? styles.courseCardUnavailable : null]}>
+        <Pressable onPress={onPress} style={({ pressed }) => [styles.courseCard, !course.available ? styles.courseCardUnavailable : null, pressed ? styles.pressedFeedback : null]}>
             <View style={styles.courseCardHeader}>
                 <View style={styles.courseCardTitleBlock}>
                     <View style={[styles.courseCodeBadge, isRisk ? styles.courseCodeBadgeDanger : null]}>
@@ -199,7 +199,7 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
     return (
         <View style={styles.courseDetailsPage}>
             <View style={styles.courseDetailsTopBar}>
-                <Pressable onPress={onBack} style={styles.courseDetailsIconButton}>
+                <Pressable onPress={onBack} style={({ pressed }) => [styles.courseDetailsIconButton, pressed ? styles.pressedFeedback : null]}>
                     <ArrowLeft color="#003215" size={22} />
                 </Pressable>
                 <Text numberOfLines={1} style={styles.courseDetailsHeaderTitle}>{t('lesson.detailsTitle')}</Text>
@@ -258,7 +258,7 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
                         <Text style={styles.courseDetailsSectionTitle}>{t('lesson.syllabus')}</Text>
                     </View>
                     {course.available && course.planItems.length > 3 ? (
-                        <Pressable onPress={onOpenFullContent} style={styles.courseDetailsSeeAllButton}>
+                        <Pressable onPress={onOpenFullContent} style={({ pressed }) => [styles.courseDetailsSeeAllButton, pressed ? styles.pressedFeedback : null]}>
                             <Text style={styles.courseDetailsSeeAllText}>{t('lesson.seeFull')}</Text>
                             <ArrowRight color="#003215" size={15} />
                         </Pressable>
@@ -298,7 +298,7 @@ export function CourseContentScreen({ course, loading, onBack, t }: { course: Co
     return (
         <View style={styles.courseContentPage}>
             <View style={styles.courseDetailsTopBar}>
-                <Pressable onPress={onBack} style={styles.courseDetailsIconButton}>
+                <Pressable onPress={onBack} style={({ pressed }) => [styles.courseDetailsIconButton, pressed ? styles.pressedFeedback : null]}>
                     <ArrowLeft color="#003215" size={22} />
                 </Pressable>
                 <Text numberOfLines={1} style={styles.courseDetailsHeaderTitle}>{t('lesson.contentTitle')}</Text>
@@ -323,13 +323,13 @@ export function CourseContentScreen({ course, loading, onBack, t }: { course: Co
             </View>
 
             <View style={styles.courseContentTabs}>
-                <Pressable onPress={() => setFilter('all')}>
+                <Pressable onPress={() => setFilter('all')} style={({ pressed }) => (pressed ? styles.pressedFeedback : null)}>
                     <Text style={[styles.courseContentTab, filter === 'all' ? styles.courseContentTabActive : null]}>{t('lesson.allClasses')}</Text>
                 </Pressable>
-                <Pressable onPress={() => setFilter('theoretical')}>
+                <Pressable onPress={() => setFilter('theoretical')} style={({ pressed }) => (pressed ? styles.pressedFeedback : null)}>
                     <Text style={[styles.courseContentTab, filter === 'theoretical' ? styles.courseContentTabActive : null]}>{t('lesson.theoreticalOnly')}</Text>
                 </Pressable>
-                <Pressable onPress={() => setFilter('practical')}>
+                <Pressable onPress={() => setFilter('practical')} style={({ pressed }) => (pressed ? styles.pressedFeedback : null)}>
                     <Text style={[styles.courseContentTab, filter === 'practical' ? styles.courseContentTabActive : null]}>{t('lesson.practicalOnly')}</Text>
                 </Pressable>
             </View>
@@ -751,15 +751,55 @@ function formatPeriodOption(period: string, selectedYear: string, current: Works
 }
 
 function LessonPlanSkeleton() {
-    return <View style={styles.sectionStack}><SkeletonBlock height={360} /></View>;
+    return (
+        <View style={styles.coursesScreenStack}>
+            <View style={styles.coursesHero}>
+                <SkeletonBlock height={26} style={{ width: '55%' }} />
+                <SkeletonBlock height={14} style={{ width: '70%' }} />
+                <SkeletonBlock height={12} style={{ width: '45%' }} />
+                <View style={styles.coursesSelectorRow}>
+                    <View style={styles.coursesSelectorColumn}>
+                        <SkeletonBlock height={11} style={{ width: 40 }} />
+                        <SkeletonBlock height={44} style={{ width: '100%' }} />
+                    </View>
+                    <View style={styles.coursesSelectorColumn}>
+                        <SkeletonBlock height={11} style={{ width: 60 }} />
+                        <SkeletonBlock height={44} style={{ width: '100%' }} />
+                    </View>
+                </View>
+            </View>
+
+            <View style={styles.coursesList}>
+                <CourseCardsSkeleton />
+            </View>
+        </View>
+    );
 }
 
 function CourseCardsSkeleton() {
     return (
         <>
-            <SkeletonBlock height={128} />
-            <SkeletonBlock height={128} />
-            <SkeletonBlock height={128} />
+            {[0, 1, 2].map((index) => (
+                <View key={index} style={styles.courseCard}>
+                    <View style={styles.courseCardHeader}>
+                        <View style={[styles.courseCardTitleBlock, { gap: 8 }]}>
+                            <SkeletonBlock height={20} style={{ width: 64 }} />
+                            <SkeletonBlock height={15} style={{ width: '80%' }} />
+                        </View>
+                        <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                            <SkeletonBlock height={22} style={{ width: 48 }} />
+                            <SkeletonBlock height={11} style={{ width: 64 }} />
+                        </View>
+                    </View>
+                    <View style={[styles.courseFrequencyBlock, { gap: 8 }]}>
+                        <View style={styles.courseFrequencyHeader}>
+                            <SkeletonBlock height={11} style={{ width: 70 }} />
+                            <SkeletonBlock height={11} style={{ width: 36 }} />
+                        </View>
+                        <SkeletonBlock borderRadius={999} height={6} style={{ width: '100%' }} />
+                    </View>
+                </View>
+            ))}
         </>
     );
 }

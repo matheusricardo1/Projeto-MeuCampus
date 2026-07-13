@@ -48,11 +48,6 @@ export class AiChatEventsSubscriber implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        if (event.type === 'chunk') {
-            this.notifier.emitChatChunk({ userId: event.userId, jobId: event.jobId, delta: event.delta });
-            return;
-        }
-
         if (event.type === 'tool') {
             this.notifier.emitChatTool({ userId: event.userId, jobId: event.jobId, toolName: event.toolName });
             return;
@@ -67,7 +62,7 @@ export class AiChatEventsSubscriber implements OnModuleInit, OnModuleDestroy {
             userId: event.userId,
             jobId: event.jobId,
             conversationId: event.reply.conversationId,
-            message: event.reply.message as { id: string; role: string; content: string; createdAt: string }
+            message: event.reply.message
         });
     }
 }

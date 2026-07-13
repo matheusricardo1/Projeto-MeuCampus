@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from 'react-native';
 import { CalendarDays, Clock3, Fingerprint, LogOut, Mail, Phone, UserRound } from 'lucide-react-native';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
-import { EmptyState, SkeletonBlock } from '@/modules/academic/presentation/views/components';
+import { EmptyState, SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
 import { LanguageSelector } from '@/modules/academic/presentation/views/components/language-selector';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import { getInitials, toTitleName, useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
@@ -84,7 +84,7 @@ export function ProfilePage({
                 </View>
 
                 <View style={styles.profileActions}>
-                    <Pressable onPress={() => void onLogout()} style={styles.profileDangerAction}>
+                    <Pressable onPress={() => void onLogout()} style={({ pressed }) => [styles.profileDangerAction, pressed ? styles.pressedFeedback : null]}>
                         <LogOut color="#ba1a1a" size={20} />
                         <Text style={styles.profileDangerActionText}>{t('profile.logout')}</Text>
                     </Pressable>
@@ -124,10 +124,46 @@ function ProfileListRow({ icon: Icon, label, value }: { icon: typeof Mail; label
 
 function ProfileSkeleton() {
     return (
-        <View style={styles.sectionStack}>
-            <SkeletonBlock height={260} />
-            <SkeletonBlock height={180} />
-            <SkeletonBlock height={140} />
+        <View style={styles.profilePage}>
+            <View style={styles.profileCover}>
+                <View style={styles.profileCoverContent}>
+                    <SkeletonCircle size={116} style={{ backgroundColor: 'rgba(255,255,255,0.16)', marginBottom: 18 }} />
+                    <SkeletonBlock height={22} style={{ backgroundColor: 'rgba(255,255,255,0.16)', marginBottom: 8, width: 180 }} />
+                    <SkeletonBlock height={14} style={{ backgroundColor: 'rgba(255,255,255,0.16)', width: 140 }} />
+                </View>
+            </View>
+
+            <View style={styles.profileContentStack}>
+                <View style={styles.profileGlassCard}>
+                    <View style={styles.profileSectionHeader}>
+                        <SkeletonCircle size={36} />
+                        <SkeletonBlock height={16} style={{ width: 150 }} />
+                    </View>
+                    <View style={styles.profileAcademicGrid}>
+                        <SkeletonBlock height={56} />
+                        <SkeletonBlock height={56} />
+                        <SkeletonBlock height={56} />
+                    </View>
+                </View>
+
+                <View style={styles.profileGlassCard}>
+                    <View style={styles.profileSectionHeader}>
+                        <SkeletonCircle size={36} />
+                        <SkeletonBlock height={16} style={{ width: 160 }} />
+                    </View>
+                    {[0, 1].map((index) => (
+                        <View key={index} style={styles.profileListRow}>
+                            <View style={styles.profileListRowBody}>
+                                <SkeletonCircle size={44} />
+                                <View style={{ gap: 6 }}>
+                                    <SkeletonBlock height={11} style={{ width: 90 }} />
+                                    <SkeletonBlock height={14} style={{ width: 160 }} />
+                                </View>
+                            </View>
+                        </View>
+                    ))}
+                </View>
+            </View>
         </View>
     );
 }

@@ -15,7 +15,7 @@ export function NotificationsPage() {
                     </View>
                     <Text style={styles.notificationsTitle}>{t('notifications.title')}</Text>
                 </View>
-                <Pressable style={styles.notificationsReadButton}>
+                <Pressable style={({ pressed }) => [styles.notificationsReadButton, pressed ? styles.pressedFeedback : null]}>
                     <CheckCheck color="#003215" size={17} />
                     <Text style={styles.notificationsReadButtonText}>{t('notifications.markRead')}</Text>
                 </Pressable>

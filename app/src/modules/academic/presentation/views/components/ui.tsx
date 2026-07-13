@@ -1,7 +1,8 @@
-import { type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { RefreshCw } from 'lucide-react-native';
-import { colors } from '@/shared/design-system';
+import { colors, radii } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 import { getResponsiveCardStyle, useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
@@ -10,7 +11,7 @@ export function PanelHeader({ loading, onRefresh, title }: { loading: boolean; o
     return (
         <View style={styles.panelHeader}>
             <Text numberOfLines={2} style={styles.panelTitle}>{title}</Text>
-            <Pressable onPress={() => void onRefresh()} style={styles.iconButton}>
+            <Pressable onPress={() => void onRefresh()} style={({ pressed }) => [styles.iconButton, pressed ? styles.pressedFeedback : null]}>
                 {loading ? <ActivityIndicator color={colors.text} size="small" /> : <RefreshCw color={colors.text} size={18} />}
             </Pressable>
         </View>
@@ -83,7 +84,7 @@ export function EmptyState({ label, loading, onRefresh }: { label: string; loadi
 
     return (
         <View style={styles.panel}>
-            <Pressable disabled={loading} onPress={() => void onRefresh()} style={styles.primaryButton}>
+            <Pressable disabled={loading} onPress={() => void onRefresh()} style={({ pressed }) => [styles.primaryButton, pressed ? styles.primaryButtonPressed : null]}>
                 {loading ? <ActivityIndicator color={colors.inverseText} /> : <RefreshCw color={colors.inverseText} size={18} />}
                 <Text style={styles.primaryButtonText}>{loading ? t('common.loading') : label}</Text>
             </Pressable>
@@ -99,6 +100,64 @@ export function EmptyInline({ text }: { text: string }) {
     );
 }
 
-export function SkeletonBlock({ height, style }: { height: number; style?: StyleProp<ViewStyle> }) {
-    return <View style={[styles.skeletonBlock, { height }, style]} />;
+// Shared driver so every skeleton block on screen sweeps in lockstep instead
+// of each running its own independent (and visually out-of-sync) loop.
+function useShimmerProgress(): Animated.Value {
+    const progress = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        let isActive = true;
+
+        // Animated.loop's built-in reset-between-iterations is unreliable for a
+        // single one-directional timing on this setup (the sweep plays once and
+        // freezes) — driving each cycle manually with an explicit setValue(0)
+        // before every restart keeps it looping smoothly instead.
+        const runCycle = () => {
+            progress.setValue(0);
+            Animated.timing(progress, {
+                toValue: 1,
+                duration: 1100,
+                easing: Easing.linear,
+                useNativeDriver: true
+            }).start(({ finished }) => {
+                if (isActive && finished) runCycle();
+            });
+        };
+
+        runCycle();
+        return () => {
+            isActive = false;
+            progress.stopAnimation();
+        };
+    }, [progress]);
+
+    return progress;
+}
+
+export function SkeletonBlock({ borderRadius, height, style }: { borderRadius?: number; height: number; style?: StyleProp<ViewStyle> }) {
+    const [width, setWidth] = useState(0);
+    const progress = useShimmerProgress();
+    const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, width] });
+
+    return (
+        <View
+            onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+            style={[styles.skeletonBlock, { height }, borderRadius !== undefined ? { borderRadius } : null, style]}
+        >
+            {width > 0 ? (
+                <Animated.View style={[StyleSheet.absoluteFillObject, { transform: [{ translateX }] }]}>
+                    <LinearGradient
+                        colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.55)', 'rgba(255,255,255,0)']}
+                        end={{ x: 1, y: 0 }}
+                        start={{ x: 0, y: 0 }}
+                        style={StyleSheet.absoluteFillObject}
+                    />
+                </Animated.View>
+            ) : null}
+        </View>
+    );
+}
+
+export function SkeletonCircle({ size, style }: { size: number; style?: StyleProp<ViewStyle> }) {
+    return <SkeletonBlock borderRadius={radii.pill} height={size} style={[{ width: size }, style]} />;
 }

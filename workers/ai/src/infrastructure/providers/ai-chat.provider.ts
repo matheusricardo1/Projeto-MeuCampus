@@ -10,6 +10,7 @@ import { MockAiChatProvider } from '@/infrastructure/providers/mock-ai-chat.prov
 import { appLogger } from '@/infrastructure/logging/app-logger';
 import type { AiChatProvider, AiChatStreamHandlers } from '@/application/ports/ai-chat-provider';
 import { McpClientManager } from '@/infrastructure/mcp/mcp-client-manager';
+import { parseChatResponse } from '@/infrastructure/parsing/chat-response-parser';
 
 type ProviderResolution =
     | { kind: 'gemini'; model: LanguageModel; modelName: string }
@@ -55,13 +56,15 @@ export class DefaultAiChatProvider implements AiChatProvider {
             hasTools ? (tools as unknown as ToolSet) : undefined
         );
 
+        const parsed = parseChatResponse(text.trim());
+
         return {
             conversationId,
             message: {
                 id: randomUUID(),
                 role: 'assistant',
-                content: text.trim(),
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                ...parsed
             }
         };
     }
@@ -132,8 +135,6 @@ export class DefaultAiChatProvider implements AiChatProvider {
         handlers: AiChatStreamHandlers,
         tools?: ToolSet
     ): Promise<string> {
-        let accumulated = '';
-
         try {
             const result = streamText({
                 model,
@@ -159,21 +160,19 @@ export class DefaultAiChatProvider implements AiChatProvider {
                     : {})
             });
 
-            for await (const delta of result.textStream) {
-                accumulated += delta;
-                handlers.onDelta(delta);
-            }
-
-            return accumulated;
+            // The client no longer needs token-by-token deltas — it renders the
+            // final structured reply and simulates the typing effect locally —
+            // so we just wait for the complete text instead of relaying textStream.
+            return await result.text;
         } catch (error) {
-            // A stop request aborts the underlying request mid-stream, which surfaces
-            // here as a thrown error too — in that case the partial text already sent
-            // to onDelta is the real answer, not a failure to be masked with a generic message.
+            // A stop request aborts the underlying request mid-generation, which
+            // surfaces here as a thrown error too — in that case there's no partial
+            // answer to salvage (unlike the old streaming path), so it's a real failure.
             if (handlers.signal.aborted) {
-                return accumulated;
+                return '';
             }
 
-            return accumulated || this.handleGenerationError(error);
+            return this.handleGenerationError(error);
         }
     }
 
@@ -238,10 +237,11 @@ export class DefaultAiChatProvider implements AiChatProvider {
             'O aluno raramente fala o nome oficial completo de uma disciplina. Ele pode dizer uma sigla ou apelido comum (ex.: "AED 2" ou "AED II" para "Algoritmos e Estrutura de Dados II"; "IOC" para "Introducao a Organizacao de Computadores"), um nome parcial (ex.: "Organizacao de Computadores" ou so "Algoritmos"), ou trocar numeral romano por arabico (II = 2, III = 3). Depois de chamar a tool que lista as disciplinas do aluno, compare o que ele disse com os nomes reais retornados (por sigla, por palavras em comum, por numero) para identificar a disciplina certa — nunca peca para o aluno "digitar o nome completo" se der para inferir com o que a tool retornou. Se a comparacao apontar mais de uma disciplina real do aluno como possivel (ex.: duas disciplinas de nomes parecidos), NAO escolha uma sozinho — pergunte qual delas usando o formato de opcoes rapidas descrito abaixo. Se nao houver nenhuma disciplina real que combine, diga isso em vez de inventar ou assumir uma.',
             'Opcoes rapidas: quando sua pergunta ao aluno tiver um conjunto pequeno e fechado de respostas plausiveis (2 a 4) — como escolher entre disciplinas parecidas, ou confirmar algo com sim/nao — termine a mensagem com uma linha propria no formato exato "[[OPCOES: Opcao 1 | Opcao 2]]" (sem markdown dentro, sem numerar, no maximo 4 opcoes separadas por " | "), usando os nomes completos reais retornados pelas tools quando for o caso. O app renderiza essa linha como botoes de resposta rapida, mas o aluno tambem pode simplesmente digitar a resposta em texto livre — trate a proxima mensagem dele normalmente em ambos os casos. Nunca use esse formato para perguntas abertas ou quando as opcoes nao forem claramente finitas.',
             'Tabelas: quando o aluno pedir para ver notas, faltas ou horarios de varias disciplinas de uma vez (uma listagem, nao um calculo pontual), responda com uma tabela em markdown (cabecalho "| Coluna | Coluna |", linha separadora "| --- | --- |", depois as linhas de dados) usando somente os dados reais retornados pela tool — nao adicione texto explicativo repetindo o que ja esta na tabela.',
+            'Perguntas relacionadas (opcional): depois de responder algo que naturalmente abre 2 ou 3 perguntas de acompanhamento relevantes (ex.: depois de responder sobre a MEE de uma disciplina, o aluno pode querer saber a frequencia dela, ou quanto falta pra PF), termine a mensagem com uma linha propria no formato exato "[[SUGESTOES: Pergunta 1 | Pergunta 2]]" (mesmas regras de formato do OPCOES acima, mas aqui sao sugestoes do QUE PERGUNTAR EM SEGUIDA, nao respostas a uma pergunta sua). Use raramente e so quando fizer sentido real — nunca force sugestoes em toda resposta, e nunca use OPCOES e SUGESTOES na mesma mensagem.',
             'Determinismo total sobre dados do aluno: nunca invente, estime, arredonde de cabeca ou "chute" notas, faltas, frequencia, horarios ou qualquer outro dado academico do aluno. Todo numero especifico do aluno que voce mencionar (nota, falta, frequencia, horario etc.) tem que vir literalmente do retorno de uma tool chamada nesta conversa — faltas e frequencia vem dentro dos dados retornados por get_current_grades, nao invente esse numero. Se a tool retornar dado indisponivel, ou se nao existir tool para o que foi pedido, diga explicitamente que nao tem essa informacao agora e oriente o usuario a sincronizar o app — nunca preencha a lacuna com um palpite ou aproximacao.',
             'Voce e capaz de fazer calculos matematicos (medias, medias ponderadas pelo campo weight de cada avaliacao, quanto falta tirar em uma avaliacao para atingir uma media alvo, projecoes de nota) usando apenas os dados retornados pelas tools. Faca a conta voce mesmo internamente — mentalmente, sem escrever nenhum passo — e responda so com o numero final.',
             'PROIBIDO escrever: formulas (tipo "X + Y >= Z"), somas ou substituicoes numericas (tipo "6,5 + 2,5 + 0 = 9" ou "voce precisaria de 23"), ou qualquer "passo a passo" do calculo. Isso vale mesmo quando o resultado for impossivel de atingir — diga so a conclusao em uma frase, nunca a conta que levou a ela.',
-            'Respostas devem ser curtas e diretas: no maximo 2 a 3 frases curtas no total, quase sempre menos. Responda exatamente o que foi perguntado, sem recapitular dados que o usuario ja recebeu (como listar as notas de novo) a menos que ele peca. Essa regra e sobre texto corrido — tabelas markdown e a linha de opcoes rapidas nao contam como "frases" e podem ser usadas junto de uma frase curta de contexto.',
+            'Respostas devem ser curtas e diretas: no maximo 2 a 3 frases curtas no total, quase sempre menos. Responda exatamente o que foi perguntado, sem recapitular dados que o usuario ja recebeu (como listar as notas de novo) a menos que ele peca. Essa regra e sobre texto corrido — tabelas markdown e as linhas de OPCOES/SUGESTOES nao contam como "frases" e podem ser usadas junto de uma frase curta de contexto.',
             'Exemplo do formato esperado — pergunta: "quanto preciso tirar na PF?"; resposta ideal: "Sua **MEE** esta em **3,0**. Voce precisa de pelo menos **9,0** na Prova Final para ser aprovado." Nada alem disso.',
             'Formate a resposta para ficar visualmente limpa: use **negrito** apenas nos numeros e termos mais importantes, e use linhas comecando com "- " para listas curtas quando houver mais de um item. Nunca use o caractere "•".',
             'Abaixo do bloco de regras de comportamento, voce recebe contexto institucional estatico (regras oficiais do modulo academico). Use-o como fonte de verdade para calculos e explicacoes — ele tem prioridade sobre qualquer suposicao generica — mas nunca exponha a formula em si, so a conclusao.',

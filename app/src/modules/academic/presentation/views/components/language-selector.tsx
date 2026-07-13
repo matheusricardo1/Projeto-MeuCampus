@@ -20,7 +20,7 @@ export function LanguageSelector({ compact = false, onBrand = false }: { compact
             <Pressable
                 accessibilityLabel={t('language.selectorLabel')}
                 onPress={() => setOpen((current) => !current)}
-                style={[styles.languageSelectorButton, onBrand ? styles.languageSelectorButtonOnBrand : null]}
+                style={({ pressed }) => [styles.languageSelectorButton, onBrand ? styles.languageSelectorButtonOnBrand : null, pressed ? styles.pressedFeedback : null]}
             >
                 <LanguageFlag code={languageOption.code} />
                 <View style={styles.languageSelectorTextBlock}>
@@ -38,7 +38,7 @@ export function LanguageSelector({ compact = false, onBrand = false }: { compact
                             <Pressable
                                 key={option.code}
                                 onPress={() => changeLanguage(option.code)}
-                                style={[styles.languageSelectorOption, active ? styles.languageSelectorOptionActive : null]}
+                                style={({ pressed }) => [styles.languageSelectorOption, active ? styles.languageSelectorOptionActive : null, pressed ? styles.pressedFeedback : null]}
                             >
                                 <LanguageFlag code={option.code} />
                                 <View style={styles.languageSelectorTextBlock}>

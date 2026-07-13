@@ -79,17 +79,25 @@ export function useSpeechToText({ lang = 'pt-BR', onFinalTranscript }: { lang?: 
         recognition.interimResults = true;
 
         recognition.onresult = (event) => {
+            // event.results is cumulative for the whole session (not just what's
+            // new since the last event), and some browsers re-fire earlier
+            // already-final entries on later events instead of only advancing
+            // resultIndex — appending incrementally from resultIndex double-counted
+            // those and produced duplicated/garbled text. Rebuilding the final
+            // transcript from scratch every time avoids that entirely.
+            let finalText = '';
             let interim = '';
-            for (let index = event.resultIndex; index < event.results.length; index += 1) {
+            for (let index = 0; index < event.results.length; index += 1) {
                 const result = event.results[index];
                 if (!result) continue;
                 const transcript = result[0]?.transcript ?? '';
                 if (result.isFinal) {
-                    finalTranscriptRef.current = `${finalTranscriptRef.current} ${transcript}`.trim();
+                    finalText = finalText ? `${finalText} ${transcript}` : transcript;
                 } else {
                     interim += transcript;
                 }
             }
+            finalTranscriptRef.current = finalText.trim();
             setInterimText(interim);
         };
 

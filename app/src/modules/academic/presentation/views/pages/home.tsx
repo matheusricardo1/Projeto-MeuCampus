@@ -4,7 +4,7 @@ import { BookOpen, CalendarDays, CheckCircle2, ClipboardList, FileText, Graduati
 import { colors } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
-import { SkeletonBlock } from '@/modules/academic/presentation/views/components';
+import { SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
 import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, isApprovedStatus, parseAbsences, parseGrade, toTitleName, useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
@@ -52,7 +52,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
             <View style={styles.homeSection}>
                 <View style={styles.homeSectionHeader}>
                     <Text style={styles.homeSectionTitle}>{nextClass?.isHappening ? t('home.classInProgress') : t('home.nextClass')}</Text>
-                    <Pressable onPress={() => router.push('/schedule')}>
+                    <Pressable onPress={() => router.push('/schedule')} style={({ pressed }) => (pressed ? styles.pressedFeedback : null)}>
                         <Text style={styles.homeSectionAction}>{t('home.viewAll')}</Text>
                     </Pressable>
                 </View>
@@ -122,7 +122,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                     {shortcuts.map((shortcut) => {
                         const Icon = shortcut.icon;
                         return (
-                            <Pressable key={shortcut.label} onPress={shortcut.action} style={styles.homeShortcutCard}>
+                            <Pressable key={shortcut.label} onPress={shortcut.action} style={({ pressed }) => [styles.homeShortcutCard, pressed ? styles.pressedFeedback : null]}>
                                 <View style={[styles.homeShortcutIcon, shortcut.tone]}>
                                     <Icon color={shortcut.tone === styles.homeShortcutToneSecondary ? colors.warning : shortcut.tone === styles.homeShortcutTonePrimary ? colors.brand : colors.textMuted} size={22} />
                                 </View>
@@ -166,17 +166,85 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
 
 function DashboardSkeleton() {
     return (
-        <View style={styles.sectionStack}>
-            <SkeletonBlock height={150} />
-            <View style={styles.metricGrid}>
-                <SkeletonBlock height={92} style={styles.metricSkeletonItem} />
-                <SkeletonBlock height={92} style={styles.metricSkeletonItem} />
-                <SkeletonBlock height={92} style={styles.metricSkeletonItem} />
-                <SkeletonBlock height={92} style={styles.metricSkeletonItem} />
+        <View style={styles.homeScreenStack}>
+            <View style={styles.homeGreeting}>
+                <SkeletonBlock height={32} style={{ width: '62%' }} />
+                <SkeletonBlock height={17} style={{ width: '40%' }} />
             </View>
-            <View style={styles.twoColumnGrid}>
-                <SkeletonBlock height={220} />
-                <SkeletonBlock height={220} />
+
+            <View style={styles.homeSection}>
+                <View style={styles.homeSectionHeader}>
+                    <SkeletonBlock height={16} style={{ width: 120 }} />
+                    <SkeletonBlock height={14} style={{ width: 60 }} />
+                </View>
+                <View style={styles.homeNextClassCard}>
+                    <View style={styles.homeNextClassTop}>
+                        <View style={[styles.homeNextClassBody, { gap: 8 }]}>
+                            <SkeletonBlock height={13} style={{ backgroundColor: 'rgba(255,255,255,0.16)', width: '35%' }} />
+                            <SkeletonBlock height={20} style={{ backgroundColor: 'rgba(255,255,255,0.16)', width: '75%' }} />
+                            <SkeletonBlock height={13} style={{ backgroundColor: 'rgba(255,255,255,0.16)', width: '55%' }} />
+                        </View>
+                        <SkeletonBlock height={32} style={{ backgroundColor: 'rgba(255,255,255,0.16)', width: 82 }} />
+                    </View>
+                    <View style={styles.homeTeacherRow}>
+                        <SkeletonCircle size={36} style={{ backgroundColor: 'rgba(255,255,255,0.16)' }} />
+                        <View style={[styles.homeTeacherText, { gap: 6 }]}>
+                            <SkeletonBlock height={13} style={{ backgroundColor: 'rgba(255,255,255,0.16)', width: '60%' }} />
+                            <SkeletonBlock height={12} style={{ backgroundColor: 'rgba(255,255,255,0.16)', width: '40%' }} />
+                        </View>
+                    </View>
+                </View>
+            </View>
+
+            <View style={styles.homeSection}>
+                <SkeletonBlock height={16} style={{ width: 150 }} />
+                <View style={styles.homeBentoGrid}>
+                    <View style={[styles.homeBentoCard, styles.homeBentoHalf, { gap: 10 }]}>
+                        <SkeletonBlock height={13} style={{ width: '50%' }} />
+                        <SkeletonBlock height={26} style={{ width: '40%' }} />
+                        <SkeletonBlock height={12} style={{ width: '70%' }} />
+                    </View>
+                    <View style={[styles.homeBentoCard, styles.homeBentoHalf, { gap: 10 }]}>
+                        <SkeletonBlock height={13} style={{ width: '50%' }} />
+                        <SkeletonBlock height={26} style={{ width: '40%' }} />
+                        <SkeletonBlock height={8} style={{ width: '100%' }} />
+                    </View>
+                    <View style={[styles.homeBentoWide, { gap: 10 }]}>
+                        <SkeletonBlock height={13} style={{ width: '35%' }} />
+                        <SkeletonBlock height={8} style={{ width: '100%' }} />
+                        <SkeletonBlock height={12} style={{ width: '55%' }} />
+                    </View>
+                </View>
+            </View>
+
+            <View style={styles.homeSection}>
+                <SkeletonBlock height={16} style={{ width: 130 }} />
+                <View style={styles.homeShortcutRow}>
+                    {[0, 1, 2, 3].map((index) => (
+                        <View key={index} style={[styles.homeShortcutCard, { gap: 8 }]}>
+                            <SkeletonCircle size={48} />
+                            <SkeletonBlock height={11} style={{ width: '70%' }} />
+                        </View>
+                    ))}
+                </View>
+            </View>
+
+            <View style={styles.homeInsightGrid}>
+                <View style={styles.panel}>
+                    <SkeletonBlock height={16} style={{ marginBottom: 14, width: 160 }} />
+                    <View style={styles.summaryRows}>
+                        <SkeletonBlock height={14} style={{ width: '100%' }} />
+                        <SkeletonBlock height={14} style={{ width: '100%' }} />
+                        <SkeletonBlock height={14} style={{ width: '100%' }} />
+                    </View>
+                </View>
+                <View style={styles.panel}>
+                    <SkeletonBlock height={16} style={{ marginBottom: 14, width: 150 }} />
+                    <View style={styles.listStack}>
+                        <SkeletonBlock height={64} />
+                        <SkeletonBlock height={64} />
+                    </View>
+                </View>
             </View>
         </View>
     );
