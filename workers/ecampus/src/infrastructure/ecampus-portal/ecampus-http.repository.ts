@@ -62,6 +62,14 @@ export class EcampusHttpRepository implements EcampusRepository {
             const resolved = this.extractSelectedPeriod(tree);
 
             if (!resolved) {
+                // No test fixture exists for this page yet (nothing ever
+                // captured real eCampus markup for it) — log enough of the
+                // actual response to build one from the next occurrence
+                // instead of guessing blind again.
+                logger.error('Could not resolve the current academic period: no year input or periodo option found.', {
+                    yearInputHtml: tree.querySelector('input#ano')?.outerHTML ?? null,
+                    periodoSelectHtml: tree.querySelector('select[name="periodo"]')?.outerHTML ?? null
+                });
                 throw new Error('Unable to determine the current academic period from eCampus.');
             }
 
@@ -73,7 +81,13 @@ export class EcampusHttpRepository implements EcampusRepository {
     private extractSelectedPeriod(tree: HTMLElement): CurrentAcademicPeriod | null {
         const year = tree.querySelector('input#ano')?.getAttribute('value')?.trim();
         const options = tree.querySelectorAll('select[name="periodo"] option');
-        const selectedOption = options.find((option) => option.getAttribute('selected') !== undefined);
+        // eCampus's server-rendered HTML doesn't always mark an option with
+        // `selected="selected"` explicitly — a plain <select> then falls
+        // back to whichever option is first, same as a real browser would.
+        // Requiring an explicit `selected` attribute was throwing "unable to
+        // determine the period" for accounts where eCampus omits it.
+        const selectedOption = options.find((option) => option.getAttribute('selected') !== undefined)
+            ?? options.find((option) => (option.getAttribute('value')?.trim() ?? '') !== '');
         const ecampusCode = selectedOption?.getAttribute('value')?.trim();
 
         if (!year || !ecampusCode) {
@@ -422,7 +436,27 @@ export class EcampusHttpRepository implements EcampusRepository {
             });
         }
 
-        return subjects;
+        return this.deduplicateLessonPlanSubjects(subjects);
+    }
+
+    // eCampus's plan table can list the same discipline more than once (e.g. a
+    // leftover row from a past enrollment attempt) with an identical name but a
+    // different code per row. Grouping by code alone (as the frontend does)
+    // then renders one card per row instead of one per discipline, so collapse
+    // same-named rows here, preferring the one with a usable plan id.
+    private deduplicateLessonPlanSubjects(subjects: LessonPlanSubject[]): LessonPlanSubject[] {
+        const bySubjectName = new Map<string, LessonPlanSubject>();
+
+        for (const subject of subjects) {
+            const key = subject.subject.trim().toLocaleLowerCase('pt-BR');
+            const existing = bySubjectName.get(key);
+
+            if (!existing || (!existing.planId && subject.planId)) {
+                bySubjectName.set(key, subject);
+            }
+        }
+
+        return Array.from(bySubjectName.values());
     }
 
     private async resolveLessonPlanId(client: Awaited<ReturnType<EcampusAuthService['getAuthenticatedClient']>>, planIdOrCode: string): Promise<string> {

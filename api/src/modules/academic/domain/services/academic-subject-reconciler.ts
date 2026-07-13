@@ -40,7 +40,8 @@ export function reconcileAcademicSubjects(sources: AcademicSubjectSources): Acad
     }
 
     for (const subject of lessonPlanSubjects) {
-        const current = getSubjectByIdentity(subjects, subject.code, subject.classIdentifier, subject.subject);
+        const found = getSubjectByIdentity(subjects, subject.code, subject.classIdentifier, subject.subject);
+        const current = found?.value;
         upsertSubject(subjects, subject.code, {
             ...current,
             available: subject.available,
@@ -54,11 +55,12 @@ export function reconcileAcademicSubjects(sources: AcademicSubjectSources): Acad
             grade: current?.grade ?? null,
             attendance: current?.attendance ?? null,
             scheduleItems: current?.scheduleItems ?? []
-        });
+        }, found?.key);
     }
 
     for (const scheduleItem of schedule) {
-        const current = getSubjectByIdentity(subjects, scheduleItem.code, scheduleItem.class_identifier, scheduleItem.subject);
+        const found = getSubjectByIdentity(subjects, scheduleItem.code, scheduleItem.class_identifier, scheduleItem.subject);
+        const current = found?.value;
         upsertSubject(subjects, scheduleItem.code, {
             ...current,
             available: current?.available ?? false,
@@ -72,7 +74,7 @@ export function reconcileAcademicSubjects(sources: AcademicSubjectSources): Acad
             grade: current?.grade ?? null,
             attendance: current?.attendance ?? null,
             scheduleItems: [...(current?.scheduleItems ?? []), scheduleItem]
-        });
+        }, found?.key);
     }
 
     return Array.from(subjects.values())
@@ -83,8 +85,19 @@ export function reconcileAcademicSubjects(sources: AcademicSubjectSources): Acad
         .sort((a, b) => a.subject.localeCompare(b.subject));
 }
 
-function upsertSubject(subjects: Map<string, AcademicSubject>, preferredCode: string, subject: AcademicSubject): void {
-    subjects.set(subjectIdentityKey(preferredCode, subject.classIdentifier, subject.subject), subject);
+// `existingKey` is the map key the matched subject is currently stored
+// under, which can differ from the key the merged record would naturally
+// get (e.g. a lesson-plan row resolved to an existing grade by subject name
+// alone, because its own code differs from the grade's code). Without
+// removing that stale key, the merged record would be inserted under a
+// second key instead of replacing the original — producing two cards for
+// what is really one subject.
+function upsertSubject(subjects: Map<string, AcademicSubject>, preferredCode: string, subject: AcademicSubject, existingKey?: string): void {
+    const key = subjectIdentityKey(preferredCode, subject.classIdentifier, subject.subject);
+    if (existingKey && existingKey !== key) {
+        subjects.delete(existingKey);
+    }
+    subjects.set(key, subject);
 }
 
 function getSubjectByIdentity(
@@ -92,7 +105,16 @@ function getSubjectByIdentity(
     code: string,
     classIdentifier: string,
     subject: string
-): AcademicSubject | undefined {
-    return subjects.get(subjectIdentityKey(code, classIdentifier, subject))
-        ?? Array.from(subjects.values()).find((item) => isSameSubject(item, code, classIdentifier, subject));
+): { key: string; value: AcademicSubject } | undefined {
+    const directKey = subjectIdentityKey(code, classIdentifier, subject);
+    const direct = subjects.get(directKey);
+    if (direct) return { key: directKey, value: direct };
+
+    for (const [key, value] of subjects.entries()) {
+        if (isSameSubject(value, code, classIdentifier, subject)) {
+            return { key, value };
+        }
+    }
+
+    return undefined;
 }
