@@ -77,6 +77,22 @@ export class UserPlanRepository {
         return payment?.status ?? null;
     }
 
+    /** Users whose PAID plan hasn't expired yet — mirrors the active-plan check in isPlanActive(). */
+    async countActivePaidUsers(): Promise<number> {
+        return this.prisma.user.count({
+            where: { plan: 'PAID', planExpiresAt: { gt: new Date() } }
+        });
+    }
+
+    async sumRevenueCents(since?: Date): Promise<number> {
+        const result = await this.prisma.payment.aggregate({
+            where: { status: 'APPROVED', ...(since ? { createdAt: { gte: since } } : {}) },
+            _sum: { amountCents: true }
+        });
+
+        return result._sum?.amountCents ?? 0;
+    }
+
     private extendExpiry(days: number): Date {
         const base = new Date();
         base.setUTCDate(base.getUTCDate() + days);

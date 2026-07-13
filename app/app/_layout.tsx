@@ -85,6 +85,9 @@ function AuthGate() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [workspace.isAuthenticated]);
 
+    // The owner's admin dashboard has its own separate auth (not eCampus/CPF)
+    // and must never be redirected by the student login gate below.
+    const isAdminRoute = segments[0] === 'admin';
     const inAuthenticatedArea = segments[0] === '(tabs)';
     // True for exactly one render right after isReady flips true when the
     // landing URL doesn't match the auth state (e.g. opening "/" — which
@@ -94,11 +97,11 @@ function AuthGate() {
     // (dashboard prefetch, etc.) would fire against a session that doesn't
     // exist — surfacing a confusing "session expired" error on a user who
     // was never logged in.
-    const authAreaMismatch = workspace.isReady
+    const authAreaMismatch = !isAdminRoute && workspace.isReady
         && ((!workspace.isAuthenticated && inAuthenticatedArea) || (workspace.isAuthenticated && !inAuthenticatedArea));
 
     useEffect(() => {
-        if (!workspace.isReady) return;
+        if (isAdminRoute || !workspace.isReady) return;
 
         if (!workspace.isAuthenticated && inAuthenticatedArea) {
             router.replace('/login');
@@ -108,8 +111,9 @@ function AuthGate() {
         if (workspace.isAuthenticated && !inAuthenticatedArea) {
             router.replace('/');
         }
-    }, [workspace.isReady, workspace.isAuthenticated, inAuthenticatedArea, router]);
+    }, [isAdminRoute, workspace.isReady, workspace.isAuthenticated, inAuthenticatedArea, router]);
 
+    if (isAdminRoute) return <Slot />;
     if (!workspace.isReady || authAreaMismatch) return <BootPage />;
 
     return <Slot />;

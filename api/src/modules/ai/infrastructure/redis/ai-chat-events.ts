@@ -2,6 +2,13 @@ import type { AiChatMessage } from '@ai/domain/entities/ai-chat-message.entity';
 
 export const AI_CHAT_RESULT_CHANNEL = process.env.AI_CHAT_RESULT_CHANNEL || 'ai:chat:result';
 
+export interface AiChatUsage {
+    provider: string;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+}
+
 export interface AiChatToolEvent {
     type: 'tool';
     jobId: string;
@@ -16,6 +23,7 @@ export interface AiChatReadyEvent {
     reply: {
         conversationId: string;
         message: AiChatMessage;
+        usage?: AiChatUsage | null;
     };
 }
 

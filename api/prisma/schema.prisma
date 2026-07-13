@@ -44,3 +44,19 @@ model Payment {
 
   @@index([userId])
 }
+
+/// Per-message AI token spend, captured from the LLM provider's usage
+/// response. Deliberately has no FK to User — not every AI chat message maps
+/// to a paying user, this just needs to be aggregatable for cost/profit math.
+model AiUsage {
+  id            String   @id @default(uuid())
+  userId        String
+  jobId         String
+  provider      String
+  model         String
+  inputTokens   Int
+  outputTokens  Int
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+}

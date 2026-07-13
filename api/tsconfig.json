@@ -14,6 +14,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
+      "@admin/*": ["src/modules/admin/*"],
       "@ai/*": ["src/modules/ai/*"],
       "@billing/*": ["src/modules/billing/*"],
       "@academic/*": ["src/modules/academic/*"],

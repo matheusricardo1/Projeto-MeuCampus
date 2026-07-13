@@ -2,6 +2,7 @@ import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/com
 import Redis from 'ioredis';
 import { createRedisConnectionOptions } from '@/shared/redis-connection';
 import { AiNotificationService } from '@ai/application/ports/ai-notification-service';
+import { AiUsageRepository } from '@billing/infrastructure/prisma/ai-usage.repository';
 import { appLogger } from '@/shared/logging/app-logger';
 import {
     AI_CHAT_RESULT_CHANNEL,
@@ -12,7 +13,10 @@ import {
 export class AiChatEventsSubscriber implements OnModuleInit, OnModuleDestroy {
     private readonly subscriber = new Redis(createRedisConnectionOptions());
 
-    constructor(private readonly notifier: AiNotificationService) {}
+    constructor(
+        private readonly notifier: AiNotificationService,
+        private readonly aiUsageRepository: AiUsageRepository
+    ) {}
 
     async onModuleInit(): Promise<void> {
         this.subscriber.on('message', (_channel, message) => {
@@ -64,5 +68,19 @@ export class AiChatEventsSubscriber implements OnModuleInit, OnModuleDestroy {
             conversationId: event.reply.conversationId,
             message: event.reply.message
         });
+
+        if (event.reply.usage) {
+            this.aiUsageRepository.record({
+                userId: event.userId,
+                jobId: event.jobId,
+                ...event.reply.usage
+            }).catch((error: unknown) => {
+                appLogger.error('Failed to persist AI token usage.', {
+                    jobId: event.jobId,
+                    errorName: error instanceof Error ? error.name : 'UnknownError',
+                    message: error instanceof Error ? error.message : String(error)
+                });
+            });
+        }
     }
 }

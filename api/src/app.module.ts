@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AcademicModule } from '@academic/academic.module';
+import { AdminModule } from '@admin/admin.module';
 import { AiModule } from '@ai/ai.module';
 import { AuthModule } from '@auth/auth.module';
 import { BillingModule } from '@billing/billing.module';
@@ -17,6 +18,7 @@ import { RealtimeModule } from '@composition/realtime/realtime.module';
         AcademicModule,
         AiModule,
         BillingModule,
+        AdminModule,
         McpModule
     ]
 })

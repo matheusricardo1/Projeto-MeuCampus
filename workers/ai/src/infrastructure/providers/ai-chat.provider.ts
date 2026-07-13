@@ -4,7 +4,7 @@ import type { LanguageModel, ModelMessage } from 'ai';
 import type { ToolSet } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI, openai } from '@ai-sdk/openai';
-import type { AiChatReply } from '@/domain/value-objects/ai-chat-reply';
+import type { AiChatReply, AiChatUsage } from '@/domain/value-objects/ai-chat-reply';
 import type { AiChatRequest } from '@/domain/value-objects/ai-chat-request';
 import { MockAiChatProvider } from '@/infrastructure/providers/mock-ai-chat.provider';
 import { appLogger } from '@/infrastructure/logging/app-logger';
@@ -47,7 +47,7 @@ export class DefaultAiChatProvider implements AiChatProvider {
         ]);
         const hasTools = Object.keys(tools).length > 0;
 
-        const text = await this.generateProviderText(
+        const { text, usage } = await this.generateProviderText(
             this.providerResolution.model,
             request,
             staticContext,
@@ -65,7 +65,8 @@ export class DefaultAiChatProvider implements AiChatProvider {
                 role: 'assistant',
                 createdAt: new Date().toISOString(),
                 ...parsed
-            }
+            },
+            usage
         };
     }
 
@@ -134,7 +135,7 @@ export class DefaultAiChatProvider implements AiChatProvider {
         staticContext: string,
         handlers: AiChatStreamHandlers,
         tools?: ToolSet
-    ): Promise<string> {
+    ): Promise<{ text: string; usage: AiChatUsage | null }> {
         try {
             const result = streamText({
                 model,
@@ -163,17 +164,31 @@ export class DefaultAiChatProvider implements AiChatProvider {
             // The client no longer needs token-by-token deltas — it renders the
             // final structured reply and simulates the typing effect locally —
             // so we just wait for the complete text instead of relaying textStream.
-            return await result.text;
+            const [text, usage] = await Promise.all([result.text, result.usage]);
+
+            return { text, usage: this.toChatUsage(usage) };
         } catch (error) {
             // A stop request aborts the underlying request mid-generation, which
             // surfaces here as a thrown error too — in that case there's no partial
             // answer to salvage (unlike the old streaming path), so it's a real failure.
             if (handlers.signal.aborted) {
-                return '';
+                return { text: '', usage: null };
             }
 
-            return this.handleGenerationError(error);
+            return { text: this.handleGenerationError(error), usage: null };
         }
+    }
+
+    private toChatUsage(usage: { inputTokens?: number | undefined; outputTokens?: number | undefined } | undefined): AiChatUsage | null {
+        if (this.providerResolution.kind === 'mock') return null;
+        if (!usage || typeof usage.inputTokens !== 'number' || typeof usage.outputTokens !== 'number') return null;
+
+        return {
+            provider: this.providerResolution.kind,
+            model: this.providerResolution.modelName,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens
+        };
     }
 
     private handleGenerationError(error: unknown): string {

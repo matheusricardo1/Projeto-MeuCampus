@@ -13,6 +13,7 @@ import { AiController } from '@ai/presentation/http/ai.controller';
 import { AiAuthGuard } from '@ai/presentation/http/guards/ai-auth.guard';
 import { AiQuotaGuard } from '@ai/presentation/http/guards/ai-quota.guard';
 import { AiNotificationService } from '@ai/application/ports/ai-notification-service';
+import { AiUsageRepository } from '@billing/infrastructure/prisma/ai-usage.repository';
 
 @Module({
     imports: [AuthModule, RealtimeModule, BillingModule],
@@ -40,10 +41,10 @@ import { AiNotificationService } from '@ai/application/ports/ai-notification-ser
         },
         {
             provide: AiChatEventsSubscriber,
-            useFactory: (notifier: AiNotificationService) => {
-                return new AiChatEventsSubscriber(notifier);
+            useFactory: (notifier: AiNotificationService, aiUsageRepository: AiUsageRepository) => {
+                return new AiChatEventsSubscriber(notifier, aiUsageRepository);
             },
-            inject: [AiNotificationService]
+            inject: [AiNotificationService, AiUsageRepository]
         }
     ]
 })

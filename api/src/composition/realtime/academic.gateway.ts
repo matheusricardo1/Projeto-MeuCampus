@@ -25,11 +25,14 @@ import {
     type AiChatReplyNotification,
     type AiChatToolNotification
 } from '@ai/application/ports/ai-notification-service';
+import { LiveUserCounter } from '@admin/application/ports/live-user-counter';
+import { AdminGateway } from '@composition/realtime/admin.gateway';
 import { appLogger } from '@/shared/logging/app-logger';
 import { pseudonymousUserId } from '@/shared/security/pseudonymous-user-id';
 import { getAllowedOrigins } from '@/shared/realtime/allowed-origins';
 
 type WebSocketLogLevel = 'info' | 'warning';
+const USER_ROOM_PREFIX = 'ecampus-user-';
 
 @WebSocketGateway({
     namespace: '/ecampus',
@@ -38,14 +41,43 @@ type WebSocketLogLevel = 'info' | 'warning';
         credentials: false
     }
 })
-export class AcademicGateway extends AcademicNotificationService implements AiNotificationService {
+export class AcademicGateway extends AcademicNotificationService implements AiNotificationService, LiveUserCounter {
     @WebSocketServer()
     private server!: Namespace;
 
     constructor(
-        private readonly authenticateRequest: AuthenticateAcademicRequestUseCase
+        private readonly authenticateRequest: AuthenticateAcademicRequestUseCase,
+        private readonly adminGateway: AdminGateway
     ) {
         super();
+    }
+
+    /** Distinct authenticated students with at least one open socket right now. */
+    countLiveUsers(): number {
+        let count = 0;
+        for (const room of this.server.adapter.rooms.keys()) {
+            if (room.startsWith(USER_ROOM_PREFIX)) count += 1;
+        }
+        return count;
+    }
+
+    // Deliberately swallows its own errors — this is a side-channel
+    // notification to the owner's dashboard, and must never be able to
+    // affect whether a student's academic connection is accepted. It used
+    // to run inside handleConnection's auth try/catch, so any failure here
+    // (a socket.io/adapter hiccup, unrelated to auth at all) got misread as
+    // "token invalid" and disconnected an otherwise successfully
+    // authenticated client — silently dropping it before it could receive
+    // any job-completion event on its room.
+    private broadcastLiveUserCount(): void {
+        try {
+            this.adminGateway.broadcastLiveUsers(this.countLiveUsers());
+        } catch (error) {
+            appLogger.warning('Failed to broadcast live user count to the admin dashboard.', {
+                errorName: error instanceof Error ? error.name : 'UnknownError',
+                message: error instanceof Error ? error.message : String(error)
+            });
+        }
     }
 
     async handleConnection(client: Socket): Promise<void> {
@@ -69,6 +101,10 @@ export class AcademicGateway extends AcademicNotificationService implements AiNo
             return;
         }
 
+        // Only auth/session concerns belong in this try — anything else
+        // (like the admin live-count broadcast below) must run after it
+        // succeeds, never inside it, so an unrelated failure can't get
+        // misread as "token invalid" and disconnect an authenticated client.
         try {
             const credentials = await this.authenticateRequest.execute(token);
             const room = this.roomFor(credentials.cpf);
@@ -88,7 +124,10 @@ export class AcademicGateway extends AcademicNotificationService implements AiNo
             });
             client.emit(ACADEMIC_AUTH_REJECTED_EVENT);
             client.disconnect(true);
+            return;
         }
+
+        this.broadcastLiveUserCount();
     }
 
     handleDisconnect(client: Socket): void {
@@ -96,6 +135,9 @@ export class AcademicGateway extends AcademicNotificationService implements AiNo
             socketId: client.id,
             reason: client.disconnected ? 'disconnected' : 'unknown'
         });
+        // Socket.io has already removed this socket from its rooms by the
+        // time this fires, so the count below already excludes it.
+        this.broadcastLiveUserCount();
     }
 
     emitResourceReady(event: AcademicResourceNotification): void {
