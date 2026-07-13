@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import type { Translate, TranslationKey } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
@@ -14,6 +15,52 @@ export type ResponsiveLayout = {
     loginMaxWidth: number;
     isMobileWeb: boolean;
 };
+
+// Counts a number up from 0 to its target whenever the target changes (e.g. a
+// stat swapping in from the skeleton, or refreshing after a pull-to-refresh).
+// Driven by requestAnimationFrame with manual timing rather than Animated,
+// since the output here is a plain number consumed in text/width — there's no
+// native-driver value to hand off to, so RAF is the more direct tool.
+export function useCountUp(target: number | null, duration = 1000): number | null {
+    // Starts at 0 (not the target) so the very first render doesn't flash the
+    // final value before the animation below takes over on the next tick.
+    const [value, setValue] = useState<number | null>(() => (target === null ? null : 0));
+    const previousTargetRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        if (target === null) {
+            setValue(null);
+            previousTargetRef.current = null;
+            return undefined;
+        }
+
+        const startValue = previousTargetRef.current ?? 0;
+        previousTargetRef.current = target;
+
+        if (startValue === target) {
+            setValue(target);
+            return undefined;
+        }
+
+        let frameId: number;
+        const startTime = Date.now();
+
+        const tick = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(1, elapsed / duration);
+            const eased = 1 - (1 - progress) ** 3;
+            setValue(startValue + (target - startValue) * eased);
+
+            if (progress < 1) frameId = requestAnimationFrame(tick);
+        };
+
+        frameId = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(frameId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [target, duration]);
+
+    return value;
+}
 
 export function getInitials(name: string): string {
     const words = name.trim().split(/\s+/).filter(Boolean);

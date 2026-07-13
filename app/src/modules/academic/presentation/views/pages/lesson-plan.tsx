@@ -6,7 +6,7 @@ import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Translate } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { EmptyInline, SkeletonBlock } from '@/modules/academic/presentation/views/components';
-import { isApprovedStatus, isFinalExamWaived, parseGrade, toSubjectTitle } from '@/modules/academic/presentation/views/workspace.utils';
+import { isApprovedStatus, isFinalExamWaived, parseGrade, toSubjectTitle, useCountUp } from '@/modules/academic/presentation/views/workspace.utils';
 import { useLessonPlanCourses, type CourseCard } from '@/modules/academic/presentation/hooks/use-lesson-plan-courses';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
@@ -153,6 +153,13 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
     const gradeColor = gradeState.color;
     const frequencyColor = isAbsenceRisk ? '#ba1a1a' : '#003215';
 
+    // gradeState.value is usually a formatted number ("8.50") but can also be
+    // a non-numeric fallback ("S/N") — only count up when it's really a number.
+    const gradeNumeric = Number.isFinite(parseFloat(gradeState.value)) ? parseFloat(gradeState.value) : null;
+    const animatedGrade = useCountUp(gradeNumeric);
+    const animatedFrequency = useCountUp(hasFrequency ? (frequency as number) : null);
+    const frequencyBarWidth = animatedFrequency ?? (hasFrequency ? 0 : 100);
+
     return (
         <Pressable onPress={onPress} style={({ pressed }) => [styles.courseCard, pressed ? styles.pressedFeedback : null]}>
             <View style={styles.courseCardHeader}>
@@ -163,7 +170,7 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
                     <Text style={styles.courseSubjectTitle}>{toSubjectTitle(course.subject)}</Text>
                 </View>
                 <View style={styles.courseGradeBlock}>
-                    <Text style={[styles.courseGradeValue, { color: gradeColor }]}>{gradeState.value}</Text>
+                    <Text style={[styles.courseGradeValue, { color: gradeColor }]}>{animatedGrade === null ? gradeState.value : animatedGrade.toFixed(2)}</Text>
                     <Text style={styles.courseGradeLabel}>{gradeState.label}</Text>
                 </View>
             </View>
@@ -171,10 +178,10 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
             <View style={styles.courseFrequencyBlock}>
                 <View style={styles.courseFrequencyHeader}>
                     <Text style={styles.courseMetaLabel}>{t('lesson.frequency')}</Text>
-                    <Text style={[styles.courseFrequencyValue, { color: frequencyColor }]}>{frequency === null || frequency === undefined ? '--' : `${frequency}%`}</Text>
+                    <Text style={[styles.courseFrequencyValue, { color: frequencyColor }]}>{animatedFrequency === null && !hasFrequency ? '--' : `${Math.round(animatedFrequency ?? 0)}%`}</Text>
                 </View>
                 <View style={[styles.courseProgressTrack, !hasFrequency ? styles.courseProgressTrackUnavailable : isAbsenceRisk ? styles.courseProgressTrackDanger : null]}>
-                    <View style={[styles.courseProgressFill, !hasFrequency ? styles.courseProgressFillUnavailable : isAbsenceRisk ? styles.courseProgressFillDanger : null, { width: `${frequency ?? 100}%` }]} />
+                    <View style={[styles.courseProgressFill, !hasFrequency ? styles.courseProgressFillUnavailable : isAbsenceRisk ? styles.courseProgressFillDanger : null, { width: `${frequencyBarWidth}%` }]} />
                 </View>
                 {isAbsenceRisk ? (
                     <View style={styles.courseRiskRow}>

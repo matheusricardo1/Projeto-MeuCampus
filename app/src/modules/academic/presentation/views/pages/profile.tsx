@@ -1,25 +1,38 @@
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { CalendarDays, Clock3, Fingerprint, LogOut, Mail, Phone, UserRound } from 'lucide-react-native';
+import { CalendarDays, ChevronRight, Clock3, Crown, Fingerprint, Globe, LogOut, Mail, Phone, UserRound } from 'lucide-react-native';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
-import { EmptyState, SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
-import { LanguageSelector } from '@/modules/academic/presentation/views/components/language-selector';
+import { EmptyState, LanguageSettingsModal, PlanModal, SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
+import type { CreateCardCheckoutRequest } from '@/modules/academic/domain/repositories/ecampus-repository';
+import type { CardCheckoutResult, CheckoutStatus, PixCheckout } from '@/modules/academic/presentation/views/components/plan-checkout';
 import { useLanguage } from '@/shared/i18n/language-provider';
-import { getInitials, toTitleName, useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
+import { getInitials, toTitleName } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
 export function ProfilePage({
     loading,
+    onCreateCardCheckout,
+    onCreatePixCheckout,
+    onGetBillingPlan,
+    onGetCheckoutStatus,
+    onGetMercadoPagoPublicKey,
     onLogout,
     onRefresh,
     profile
 }: {
     loading: boolean;
+    onCreateCardCheckout?: (input: CreateCardCheckoutRequest) => Promise<CardCheckoutResult>;
+    onCreatePixCheckout?: () => Promise<PixCheckout>;
+    onGetBillingPlan?: () => Promise<{ plan: 'FREE' | 'PAID'; planExpiresAt: string | null }>;
+    onGetCheckoutStatus?: (paymentId: string) => Promise<CheckoutStatus>;
+    onGetMercadoPagoPublicKey?: () => Promise<{ publicKey: string; amount: number }>;
     onLogout: () => Promise<void>;
     onRefresh: () => Promise<void>;
     profile: Workspace['profile'];
 }) {
     const { t } = useLanguage();
-    const layout = useResponsiveLayout();
+    const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
+    const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
 
     if (loading && !profile) return <ProfileSkeleton />;
     if (!profile) return <EmptyState label={t('profile.load')} loading={loading} onRefresh={onRefresh} />;
@@ -73,22 +86,42 @@ export function ProfilePage({
                     <ProfileListRow icon={Phone} label={t('profile.phone')} value={profile.contact?.cellphone || profile.contact?.home_phone || ''} />
                 </View>
 
-                <View style={[styles.profileLanguageCard, !layout.isTablet ? styles.profileLanguageCardMobile : null]}>
-                    <View style={styles.profileLanguageText}>
-                        <Text style={styles.profileSectionTitle}>{t('profile.languageTitle')}</Text>
-                        <Text style={styles.profileListValue}>{t('profile.languageDescription')}</Text>
-                    </View>
-                    <View style={!layout.isTablet ? styles.profileLanguageSelectorMobile : null}>
-                        <LanguageSelector />
-                    </View>
+                <View style={styles.profileGlassCard}>
+                    <Pressable onPress={() => setIsLanguageModalOpen(true)} style={({ pressed }) => [styles.profileListRow, { marginTop: 0 }, pressed ? styles.pressedFeedback : null]}>
+                        <View style={styles.profileListRowBody}>
+                            <View style={styles.profileListIcon}>
+                                <Globe color="#001b08" size={21} />
+                            </View>
+                            <View style={styles.profileListText}>
+                                <Text style={styles.profileListLabel}>{t('profile.languageTitle')}</Text>
+                                <Text style={styles.profileListValue}>{t('profile.languageDescription')}</Text>
+                            </View>
+                        </View>
+                        <ChevronRight color="#414941" size={20} />
+                    </Pressable>
                 </View>
 
                 <View style={styles.profileActions}>
+                    <Pressable onPress={() => setIsPlanModalOpen(true)} style={({ pressed }) => [styles.profilePrimaryAction, pressed ? styles.pressedFeedback : null]}>
+                        <Crown color="#ffffff" size={20} />
+                        <Text style={styles.profilePrimaryActionText}>{t('profile.planTitle')}</Text>
+                    </Pressable>
                     <Pressable onPress={() => void onLogout()} style={({ pressed }) => [styles.profileDangerAction, pressed ? styles.pressedFeedback : null]}>
                         <LogOut color="#ba1a1a" size={20} />
                         <Text style={styles.profileDangerActionText}>{t('profile.logout')}</Text>
                     </Pressable>
                 </View>
+
+                <LanguageSettingsModal onClose={() => setIsLanguageModalOpen(false)} visible={isLanguageModalOpen} />
+                <PlanModal
+                    onClose={() => setIsPlanModalOpen(false)}
+                    onCreateCardCheckout={onCreateCardCheckout}
+                    onCreatePixCheckout={onCreatePixCheckout}
+                    onGetBillingPlan={onGetBillingPlan}
+                    onGetCheckoutStatus={onGetCheckoutStatus}
+                    onGetMercadoPagoPublicKey={onGetMercadoPagoPublicKey}
+                    visible={isPlanModalOpen}
+                />
             </View>
         </View>
     );

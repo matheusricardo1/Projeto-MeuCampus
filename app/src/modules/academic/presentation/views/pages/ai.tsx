@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Image, Linking, Modal, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputKeyPressEventData, View } from 'react-native';
+import { Animated, Easing, Linking, Modal, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputKeyPressEventData, View } from 'react-native';
 import { AlertCircle, AlertTriangle, Bot, Brain, Check, ExternalLink, Lock, Mic, Pencil, RotateCcw, Send, Sparkles, Square, X } from 'lucide-react-native';
 import type { AiChatMessage } from '@/modules/academic/domain/entities/ai-chat-message';
 import type { AiChatReply } from '@/modules/academic/domain/entities/ai-chat-reply';
 import { AiDailyLimitReachedError } from '@/shared/errors/ai-daily-limit-reached.error';
 import { colors, fonts, radii, spacing } from '@/shared/design-system';
-import { MercadoPagoCardBrick } from '@/modules/academic/presentation/views/components/mercadopago-card-brick';
-import type { CardBrickTokenResult } from '@/modules/academic/presentation/views/components/mercadopago-card-brick.types';
+import { PlanCheckoutFlow, type CardCheckoutResult, type CheckoutStatus, type PixCheckout } from '@/modules/academic/presentation/views/components/plan-checkout';
 import type { CreateCardCheckoutRequest } from '@/modules/academic/domain/repositories/ecampus-repository';
 import { useSpeechToText, type SpeechToTextErrorReason } from '@/modules/academic/presentation/hooks/use-speech-to-text';
 import { hapticConfirm, hapticTap } from '@/shared/haptics';
@@ -16,10 +15,6 @@ type SendMessageHandlers = {
     onJobId?: (jobId: string) => void;
     onToolCall?: (toolName: string) => void;
 };
-
-type PixCheckout = { paymentId: string; qrCode: string; qrCodeBase64: string; expiresAt: string };
-type CheckoutStatus = { status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' };
-type CardCheckoutResult = { paymentId: string; status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED'; statusDetail: string };
 
 type AIPageProps = {
     bottomInset?: number;
@@ -602,7 +597,7 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
                                                 setInputHeight(nextHeight);
                                             }}
                                             onKeyPress={handleInputKeyPress}
-                                            placeholder="Pergunte qualquer coisa... (/ para focar)"
+                                            placeholder="Pergunte qualquer coisa..."
                                             placeholderTextColor={colors.textSubtle}
                                             returnKeyType="send"
                                             scrollEnabled={inputHeight >= INPUT_MAX_HEIGHT}
@@ -657,8 +652,6 @@ export function AIPage({ bottomInset = 0, hidePromptInput = false, onCancelMessa
     );
 }
 
-type PaymentMethodTab = 'pix' | 'card';
-
 function UpgradeModal({ visible, onClose, onCreateCardCheckout, onCreatePixCheckout, onGetCheckoutStatus, onGetMercadoPagoPublicKey, onPaymentApproved }: {
     visible: boolean;
     onClose: () => void;
@@ -668,136 +661,6 @@ function UpgradeModal({ visible, onClose, onCreateCardCheckout, onCreatePixCheck
     onGetMercadoPagoPublicKey?: () => Promise<{ publicKey: string; amount: number }>;
     onPaymentApproved: () => void;
 }) {
-    const [method, setMethod] = useState<PaymentMethodTab>('pix');
-
-    const [checkout, setCheckout] = useState<PixCheckout | null>(null);
-    const [checkoutError, setCheckoutError] = useState<string | null>(null);
-    const [isCreating, setIsCreating] = useState(false);
-
-    const [mercadoPagoConfig, setMercadoPagoConfig] = useState<{ publicKey: string; amount: number } | null>(null);
-    const [publicKeyError, setPublicKeyError] = useState<string | null>(null);
-    const [cardPaymentId, setCardPaymentId] = useState<string | null>(null);
-    const [cardStatus, setCardStatus] = useState<'idle' | 'submitting' | 'pending' | 'rejected'>('idle');
-    const [cardError, setCardError] = useState<string | null>(null);
-    const [brickKey, setBrickKey] = useState(0);
-
-    useEffect(() => {
-        if (!visible) {
-            setMethod('pix');
-            setCheckout(null);
-            setCheckoutError(null);
-            setMercadoPagoConfig(null);
-            setPublicKeyError(null);
-            setCardPaymentId(null);
-            setCardStatus('idle');
-            setCardError(null);
-        }
-    }, [visible]);
-
-    useEffect(() => {
-        if (!visible || method !== 'pix' || checkout) return;
-
-        let cancelled = false;
-        setIsCreating(true);
-        setCheckoutError(null);
-
-        onCreatePixCheckout?.()
-            .then((result) => {
-                if (!cancelled) setCheckout(result);
-            })
-            .catch(() => {
-                if (!cancelled) setCheckoutError('Nao foi possivel gerar o pagamento PIX. Tente novamente.');
-            })
-            .finally(() => {
-                if (!cancelled) setIsCreating(false);
-            });
-
-        return () => { cancelled = true; };
-    }, [visible, method, checkout, onCreatePixCheckout]);
-
-    useEffect(() => {
-        if (!visible || method !== 'pix' || !checkout || !onGetCheckoutStatus) return;
-
-        const interval = setInterval(() => {
-            onGetCheckoutStatus(checkout.paymentId)
-                .then((result) => {
-                    if (result.status === 'APPROVED') {
-                        onPaymentApproved();
-                    }
-                })
-                .catch(() => {});
-        }, 3000);
-
-        return () => clearInterval(interval);
-    }, [visible, method, checkout, onGetCheckoutStatus, onPaymentApproved]);
-
-    useEffect(() => {
-        if (!visible || mercadoPagoConfig || publicKeyError) return;
-
-        let cancelled = false;
-        onGetMercadoPagoPublicKey?.()
-            .then((result) => {
-                if (!cancelled) setMercadoPagoConfig(result);
-            })
-            .catch(() => {
-                if (!cancelled) setPublicKeyError('Nao foi possivel carregar o pagamento por cartao. Tente novamente.');
-            });
-
-        return () => { cancelled = true; };
-    }, [visible, mercadoPagoConfig, publicKeyError, onGetMercadoPagoPublicKey]);
-
-    useEffect(() => {
-        if (!visible || method !== 'card' || cardStatus !== 'pending' || !cardPaymentId || !onGetCheckoutStatus) return;
-
-        const interval = setInterval(() => {
-            onGetCheckoutStatus(cardPaymentId)
-                .then((result) => {
-                    if (result.status === 'APPROVED') {
-                        onPaymentApproved();
-                    } else if (result.status === 'REJECTED' || result.status === 'EXPIRED') {
-                        setCardStatus('rejected');
-                        setCardError('Pagamento nao aprovado. Tente outro cartao.');
-                    }
-                })
-                .catch(() => {});
-        }, 3000);
-
-        return () => clearInterval(interval);
-    }, [visible, method, cardStatus, cardPaymentId, onGetCheckoutStatus, onPaymentApproved]);
-
-    const handleCardToken = useCallback((result: CardBrickTokenResult) => {
-        setCardStatus('submitting');
-        setCardError(null);
-
-        onCreateCardCheckout?.(result)
-            .then((response) => {
-                if (response.status === 'APPROVED') {
-                    onPaymentApproved();
-                } else if (response.status === 'REJECTED' || response.status === 'EXPIRED') {
-                    setCardStatus('rejected');
-                    setCardError('Pagamento recusado. Confira os dados do cartao ou tente outro.');
-                } else {
-                    setCardPaymentId(response.paymentId);
-                    setCardStatus('pending');
-                }
-            })
-            .catch(() => {
-                setCardStatus('rejected');
-                setCardError('Nao foi possivel processar o pagamento. Tente novamente.');
-            });
-    }, [onCreateCardCheckout, onPaymentApproved]);
-
-    const handleCardError = useCallback((message: string) => {
-        setCardError(message);
-    }, []);
-
-    const retryCard = useCallback(() => {
-        setCardStatus('idle');
-        setCardError(null);
-        setCardPaymentId(null);
-        setBrickKey((key) => key + 1);
-    }, []);
-
     return (
         <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
             <View style={styles.modalOverlay}>
@@ -809,85 +672,14 @@ function UpgradeModal({ visible, onClose, onCreateCardCheckout, onCreatePixCheck
                         </Pressable>
                     </View>
 
-                    <Text style={styles.modalPrice}>
-                        {mercadoPagoConfig ? `R$ ${mercadoPagoConfig.amount.toFixed(2).replace('.', ',')} / mes` : 'R$ -- / mes'}
-                    </Text>
-
-                    <View style={styles.tabRow}>
-                        <Pressable
-                            onPress={() => setMethod('pix')}
-                            style={({ pressed }) => [styles.tabButton, method === 'pix' ? styles.tabButtonActive : null, pressed ? styles.pressedFeedback : null]}
-                        >
-                            <Text style={[styles.tabButtonText, method === 'pix' ? styles.tabButtonTextActive : null]}>PIX</Text>
-                        </Pressable>
-                        <Pressable
-                            onPress={() => setMethod('card')}
-                            style={({ pressed }) => [styles.tabButton, method === 'card' ? styles.tabButtonActive : null, pressed ? styles.pressedFeedback : null]}
-                        >
-                            <Text style={[styles.tabButtonText, method === 'card' ? styles.tabButtonTextActive : null]}>Cartao</Text>
-                        </Pressable>
-                    </View>
-
-                    {method === 'pix' ? (
-                        isCreating ? (
-                            <View style={styles.modalLoading}>
-                                <ActivityIndicator color={colors.brand} />
-                                <Text style={styles.modalHint}>Gerando cobranca PIX...</Text>
-                            </View>
-                        ) : checkoutError ? (
-                            <Text style={styles.modalError}>{checkoutError}</Text>
-                        ) : checkout ? (
-                            <>
-                                <Image source={{ uri: `data:image/png;base64,${checkout.qrCodeBase64}` }} style={styles.qrImage} />
-                                <Text style={styles.modalHint}>Escaneie o QR code com o app do seu banco ou copie o codigo abaixo</Text>
-                                <Text selectable style={styles.pixCode}>{checkout.qrCode}</Text>
-                                <View style={styles.modalWaitingRow}>
-                                    <ActivityIndicator color={colors.brand} size="small" />
-                                    <Text style={styles.modalHint}>Aguardando confirmacao do pagamento...</Text>
-                                </View>
-                            </>
-                        ) : null
-                    ) : (
-                        <>
-                            {publicKeyError ? (
-                                <Text style={styles.modalError}>{publicKeyError}</Text>
-                            ) : !mercadoPagoConfig ? (
-                                <View style={styles.modalLoading}>
-                                    <ActivityIndicator color={colors.brand} />
-                                </View>
-                            ) : (
-                                <>
-                                    {cardStatus !== 'rejected' ? (
-                                        <MercadoPagoCardBrick
-                                            amount={mercadoPagoConfig.amount}
-                                            key={brickKey}
-                                            onError={handleCardError}
-                                            onToken={handleCardToken}
-                                            publicKey={mercadoPagoConfig.publicKey}
-                                        />
-                                    ) : null}
-                                    {cardStatus === 'submitting' ? (
-                                        <View style={styles.modalWaitingRow}>
-                                            <ActivityIndicator color={colors.brand} size="small" />
-                                            <Text style={styles.modalHint}>Processando pagamento...</Text>
-                                        </View>
-                                    ) : null}
-                                    {cardStatus === 'pending' ? (
-                                        <View style={styles.modalWaitingRow}>
-                                            <ActivityIndicator color={colors.brand} size="small" />
-                                            <Text style={styles.modalHint}>Aguardando confirmacao do pagamento...</Text>
-                                        </View>
-                                    ) : null}
-                                    {cardError ? <Text style={styles.modalError}>{cardError}</Text> : null}
-                                    {cardStatus === 'rejected' ? (
-                                        <Pressable onPress={retryCard} style={({ pressed }) => [styles.limitBannerButton, pressed ? styles.pressedFeedback : null]}>
-                                            <Text style={styles.limitBannerButtonText}>Tentar novamente</Text>
-                                        </Pressable>
-                                    ) : null}
-                                </>
-                            )}
-                        </>
-                    )}
+                    <PlanCheckoutFlow
+                        active={visible}
+                        onCreateCardCheckout={onCreateCardCheckout}
+                        onCreatePixCheckout={onCreatePixCheckout}
+                        onGetCheckoutStatus={onGetCheckoutStatus}
+                        onGetMercadoPagoPublicKey={onGetMercadoPagoPublicKey}
+                        onPaymentApproved={onPaymentApproved}
+                    />
                 </View>
             </View>
         </Modal>
@@ -1527,35 +1319,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between'
     },
-    tabRow: {
-        backgroundColor: colors.canvas,
-        borderRadius: 12,
-        flexDirection: 'row',
-        gap: spacing[1],
-        padding: 4
-    },
-    tabButton: {
-        alignItems: 'center',
-        borderRadius: 9,
-        flex: 1,
-        paddingVertical: spacing[2]
-    },
-    tabButtonActive: {
-        backgroundColor: '#ffffff',
-        shadowColor: '#101828',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 6
-    },
-    tabButtonText: {
-        color: colors.textMuted,
-        fontFamily: fonts.medium,
-        fontSize: 13,
-        fontWeight: '700'
-    },
-    tabButtonTextActive: {
-        color: colors.brandDark
-    },
     modalTitle: {
         color: colors.text,
         fontFamily: fonts.medium,
@@ -1567,46 +1330,5 @@ const styles = StyleSheet.create({
         height: 28,
         justifyContent: 'center',
         width: 28
-    },
-    modalLoading: {
-        alignItems: 'center',
-        gap: spacing[2],
-        paddingVertical: spacing[4]
-    },
-    modalError: {
-        color: '#c0392b',
-        fontFamily: fonts.sans,
-        fontSize: 14
-    },
-    modalPrice: {
-        color: colors.brandDark,
-        fontFamily: fonts.medium,
-        fontSize: 20,
-        fontWeight: '800'
-    },
-    qrImage: {
-        alignSelf: 'center',
-        height: 220,
-        width: 220
-    },
-    modalHint: {
-        color: colors.textMuted,
-        fontFamily: fonts.sans,
-        fontSize: 12,
-        textAlign: 'center'
-    },
-    pixCode: {
-        backgroundColor: colors.canvas,
-        borderRadius: 10,
-        color: colors.text,
-        fontFamily: fonts.sans,
-        fontSize: 11,
-        padding: spacing[2]
-    },
-    modalWaitingRow: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        gap: spacing[2],
-        justifyContent: 'center'
     }
 });

@@ -10,5 +10,17 @@ export default function ProfileRoute() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return <ProfilePage profile={workspace.profile} onRefresh={workspace.loadProfile} onLogout={workspace.logout} loading={workspace.isLoading} />;
+    return (
+        <ProfilePage
+            loading={workspace.isLoading}
+            onCreateCardCheckout={workspace.createCardCheckout}
+            onCreatePixCheckout={workspace.createPixCheckout}
+            onGetBillingPlan={workspace.getBillingPlan}
+            onGetCheckoutStatus={workspace.getCheckoutStatus}
+            onGetMercadoPagoPublicKey={workspace.getMercadoPagoPublicKey}
+            onLogout={workspace.logout}
+            onRefresh={workspace.loadProfile}
+            profile={workspace.profile}
+        />
+    );
 }

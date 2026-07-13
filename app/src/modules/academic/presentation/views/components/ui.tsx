@@ -191,7 +191,7 @@ export function ProgressRing({
         // not the repeating shimmer, so the cost is negligible.
         const animation = Animated.timing(progress, {
             toValue: clamped,
-            duration: 900,
+            duration: 1000,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: false
         });

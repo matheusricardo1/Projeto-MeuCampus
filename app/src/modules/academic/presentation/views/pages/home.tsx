@@ -1,4 +1,5 @@
-import { Pressable, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, Clock3, GraduationCap, Sparkles, Star } from 'lucide-react-native';
@@ -6,8 +7,42 @@ import { colors, gradients } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { ProgressRing, SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
-import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, isApprovedStatus, parseAbsences, parseGrade, toSubjectTitle, toTitleName } from '@/modules/academic/presentation/views/workspace.utils';
+import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, isApprovedStatus, parseAbsences, parseGrade, toSubjectTitle, toTitleName, useCountUp } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
+
+// A slow, occasional light sweep across the AI CTA — the kind of "premium
+// card" shine seen on subscription upsells. Runs, pauses, repeats, using the
+// same manual-reset loop as the skeleton shimmer (Animated.loop's own reset
+// was unreliable on this setup — see ui.tsx).
+function useShineSweep(pauseMs = 2600, durationMs = 1200): Animated.Value {
+    const progress = useRef(new Animated.Value(-1)).current;
+
+    useEffect(() => {
+        let isActive = true;
+        let pauseTimer: ReturnType<typeof setTimeout>;
+
+        const runCycle = () => {
+            progress.setValue(-1);
+            Animated.timing(progress, {
+                toValue: 1,
+                duration: durationMs,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: false
+            }).start(({ finished }) => {
+                if (isActive && finished) pauseTimer = setTimeout(runCycle, pauseMs);
+            });
+        };
+
+        runCycle();
+        return () => {
+            isActive = false;
+            clearTimeout(pauseTimer);
+            progress.stopAnimation();
+        };
+    }, [progress, pauseMs, durationMs]);
+
+    return progress;
+}
 
 export function DashboardPage({ workspace }: { workspace: Workspace }) {
     const { t } = useLanguage();
@@ -35,6 +70,16 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
         .filter((entry): entry is { grade: Workspace['grades'][number]; parsedFinal: number } => entry.parsedFinal !== null)
         .sort((a, b) => a.parsedFinal - b.parsedFinal)
         .slice(0, 3);
+
+    // These count up (and the bars/ring grow) whenever their target changes —
+    // most visibly right as the skeleton swaps out for real data.
+    const animatedAverage = useCountUp(averageNumber);
+    const animatedFrequency = useCountUp(frequency);
+    const animatedAbsences = useCountUp(totalAbsences);
+    const animatedCourseProgress = useCountUp(courseProgress);
+    const animatedApproved = useCountUp(approved);
+    const animatedPending = useCountUp(pendingSubjects);
+    const shineProgress = useShineSweep();
 
     if (isInitialDataLoading || (isLoading && !profile && schedule.length === 0 && grades.length === 0)) return <DashboardSkeleton />;
 
@@ -87,7 +132,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                         </View>
                         <Text numberOfLines={1} style={styles.homeKpiLabel}>CRA</Text>
                     </View>
-                    <Text style={styles.homeKpiValue}>{averageNumber === null ? '-' : averageNumber.toFixed(2)}</Text>
+                    <Text style={styles.homeKpiValue}>{animatedAverage === null ? '-' : animatedAverage.toFixed(2)}</Text>
                     <Text numberOfLines={1} style={styles.homeKpiHint}>{t('home.subjectCount', { count: subjectCount })}</Text>
                 </View>
 
@@ -99,9 +144,9 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                         </View>
                         <Text numberOfLines={1} style={styles.homeKpiLabel}>{t('home.frequency')}</Text>
                     </View>
-                    <Text style={styles.homeKpiValue}>{frequency === null ? '-' : `${frequency}%`}</Text>
+                    <Text style={styles.homeKpiValue}>{animatedFrequency === null ? '-' : `${Math.round(animatedFrequency)}%`}</Text>
                     <View style={styles.homeProgressTrack}>
-                        <View style={[styles.homeProgressFillWarning, { width: `${frequency ?? 0}%` }]} />
+                        <View style={[styles.homeProgressFillWarning, { width: `${animatedFrequency ?? 0}%` }]} />
                     </View>
                 </View>
 
@@ -113,7 +158,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                         </View>
                         <Text numberOfLines={1} style={styles.homeKpiLabel}>{t('home.registeredAbsences')}</Text>
                     </View>
-                    <Text style={styles.homeKpiValue}>{totalAbsences}</Text>
+                    <Text style={styles.homeKpiValue}>{Math.round(animatedAbsences ?? 0)}</Text>
                     <Text numberOfLines={1} style={styles.homeKpiHint}>{classDaysCount} {t('home.classDays').toLowerCase()}</Text>
                 </View>
             </View>
@@ -122,7 +167,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                 <Text style={styles.homeSectionTitle}>{t('home.courseProgress')}</Text>
                 <View style={styles.homeProgressCard}>
                     <ProgressRing color={colors.brand} percent={courseProgress ?? 0} size={100} strokeWidth={10}>
-                        <Text numberOfLines={1} style={styles.homeProgressRingValue}>{courseProgress === null ? '-' : `${courseProgress}%`}</Text>
+                        <Text numberOfLines={1} style={styles.homeProgressRingValue}>{animatedCourseProgress === null ? '-' : `${Math.round(animatedCourseProgress)}%`}</Text>
                     </ProgressRing>
                     <View style={styles.homeProgressTextStack}>
                         <View style={styles.homeStatRow}>
@@ -130,7 +175,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                                 <CheckCircle2 color={colors.brand} size={18} />
                             </View>
                             <View style={styles.homeStatTextStack}>
-                                <Text style={styles.homeStatValue}>{grades.length ? `${approved}/${grades.length}` : '-'}</Text>
+                                <Text style={styles.homeStatValue}>{grades.length ? `${Math.round(animatedApproved ?? 0)}/${grades.length}` : '-'}</Text>
                                 <Text style={styles.homeStatLabel}>{t('home.subjectsApproved')}</Text>
                             </View>
                         </View>
@@ -139,7 +184,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                                 <Clock3 color={colors.warning} size={18} />
                             </View>
                             <View style={styles.homeStatTextStack}>
-                                <Text style={styles.homeStatValue}>{pendingSubjects === null ? '-' : pendingSubjects}</Text>
+                                <Text style={styles.homeStatValue}>{animatedPending === null ? '-' : Math.round(animatedPending)}</Text>
                                 <Text numberOfLines={1} style={styles.homeStatLabel}>{pendingSubjects === null ? t('home.coursePlanPending') : t('home.pendingSubjects', { count: pendingSubjects })}</Text>
                             </View>
                         </View>
@@ -150,11 +195,26 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
             <Pressable onPress={() => router.push('/ai')} style={({ pressed }) => [styles.homeAiCta, pressed ? styles.pressedFeedback : null]}>
                 <LinearGradient colors={gradients.brand} end={{ x: 1, y: 1 }} start={{ x: 0, y: 0 }} style={styles.homeAiCtaGradient}>
                     <Sparkles color="rgba(255,255,255,0.14)" size={140} style={styles.homeAiCtaGlow} />
+                    <Animated.View
+                        pointerEvents="none"
+                        style={[
+                            styles.homeAiCtaShine,
+                            {
+                                left: shineProgress.interpolate({ inputRange: [-1, 1], outputRange: ['-35%', '115%'] }),
+                                opacity: shineProgress.interpolate({ inputRange: [-1, -0.6, 0, 0.6, 1], outputRange: [0, 0.9, 1, 0.9, 0] })
+                            }
+                        ]}
+                    />
                     <View style={styles.homeAiCtaIconBadge}>
                         <Sparkles color={colors.inverseText} size={24} />
                     </View>
                     <View style={styles.homeAiCtaTextStack}>
-                        <Text style={styles.homeAiCtaEyebrow}>{t('home.aiCtaEyebrow')}</Text>
+                        <View style={styles.homeAiCtaEyebrowRow}>
+                            <Text style={styles.homeAiCtaEyebrow}>{t('home.aiCtaEyebrow')}</Text>
+                            <View style={styles.homeAiCtaProBadge}>
+                                <Text style={styles.homeAiCtaProBadgeText}>PRO</Text>
+                            </View>
+                        </View>
                         <Text numberOfLines={1} style={styles.homeAiCtaTitle}>{t('home.aiCtaTitle')}</Text>
                         <Text numberOfLines={2} style={styles.homeAiCtaText}>{t('home.aiCtaText')}</Text>
                     </View>
@@ -187,7 +247,10 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                                         <Text style={styles.smallCaps}>{grade.code}</Text>
                                         <Text numberOfLines={1} style={styles.attentionTitle}>{toSubjectTitle(grade.subject)}</Text>
                                     </View>
-                                    <Text style={[styles.attentionText, isDanger ? styles.attentionTextDanger : isWarning ? styles.attentionTextWarning : null]}>MF {grade.final_grade || '-'}</Text>
+                                    <View style={[styles.attentionGradeBadge, isDanger ? styles.homeKpiToneDanger : isWarning ? styles.homeKpiToneWarning : styles.homeKpiTonePrimary]}>
+                                        <Text style={styles.attentionGradeLabel}>MF</Text>
+                                        <Text style={[styles.attentionGradeValue, isDanger ? styles.attentionTextDanger : isWarning ? styles.attentionTextWarning : null]}>{grade.final_grade || '-'}</Text>
+                                    </View>
                                 </View>
                             </View>
                         );

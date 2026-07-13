@@ -55,7 +55,7 @@ export function LanguageSelector({ compact = false, onBrand = false }: { compact
     );
 }
 
-function LanguageFlag({ code }: { code: LanguageCode }) {
+export function LanguageFlag({ code }: { code: LanguageCode }) {
     if (code === 'pt-BR') {
         return (
             <View style={[styles.languageFlag, styles.languageFlagBrazil]}>

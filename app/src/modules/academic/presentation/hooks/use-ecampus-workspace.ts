@@ -832,6 +832,8 @@ export function useEcampusWorkspace() {
 
     const createCardCheckout = (input: Parameters<typeof useCases.createCardCheckout.execute>[0]) => useCases.createCardCheckout.execute(input);
 
+    const getBillingPlan = () => useCases.getBillingPlan.execute();
+
     const cancelAiChatMessage = async (jobId: string) => {
         try {
             await useCases.cancelAiChatMessage.execute(jobId);
@@ -922,6 +924,7 @@ export function useEcampusWorkspace() {
         cancelAiChatMessage,
         createCardCheckout,
         createPixCheckout,
+        getBillingPlan,
         getCheckoutStatus,
         getMercadoPagoPublicKey,
         isReady,

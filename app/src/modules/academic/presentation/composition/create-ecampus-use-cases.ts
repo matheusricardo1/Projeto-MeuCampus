@@ -6,6 +6,7 @@ import { GetCheckoutStatusUseCase } from '@/modules/academic/application/use-cas
 import { GetMercadoPagoPublicKeyUseCase } from '@/modules/academic/application/use-cases/get-mercadopago-public-key.usecase';
 import { EnqueueEcampusScrapeJobUseCase } from '@/modules/academic/application/use-cases/enqueue-ecampus-scrape-job.usecase';
 import { GetAuthSessionUseCase } from '@/shared/auth/get-auth-session.usecase';
+import { GetBillingPlanUseCase } from '@/modules/academic/application/use-cases/get-billing-plan.usecase';
 import { GetGradesUseCase } from '@/modules/academic/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@/modules/academic/application/use-cases/get-lesson-plan.usecase';
 import { GetLessonPlanSubjectsUseCase } from '@/modules/academic/application/use-cases/get-lesson-plan-subjects.usecase';
@@ -31,6 +32,7 @@ export function createEcampusUseCases() {
         clearAuthSession: new ClearAuthSessionUseCase(sessionStore),
         enqueueScrapeJob: new EnqueueEcampusScrapeJobUseCase(repository, sessionStore),
         getAuthSession: new GetAuthSessionUseCase(sessionStore),
+        getBillingPlan: new GetBillingPlanUseCase(repository, sessionStore),
         getGrades: new GetGradesUseCase(repository, sessionStore),
         getLessonPlan: new GetLessonPlanUseCase(repository, sessionStore),
         getLessonPlanSubjects: new GetLessonPlanSubjectsUseCase(repository, sessionStore),
