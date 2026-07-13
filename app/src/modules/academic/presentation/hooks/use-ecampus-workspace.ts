@@ -105,6 +105,11 @@ export function useEcampusWorkspace() {
     const realtimeBootstrapReadyHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
     const realtimeBootstrapFailedHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
     const pendingLessonPlanPlanIdRef = useRef<string | null>(null);
+    // Tracks which planId the current `lessonPlan` state actually holds, so a
+    // re-fetch trigger that's unrelated to the lesson plan itself (e.g. a
+    // grades refresh re-running loadLessonPlanSubjects) doesn't re-scrape data
+    // that's already loaded and just sitting on screen.
+    const loadedLessonPlanIdRef = useRef<string | null>(null);
     const pendingGradesPeriodRef = useRef<GradesInput | null>(null);
     const loadedResourcesRef = useRef(new Set<InitialResourceKey>());
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -144,6 +149,7 @@ export function useEcampusWorkspace() {
         setAiChatMessages([]);
         setAiChatConversationId(undefined);
         pendingLessonPlanPlanIdRef.current = null;
+        loadedLessonPlanIdRef.current = null;
         pendingGradesPeriodRef.current = null;
         loadedResourcesRef.current.clear();
         pendingInitialResourcesRef.current.clear();
@@ -396,6 +402,7 @@ export function useEcampusWorkspace() {
         loadedResourcesRef.current.delete('lessonPlanSubjects');
         loadedResourcesRef.current.delete('lessonPlan');
         pendingLessonPlanPlanIdRef.current = null;
+        loadedLessonPlanIdRef.current = null;
 
         const generation = sessionGeneration.current;
         const [gradesData] = await Promise.all([
@@ -456,6 +463,14 @@ export function useEcampusWorkspace() {
             return;
         }
 
+        if (selectedSubject?.planId === loadedLessonPlanIdRef.current) {
+            // Already loaded — this call was triggered by something unrelated
+            // to lesson-plan (e.g. a grades refresh re-running this function),
+            // so don't re-scrape data that's already sitting on screen.
+            markInitialResourceReady('lessonPlan');
+            return;
+        }
+
         if (selectedSubject?.planId) {
             await enqueueLessonPlanScrape(selectedSubject.planId, { reportError: false, showGlobalLoading: false });
         } else {
@@ -492,6 +507,7 @@ export function useEcampusWorkspace() {
         if (data !== null && generation === sessionGeneration.current) {
             setLessonPlan(data);
             loadedResourcesRef.current.add('lessonPlan');
+            loadedLessonPlanIdRef.current = selectedSubject.planId;
             markInitialResourceReady('lessonPlan');
         }
     };
@@ -849,12 +865,21 @@ export function useEcampusWorkspace() {
         const selectedSubject = lessonPlanSubjects.find((subject) => subject.code === code);
 
         setSelectedLessonPlanSubjectCode(code);
-        setLessonPlan([]);
         clearError();
 
         if (!selectedSubject) {
+            setLessonPlan([]);
             return;
         }
+
+        if (selectedSubject.planId === loadedLessonPlanIdRef.current) {
+            // Already loaded for this exact subject (e.g. navigating back to a
+            // course the user already opened) — the data in `lessonPlan` is
+            // already correct, so don't wipe it and don't re-scrape.
+            return;
+        }
+
+        setLessonPlan([]);
 
         if (!selectedSubject.planId) {
             // Not every subject has a published teaching plan yet — that's a normal

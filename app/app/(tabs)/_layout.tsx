@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Bell, BookOpen, Calendar, GraduationCap, History, LayoutDashboard, Mic, Send, User, Brain } from 'lucide-react-native';
+import { ArrowLeft, Bell, BookOpen, Calendar, GraduationCap, History, LayoutDashboard, Mic, Send, Sparkles, User, Brain } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import { colors, gradients } from '@/shared/design-system';
@@ -395,6 +395,11 @@ export default function TabsLayout() {
                         <Pressable key={tab.id} onPress={() => navigateToTab(tab.id)} style={({ pressed }) => [styles.navItem, layout.isTablet ? styles.navItemDesktop : null, active ? styles.navItemActive : null, pressed ? styles.navItemPressed : null]}>
                             <View style={styles.navIconWrap}>
                                 <Icon color={active ? colors.brandMuted : colors.textMuted} size={20} />
+                                {tab.id === 'ai' ? (
+                                    <View pointerEvents="none" style={styles.navAiSparkle}>
+                                        <Sparkles color="#febf31" fill="#febf31" size={10} />
+                                    </View>
+                                ) : null}
                                 {tab.id === 'ai' && !aiIntroSeen ? <NavAiBadge /> : null}
                             </View>
                             <Text numberOfLines={1} style={[styles.navText, active ? styles.navTextActive : null]}>{tab.label}</Text>

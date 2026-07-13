@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ClipboardList, Clock3, Filter, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ClipboardList, Clock3, Filter, Fingerprint, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Translate } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
@@ -47,7 +47,7 @@ export function LessonPlanListPage({
     }, [admissionYear, currentYear]);
     const periodOptions = ['1', '2'];
     const courseName = profile?.academic?.course || t('lesson.courseUnknown');
-    const semesterLabel = t('lesson.semesterLabel', { course: courseName, period: gradesInput.period, year: gradesInput.year });
+    const semesterChipLabel = t('lesson.semesterChip', { period: gradesInput.period, year: gradesInput.year });
     const courses = useLessonPlanCourses({ grades, items, schedule, selectedSubjectCode, subjects, t });
 
     if (loading && subjects.length === 0 && grades.length === 0) return <LessonPlanSkeleton />;
@@ -74,8 +74,20 @@ export function LessonPlanListPage({
         <View style={styles.coursesScreenStack}>
             <View style={styles.coursesHero}>
                 <Text style={styles.coursesTitle}>{t('lesson.title')}</Text>
-                <Text style={styles.coursesSubtitle}>{semesterLabel}</Text>
-                <Text style={styles.coursesPeriodMeta}>{profile?.academic?.enrollment_number ? t('lesson.enrollment', { enrollment: profile.academic.enrollment_number }) : t('lesson.academicData')}</Text>
+                <Text numberOfLines={1} style={styles.coursesCourseText}>{courseName}</Text>
+
+                <View style={styles.coursesMetaRow}>
+                    <View style={styles.coursesMetaChip}>
+                        <CalendarClock color="#003215" size={14} />
+                        <Text style={styles.coursesMetaChipText}>{semesterChipLabel}</Text>
+                    </View>
+                    {profile?.academic?.enrollment_number ? (
+                        <View style={styles.coursesMetaChip}>
+                            <Fingerprint color="#003215" size={14} />
+                            <Text style={styles.coursesMetaChipText}>{t('lesson.enrollment', { enrollment: profile.academic.enrollment_number })}</Text>
+                        </View>
+                    ) : null}
+                </View>
 
                 <View style={styles.coursesSelectorRow}>
                     <View style={styles.coursesSelectorColumn}>
