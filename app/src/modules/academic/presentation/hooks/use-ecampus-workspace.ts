@@ -243,7 +243,7 @@ export function useEcampusWorkspace() {
             }
 
             isWaitingForInitialEventsRef.current = false;
-            setTranslatedError('errors.generic');
+            setTranslatedError('errors.generic', undefined, true);
             pendingInitialResourcesRef.current.clear();
             perResourceTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
             perResourceTimeoutsRef.current.clear();
@@ -332,9 +332,9 @@ export function useEcampusWorkspace() {
                 if (caught instanceof ServerError) {
                     setTranslatedError('errors.server', undefined, true);
                 } else if (caught instanceof Error) {
-                    setRawError(caught.message);
+                    setRawError(caught.message, true);
                 } else {
-                    setTranslatedError('errors.generic');
+                    setTranslatedError('errors.generic', undefined, true);
                 }
             }
 
@@ -587,7 +587,7 @@ export function useEcampusWorkspace() {
         }
 
         if (!isWaitingForInitialEventsRef.current) {
-            setRawError(event.message || 'Nao foi possivel carregar todos os dados agora.');
+            setRawError(event.message || 'Nao foi possivel carregar todos os dados agora.', true);
         }
     };
 
@@ -607,7 +607,7 @@ export function useEcampusWorkspace() {
         setPendingInitialResources(new Set());
         setRawError(event.failedResources.length > 0
             ? `Nao foi possivel carregar: ${event.failedResources.join(', ')}.`
-            : 'Nao foi possivel carregar todos os dados agora.');
+            : 'Nao foi possivel carregar todos os dados agora.', true);
         const gradesOverride = pendingGradesPeriodRef.current ?? undefined;
         pendingGradesPeriodRef.current = null;
         void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false }, gradesOverride);
