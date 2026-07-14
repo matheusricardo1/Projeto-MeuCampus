@@ -1,5 +1,5 @@
 import { deriveKey } from '@/infrastructure/crypto/derive-key';
-import { encryptJson } from '@/infrastructure/crypto/aes-gcm-cipher';
+import { decryptJson, encryptJson } from '@/infrastructure/crypto/aes-gcm-cipher';
 
 const PURPOSE = 'ecampus-cache-v1';
 let cachedKey: Buffer | undefined;
@@ -11,6 +11,16 @@ let cachedKey: Buffer | undefined;
  */
 export function encryptCachePayload(value: unknown): string {
     return encryptJson(getKey(), value);
+}
+
+/**
+ * Decrypts a cache payload the worker itself previously wrote. The worker is
+ * normally write-only against this cache (the API does all the reading), but
+ * CacheAndPublishScrapedResource needs to read back the previous value for
+ * resources where an empty new result shouldn't blindly overwrite good data.
+ */
+export function decryptCachePayload<T>(raw: string): T {
+    return decryptJson<T>(getKey(), raw);
 }
 
 function getKey(): Buffer {

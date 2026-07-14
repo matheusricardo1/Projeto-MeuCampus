@@ -17,6 +17,28 @@ register({
     }
 });
 
+// A crash from here on used to be a silent, undiagnosable restart (Docker's
+// `restart: unless-stopped` brings the process back with no trail of why it
+// went down). Logging first means the next crash actually leaves a clue.
+// Deliberately exits rather than swallowing-and-continuing — Node's own
+// guidance is that process state after an uncaught exception can't be
+// trusted, so restart clean instead of limping on.
+process.on('uncaughtException', (error) => {
+    appLogger.critical(`eCampus scraping worker crashed: uncaught exception - ${error.message}`, {
+        errorName: error.name,
+        stack: error.stack
+    });
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    appLogger.critical(`eCampus scraping worker crashed: unhandled rejection - ${message}`, {
+        errorName: reason instanceof Error ? reason.name : 'UnknownError'
+    });
+    process.exit(1);
+});
+
 async function bootstrap() {
     const worker = new EcampusScrapingWorker();
 

@@ -33,6 +33,19 @@ export class EcampusScrapingWorker {
     private readonly worker: Worker<EncryptedEcampusScrapeJobData>;
 
     constructor() {
+        // ioredis emits 'error' on any connection blip (restart, network hiccup,
+        // TLS handshake failure). With zero listeners that throws synchronously
+        // and crashes the whole worker process — this is very likely the actual
+        // cause of the worker "falling over" during a transient Redis issue that
+        // has nothing to do with eCampus itself. ioredis reconnects on its own;
+        // this only needs to stop the crash and leave a trail.
+        this.redis.on('error', (error) => {
+            appLogger.warning('eCampus worker Redis client reported a connection error.', {
+                errorName: error.name,
+                message: error.message
+            });
+        });
+
         const authService = new EcampusAuthService();
         const repository = new EcampusHttpRepository(authService);
         const sessions = new RedisEcampusSessionCoordinator(this.redis);

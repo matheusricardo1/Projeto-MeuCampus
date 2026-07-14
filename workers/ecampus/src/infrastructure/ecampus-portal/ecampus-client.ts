@@ -3,6 +3,7 @@ import { wrapper } from 'axios-cookiejar-support';
 import { CookieJar } from 'tough-cookie';
 import { AuthenticationError } from '@/domain/exceptions/authentication.error';
 import { appLogger as logger } from '@/infrastructure/logging/app-logger';
+import { ecampusCircuitBreaker, EcampusUnavailableError } from '@/infrastructure/ecampus-portal/ecampus-circuit-breaker';
 
 export class EcampusClient {
     private static readonly LOGIN_TIMEOUT_MS = 25000;
@@ -62,6 +63,10 @@ export class EcampusClient {
 
         logger.info("Attempting eCampus authentication.");
 
+        if (!ecampusCircuitBreaker.canAttempt()) {
+            throw new EcampusUnavailableError();
+        }
+
         try {
             const response = await this.session.post('/home/loginValida', params, {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -71,11 +76,13 @@ export class EcampusClient {
             const html = response.data;
             if (typeof html === 'string' && html.includes('Acesso ecampus')) {
                 this.authenticated = false;
+                ecampusCircuitBreaker.recordSuccess();
                 logger.error("Authentication failed: Invalid credentials.");
                 throw new AuthenticationError('CPF ou senha invalidos.');
             }
 
             this.authenticated = true;
+            ecampusCircuitBreaker.recordSuccess();
             logger.info("Authentication successful.");
 
             try {
@@ -86,6 +93,10 @@ export class EcampusClient {
         } catch (error) {
             if (error instanceof AuthenticationError) {
                 throw error;
+            }
+
+            if (this.isConnectivityFailure(error)) {
+                ecampusCircuitBreaker.recordFailure();
             }
 
             const message = error instanceof Error ? error.message : String(error);
@@ -127,11 +138,19 @@ export class EcampusClient {
 
     async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
         this.ensureAuthenticated();
+        if (!ecampusCircuitBreaker.canAttempt()) {
+            throw new EcampusUnavailableError();
+        }
+
         try {
             const response = await this.session.get<T>(url, config);
             this.assertAuthenticatedResponse(response, url);
+            ecampusCircuitBreaker.recordSuccess();
             return response;
         } catch (error) {
+            if (this.isConnectivityFailure(error)) {
+                ecampusCircuitBreaker.recordFailure();
+            }
             this.assertAuthenticatedError(error, url);
             throw error;
         }
@@ -139,11 +158,19 @@ export class EcampusClient {
 
     async post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
         this.ensureAuthenticated();
+        if (!ecampusCircuitBreaker.canAttempt()) {
+            throw new EcampusUnavailableError();
+        }
+
         try {
             const response = await this.session.post<T>(url, data, config);
             this.assertAuthenticatedResponse(response, url);
+            ecampusCircuitBreaker.recordSuccess();
             return response;
         } catch (error) {
+            if (this.isConnectivityFailure(error)) {
+                ecampusCircuitBreaker.recordFailure();
+            }
             this.assertAuthenticatedError(error, url);
             throw error;
         }
@@ -165,6 +192,17 @@ export class EcampusClient {
             this.authenticated = false;
             throw new AuthenticationError('Sua sessao expirou. Entre novamente.');
         }
+    }
+
+    // Only genuine connectivity/server trouble should count against the
+    // circuit breaker - an auth rejection or a normal 4xx means eCampus
+    // responded just fine, it's just not what we asked for.
+    private isConnectivityFailure(error: unknown): boolean {
+        if (!(error instanceof AxiosError)) {
+            return false;
+        }
+
+        return !error.response || error.response.status >= 500;
     }
 
     private assertAuthenticatedError(error: unknown, fallbackUrl: string): void {

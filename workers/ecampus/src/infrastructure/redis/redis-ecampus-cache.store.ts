@@ -2,13 +2,18 @@ import type Redis from 'ioredis';
 import type { EcampusCacheStore } from '@/application/ports/ecampus-cache-store';
 import { getCurrentPeriodCacheKey, getEcampusCacheKey, getEcampusUserCachePattern } from '@/infrastructure/redis/ecampus-cache-keys';
 import type { EcampusCachedResource } from '@/domain/value-objects/ecampus-cached-resource';
-import { encryptCachePayload } from '@/infrastructure/crypto/ecampus-cache-cipher';
+import { decryptCachePayload, encryptCachePayload } from '@/infrastructure/crypto/ecampus-cache-cipher';
 
 export class RedisEcampusCacheStore implements EcampusCacheStore {
     constructor(private readonly redis: Redis) {}
 
     async save<T>(resource: EcampusCachedResource, cpf: string, value: T, extra?: string): Promise<void> {
         await this.redis.set(getEcampusCacheKey(resource, cpf, extra), encryptCachePayload(value), 'EX', 1800);
+    }
+
+    async get<T>(resource: EcampusCachedResource, cpf: string, extra?: string): Promise<T | null> {
+        const raw = await this.redis.get(getEcampusCacheKey(resource, cpf, extra));
+        return raw ? decryptCachePayload<T>(raw) : null;
     }
 
     async saveCurrentPeriod(cpf: string, year: string, period: string): Promise<void> {
