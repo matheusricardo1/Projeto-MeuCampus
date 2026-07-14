@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BillingModule } from '@billing/billing.module';
 import { RealtimeModule } from '@composition/realtime/realtime.module';
+import { PushModule } from '@push/push.module';
 import { UserPlanRepository } from '@billing/infrastructure/prisma/user-plan.repository';
 import { AiUsageRepository } from '@billing/infrastructure/prisma/ai-usage.repository';
 import { LiveUserCounter } from '@admin/application/ports/live-user-counter';
@@ -12,7 +13,7 @@ import { AdminAuthGuard } from '@admin/presentation/http/guards/admin-auth.guard
 import { AdminController } from '@admin/presentation/http/admin.controller';
 
 @Module({
-    imports: [BillingModule, RealtimeModule],
+    imports: [BillingModule, RealtimeModule, PushModule],
     controllers: [AdminController],
     providers: [
         AdminJwtService,

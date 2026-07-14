@@ -4,11 +4,12 @@ import { AcademicNotificationService } from '@academic/application/ports/academi
 import { AiNotificationService } from '@ai/application/ports/ai-notification-service';
 import { LiveUserCounter } from '@admin/application/ports/live-user-counter';
 import { AdminJwtService } from '@admin/infrastructure/security/admin-jwt.service';
+import { PushModule } from '@push/push.module';
 import { AcademicGateway } from '@composition/realtime/academic.gateway';
 import { AdminGateway } from '@composition/realtime/admin.gateway';
 
 @Module({
-    imports: [AuthModule],
+    imports: [AuthModule, PushModule],
     providers: [
         // AdminJwtService is duplicated here (also provided by AdminModule)
         // rather than importing AdminModule, which would create a module

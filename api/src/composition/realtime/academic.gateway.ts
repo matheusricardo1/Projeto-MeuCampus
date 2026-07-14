@@ -26,6 +26,7 @@ import {
     type AiChatToolNotification
 } from '@ai/application/ports/ai-notification-service';
 import { LiveUserCounter } from '@admin/application/ports/live-user-counter';
+import { WebPushService } from '@push/infrastructure/web-push/web-push.service';
 import { AdminGateway } from '@composition/realtime/admin.gateway';
 import { appLogger } from '@/shared/logging/app-logger';
 import { pseudonymousUserId } from '@/shared/security/pseudonymous-user-id';
@@ -33,6 +34,9 @@ import { getAllowedOrigins } from '@/shared/realtime/allowed-origins';
 
 type WebSocketLogLevel = 'info' | 'warning';
 const USER_ROOM_PREFIX = 'ecampus-user-';
+// Env-tunable so the owner can adjust it without a redeploy; defaults to 3
+// (i.e. an alert fires once a 4th concurrent student connects).
+const LIVE_USER_ALERT_THRESHOLD = Number(process.env.LIVE_USER_ALERT_THRESHOLD || 3);
 
 @WebSocketGateway({
     namespace: '/ecampus',
@@ -45,9 +49,15 @@ export class AcademicGateway extends AcademicNotificationService implements AiNo
     @WebSocketServer()
     private server!: Namespace;
 
+    // Tracks the last broadcast count so the owner alert fires once per
+    // crossing (3 -> 4), not on every connect while already above the
+    // threshold, and re-arms once the count drops back down.
+    private lastLiveUserCount = 0;
+
     constructor(
         private readonly authenticateRequest: AuthenticateAcademicRequestUseCase,
-        private readonly adminGateway: AdminGateway
+        private readonly adminGateway: AdminGateway,
+        private readonly webPush: WebPushService
     ) {
         super();
     }
@@ -71,13 +81,36 @@ export class AcademicGateway extends AcademicNotificationService implements AiNo
     // any job-completion event on its room.
     private broadcastLiveUserCount(): void {
         try {
-            this.adminGateway.broadcastLiveUsers(this.countLiveUsers());
+            const count = this.countLiveUsers();
+            this.adminGateway.broadcastLiveUsers(count);
+            this.notifyOwnerIfLiveUsersSpiked(count);
         } catch (error) {
             appLogger.warning('Failed to broadcast live user count to the admin dashboard.', {
                 errorName: error instanceof Error ? error.name : 'UnknownError',
                 message: error instanceof Error ? error.message : String(error)
             });
         }
+    }
+
+    // Same "must never affect a student connection" rule as
+    // broadcastLiveUserCount above: fire-and-forget, own try/catch, never
+    // awaited from handleConnection/handleDisconnect.
+    private notifyOwnerIfLiveUsersSpiked(count: number): void {
+        const crossedThreshold = count > LIVE_USER_ALERT_THRESHOLD && this.lastLiveUserCount <= LIVE_USER_ALERT_THRESHOLD;
+        this.lastLiveUserCount = count;
+
+        if (!crossedThreshold) {
+            return;
+        }
+
+        this.webPush
+            .notifyOwner('Meu Campus', `${count} usuarios usando o app ao vivo agora.`)
+            .catch((error: unknown) => {
+                appLogger.warning('Failed to send the owner push notification for a live user spike.', {
+                    errorName: error instanceof Error ? error.name : 'UnknownError',
+                    message: error instanceof Error ? error.message : String(error)
+                });
+            });
     }
 
     async handleConnection(client: Socket): Promise<void> {

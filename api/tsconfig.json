@@ -21,6 +21,7 @@
       "@auth/*": ["src/modules/auth/*"],
       "@ecampus/*": ["src/modules/ecampus/*"],
       "@health/*": ["src/modules/health/*"],
+      "@push/*": ["src/modules/push/*"],
       "@composition/*": ["src/composition/*"]
     },
     "types": ["node"],

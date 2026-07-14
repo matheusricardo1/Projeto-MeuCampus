@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRootNavigationState, useRouter } from 'expo-router';
-import { Activity, Coins, CreditCard, LogOut, TrendingUp, Users, Wallet } from 'lucide-react-native';
+import { Activity, Bell, BellRing, Coins, CreditCard, LogOut, TrendingUp, Users, Wallet } from 'lucide-react-native';
 import { colors, fonts, radii, spacing } from '@/shared/design-system';
 import { SkeletonBlock } from '@/modules/academic/presentation/views/components';
 import { AdminUnauthorizedError, connectAdminLiveUsers, fetchAdminMetrics, fetchAiUsageToday, type AdminMetrics, type AiUsageToday } from '@/modules/admin/infrastructure/admin-api';
 import { clearAdminToken, getAdminToken } from '@/modules/admin/infrastructure/admin-token-store';
+import { disableOwnerPushNotifications, enableOwnerPushNotifications, getPushSubscriptionState, type PushSubscriptionState } from '@/modules/admin/infrastructure/push-subscription';
 import { AiUsageChart } from '@/modules/admin/presentation/components/ai-usage-chart';
 
 function formatBRL(cents: number): string {
@@ -27,6 +28,8 @@ export function AdminDashboardPage() {
     const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
     const [aiUsageToday, setAiUsageToday] = useState<AiUsageToday | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [pushState, setPushState] = useState<PushSubscriptionState>('unsupported');
+    const [isTogglingPush, setIsTogglingPush] = useState(false);
     const disconnectRef = useRef<(() => void) | null>(null);
 
     const logout = useCallback(() => {
@@ -75,6 +78,31 @@ export function AdminDashboardPage() {
         return () => disconnectRef.current?.();
     }, []);
 
+    useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        void getPushSubscriptionState().then(setPushState);
+    }, []);
+
+    const togglePushNotifications = useCallback(async () => {
+        const token = getAdminToken();
+        if (!token || isTogglingPush) return;
+
+        setIsTogglingPush(true);
+        try {
+            const nextState = pushState === 'subscribed'
+                ? await disableOwnerPushNotifications(token)
+                : await enableOwnerPushNotifications(token);
+            setPushState(nextState);
+        } catch (toggleError) {
+            if (toggleError instanceof AdminUnauthorizedError) {
+                logout();
+                return;
+            }
+        } finally {
+            setIsTogglingPush(false);
+        }
+    }, [isTogglingPush, logout, pushState]);
+
     if (error) {
         return (
             <View style={styles.screen}>
@@ -95,9 +123,26 @@ export function AdminDashboardPage() {
                     <Text style={styles.title}>Painel do dono</Text>
                     <Text style={styles.subtitle}>Metricas de uso, plano pago e custo de IA</Text>
                 </View>
-                <Pressable onPress={logout} style={({ pressed }) => [styles.logoutButton, pressed ? styles.pressedFeedback : null]}>
-                    <LogOut color={colors.textMuted} size={16} />
-                </Pressable>
+                <View style={styles.headerActions}>
+                    {pushState !== 'unsupported' ? (
+                        <Pressable
+                            disabled={isTogglingPush}
+                            onPress={() => void togglePushNotifications()}
+                            style={({ pressed }) => [
+                                styles.logoutButton,
+                                pushState === 'subscribed' ? styles.notifyButtonActive : null,
+                                pressed ? styles.pressedFeedback : null
+                            ]}
+                        >
+                            {pushState === 'subscribed'
+                                ? <BellRing color={colors.brand} size={16} />
+                                : <Bell color={colors.textMuted} size={16} />}
+                        </Pressable>
+                    ) : null}
+                    <Pressable onPress={logout} style={({ pressed }) => [styles.logoutButton, pressed ? styles.pressedFeedback : null]}>
+                        <LogOut color={colors.textMuted} size={16} />
+                    </Pressable>
+                </View>
             </View>
 
             {!metrics ? (
@@ -200,6 +245,11 @@ const styles = StyleSheet.create({
         fontSize: 13,
         marginTop: 2
     },
+    headerActions: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing[2]
+    },
     logoutButton: {
         alignItems: 'center',
         backgroundColor: colors.surfaceSubtle,
@@ -207,6 +257,9 @@ const styles = StyleSheet.create({
         height: 40,
         justifyContent: 'center',
         width: 40
+    },
+    notifyButtonActive: {
+        backgroundColor: colors.brandSubtle
     },
     grid: {
         flexDirection: 'row',

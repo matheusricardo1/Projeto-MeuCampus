@@ -103,6 +103,42 @@ export async function fetchAiUsageToday(token: string): Promise<AiUsageToday> {
     return response.json() as Promise<AiUsageToday>;
 }
 
+export async function fetchPushPublicKey(token: string): Promise<string | null> {
+    const response = await fetch(`${getApiBaseUrl()}/admin/push/public-key`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (response.status === 401) {
+        throw new AdminUnauthorizedError();
+    }
+    if (!response.ok) {
+        return null;
+    }
+
+    const data = await response.json() as { publicKey: string | null };
+    return data.publicKey;
+}
+
+export async function subscribeToPush(token: string, subscription: PushSubscriptionJSON): Promise<void> {
+    const response = await fetch(`${getApiBaseUrl()}/admin/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(subscription)
+    });
+
+    if (response.status === 401) {
+        throw new AdminUnauthorizedError();
+    }
+}
+
+export async function unsubscribeFromPush(token: string, endpoint: string): Promise<void> {
+    await fetch(`${getApiBaseUrl()}/admin/push/subscribe`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ endpoint })
+    });
+}
+
 export function connectAdminLiveUsers(token: string, onCount: (count: number) => void): () => void {
     const socket: Socket = io(`${new URL(getApiBaseUrl()).origin}/admin`, {
         auth: { token },

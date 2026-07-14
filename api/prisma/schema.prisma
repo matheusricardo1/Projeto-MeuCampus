@@ -60,3 +60,16 @@ model AiUsage {
 
   @@index([createdAt])
 }
+
+/// Browser Web Push subscriptions for the owner's admin dashboard. Not tied
+/// to a User row - the owner has no student account (see admin-login
+/// usecase, env-credential based) - keyed by the browser's unique push
+/// endpoint so each device/browser the owner opens the dashboard in gets its
+/// own row.
+model PushSubscription {
+  id        String   @id @default(uuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
