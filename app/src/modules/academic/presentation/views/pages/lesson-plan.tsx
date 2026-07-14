@@ -45,9 +45,15 @@ export function LessonPlanListPage({
         const end = Number.isFinite(currentYear) ? currentYear : new Date().getFullYear();
         return Array.from({ length: Math.max(end - start + 1, 1) }, (_, index) => String(end - index));
     }, [admissionYear, currentYear]);
-    const periodOptions = ['1', '2'];
+    const periodOptions = ['1', '2', 'ferias1', 'ferias2', 'especial'];
     const courseName = profile?.academic?.course || t('lesson.courseUnknown');
-    const semesterChipLabel = t('lesson.semesterChip', { period: gradesInput.period, year: gradesInput.year });
+    // '1'/'2' keep the familiar "Semestre 2026.1" look; intersession periods
+    // (only fetchable by explicitly picking them here - eCampus's own
+    // "current period" never resolves to one, see AcademicPeriod.fromEcampusCode)
+    // don't fit that "year.period" template, so they get their own short label.
+    const semesterChipLabel = REGULAR_SEMESTERS.includes(gradesInput.period)
+        ? t('lesson.semesterChip', { period: gradesInput.period, year: gradesInput.year })
+        : `${periodLabel(gradesInput.period, t)} ${gradesInput.year}`;
     const courses = useLessonPlanCourses({ grades, items, schedule, selectedSubjectCode, subjects, t });
 
     if (loading && subjects.length === 0 && grades.length === 0) return <LessonPlanSkeleton />;
@@ -776,8 +782,21 @@ function uniqueValues(values: string[]): string[] {
     return Array.from(new Set(values));
 }
 
+const REGULAR_SEMESTERS = ['1', '2'];
+
+function periodLabel(period: string, t: Translate): string {
+    switch (period) {
+        case '1': return t('lesson.firstSemester');
+        case '2': return t('lesson.secondSemester');
+        case 'ferias1': return t('lesson.vacation1');
+        case 'ferias2': return t('lesson.vacation2');
+        case 'especial': return t('lesson.special');
+        default: return period;
+    }
+}
+
 function formatPeriodOption(period: string, selectedYear: string, current: Workspace['currentGradesInput'], t: Translate): string {
-    const label = period === '1' ? t('lesson.firstSemester') : t('lesson.secondSemester');
+    const label = periodLabel(period, t);
     return selectedYear === current.year && period === current.period ? `${label} (${t('lesson.currentTag')})` : label;
 }
 

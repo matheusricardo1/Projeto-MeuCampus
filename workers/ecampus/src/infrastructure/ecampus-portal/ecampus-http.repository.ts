@@ -282,7 +282,15 @@ export class EcampusHttpRepository implements EcampusRepository {
                 // selected in-session, which may not be the one we asked for —
                 // returning it unchecked would silently mislabel these grades
                 // as belonging to `year`/`period` in the cache.
-                if (!resolved || resolved.year !== year || resolved.period !== period) {
+                //
+                // extractSelectedPeriod (via AcademicPeriod.fromEcampusCode) can only
+                // ever resolve to '1'/'2' — intersession periods (ferias1/ferias2/
+                // especial) have no equivalent and collapse there by design. So for a
+                // requested intersession period, resolved.period could never match it
+                // even when eCampus genuinely is showing the right data — only the
+                // year is checked in that case, trusting eCampus's in-session state.
+                const periodMustMatch = period === '1' || period === '2';
+                if (!resolved || resolved.year !== year || (periodMustMatch && resolved.period !== period)) {
                     throw new Error(
                         `Grades fallback page shows period ${resolved?.year ?? 'unknown'}/${resolved?.period ?? 'unknown'}, not the requested ${year}/${period}.`
                     );
