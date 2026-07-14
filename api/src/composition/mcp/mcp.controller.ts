@@ -2,13 +2,17 @@ import { Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
+import { FindGradesAcrossPreviousPeriodsUseCase } from '@academic/application/use-cases/find-grades-across-previous-periods.usecase';
 import { InternalSecretGuard } from '@/shared/mcp/internal-secret.guard';
 import { createAcademicMcpServer } from '@academic/presentation/mcp/academic-mcp.server';
 
 @Controller('mcp')
 @UseGuards(InternalSecretGuard)
 export class McpController {
-    constructor(private readonly academicDataRepository: AcademicDataRepository) {}
+    constructor(
+        private readonly academicDataRepository: AcademicDataRepository,
+        private readonly findGradesAcrossPreviousPeriods: FindGradesAcrossPreviousPeriodsUseCase
+    ) {}
 
     @Post()
     async handle(@Req() req: Request, @Res() res: Response): Promise<void> {
@@ -18,7 +22,7 @@ export class McpController {
             return;
         }
 
-        const server = createAcademicMcpServer(userId, this.academicDataRepository);
+        const server = createAcademicMcpServer(userId, this.academicDataRepository, this.findGradesAcrossPreviousPeriods);
         // Stateless mode: a fresh McpServer/transport is created per HTTP request, so
         // there is never a stored session to resume. Passing a sessionIdGenerator here
         // would make the SDK require a prior "initialize" call on THIS SAME transport

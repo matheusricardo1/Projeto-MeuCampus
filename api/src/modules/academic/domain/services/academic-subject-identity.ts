@@ -25,3 +25,26 @@ export function subjectIdentityKey(code: string, classIdentifier: string, subjec
 export function normalizeSubjectText(value: string): string {
     return value.trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 }
+
+/**
+ * A deliberately generous "could this be the same subject" check for
+ * matching a student's free-text mention of a subject against a real subject
+ * name from a PAST period, where there's no code/classIdentifier to anchor
+ * on like isSameSubject has. False positives are fine here — the caller
+ * (the AI) still confirms the match against the student before treating it
+ * as authoritative, exactly like it already does for same-period matches.
+ */
+export function subjectNameLooselyMatches(subjectName: string, query: string): boolean {
+    const normalizedSubject = normalizeSubjectText(subjectName);
+    const normalizedQuery = normalizeSubjectText(query);
+    if (!normalizedSubject || !normalizedQuery) {
+        return false;
+    }
+
+    if (normalizedSubject.includes(normalizedQuery) || normalizedQuery.includes(normalizedSubject)) {
+        return true;
+    }
+
+    const subjectWords = new Set(normalizedSubject.split(/[^a-z0-9]+/).filter((word) => word.length >= 3));
+    return normalizedQuery.split(/[^a-z0-9]+/).some((word) => word.length >= 3 && subjectWords.has(word));
+}
