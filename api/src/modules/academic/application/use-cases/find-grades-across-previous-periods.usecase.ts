@@ -21,17 +21,20 @@ export type FindGradesAcrossPreviousPeriodsResult =
     | { found: false; periodsChecked: CurrentAcademicPeriod[]; searchedBackToYear: string };
 
 /**
- * Walks backwards, one term at a time, from the student's current (or a
+ * Walks backwards, two terms at a time, from the student's current (or a
  * given "before") period down to their admission year, looking for a
  * subject whose name loosely matches `subjectQuery`. Checks cache first
  * (instant) and only falls back to a live eCampus scrape on a cache miss -
  * capped, since a live scrape is a real multi-second worker round trip and
- * this can be called mid-chat-response.
+ * this can be called mid-chat-response. Periods within a batch are fetched
+ * concurrently, but the earliest (most recent) match in the batch still wins
+ * so results stay in the same order as a strictly sequential walk would give.
  */
 export class FindGradesAcrossPreviousPeriodsUseCase {
     private static readonly MAX_LIVE_SCRAPES = 4;
     private static readonly LIVE_SCRAPE_TIMEOUT_MS = 12000;
     private static readonly DEFAULT_LOOKBACK_YEARS = 6;
+    private static readonly PERIOD_BATCH_SIZE = 2;
 
     constructor(
         private readonly cache: AcademicDataRepository,
@@ -51,20 +54,36 @@ export class FindGradesAcrossPreviousPeriodsUseCase {
         let liveScrapesRemaining = FindGradesAcrossPreviousPeriodsUseCase.MAX_LIVE_SCRAPES;
 
         while (Number(cursor.year) >= admissionYear) {
-            periodsChecked.push({ year: cursor.year, period: cursor.period });
-
-            const canLiveScrape = liveScrapesRemaining > 0;
-            const { grades, wasLiveScraped } = await this.fetchPeriodGrades(input.credentials, cursor, canLiveScrape);
-            if (wasLiveScraped) {
-                liveScrapesRemaining -= 1;
+            const batch: AcademicPeriod[] = [];
+            let batchCursor = cursor;
+            while (batch.length < FindGradesAcrossPreviousPeriodsUseCase.PERIOD_BATCH_SIZE && Number(batchCursor.year) >= admissionYear) {
+                batch.push(batchCursor);
+                batchCursor = batchCursor.previous();
             }
 
-            const matches = grades?.filter((grade) => subjectNameLooselyMatches(grade.subject, input.subjectQuery)) ?? [];
-            if (matches.length > 0) {
-                return { found: true, year: cursor.year, period: cursor.period, matches, periodsChecked };
+            const results = await Promise.all(
+                batch.map(async (period, index) => {
+                    // Worst-case budget check: assumes every earlier item in the
+                    // batch also live-scrapes, so the batch never overspends
+                    // liveScrapesRemaining even though items run concurrently.
+                    const canLiveScrape = liveScrapesRemaining - index > 0;
+                    const result = await this.fetchPeriodGrades(input.credentials, period, canLiveScrape);
+                    return { period, ...result };
+                })
+            );
+
+            liveScrapesRemaining -= results.filter((result) => result.wasLiveScraped).length;
+
+            for (const result of results) {
+                periodsChecked.push({ year: result.period.year, period: result.period.period });
+
+                const matches = result.grades?.filter((grade) => subjectNameLooselyMatches(grade.subject, input.subjectQuery)) ?? [];
+                if (matches.length > 0) {
+                    return { found: true, year: result.period.year, period: result.period.period, matches, periodsChecked };
+                }
             }
 
-            cursor = cursor.previous();
+            cursor = batchCursor;
         }
 
         return { found: false, periodsChecked, searchedBackToYear: String(admissionYear) };

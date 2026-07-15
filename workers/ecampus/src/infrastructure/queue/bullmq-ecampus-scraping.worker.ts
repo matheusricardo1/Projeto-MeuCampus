@@ -69,7 +69,7 @@ export class EcampusScrapingWorker {
             (job) => this.process(job),
             {
                 connection: createRedisConnectionOptions() as ConnectionOptions,
-                concurrency: Number(process.env.ECAMPUS_SCRAPE_WORKER_CONCURRENCY || 4)
+                concurrency: Number(process.env.ECAMPUS_SCRAPE_WORKER_CONCURRENCY || 10)
             }
         );
 
@@ -107,7 +107,7 @@ export class EcampusScrapingWorker {
     async run(): Promise<void> {
         appLogger.info('eCampus scraping worker started.', {
             queue: ECAMPUS_SCRAPE_QUEUE_NAME,
-            concurrency: Number(process.env.ECAMPUS_SCRAPE_WORKER_CONCURRENCY || 4)
+            concurrency: Number(process.env.ECAMPUS_SCRAPE_WORKER_CONCURRENCY || 10)
         });
     }
 
