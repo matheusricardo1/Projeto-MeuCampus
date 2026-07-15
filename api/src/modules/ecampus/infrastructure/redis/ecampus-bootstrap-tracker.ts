@@ -37,7 +37,7 @@ export class EcampusBootstrapTracker extends AcademicBootstrapTracker {
         return this.runAtomicUpdate(cpf, resource, 'failed');
     }
 
-    private async get(cpf: string): Promise<AcademicBootstrapState | null> {
+    async get(cpf: string): Promise<AcademicBootstrapState | null> {
         const raw = await this.redis.get(this.getKey(cpf));
         if (!raw) {
             return null;

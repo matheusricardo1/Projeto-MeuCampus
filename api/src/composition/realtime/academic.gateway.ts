@@ -16,6 +16,8 @@ import {
     type AcademicResourceFailedNotification,
     type AcademicResourceNotification
 } from '@academic/application/ports/academic-notification-service';
+import { AcademicBootstrapTracker } from '@academic/application/ports/academic-bootstrap-tracker';
+import { toBootstrapNotification } from '@academic/application/services/to-bootstrap-notification';
 import {
     AI_CHAT_FAILED_EVENT,
     AI_CHAT_REPLY_EVENT,
@@ -57,7 +59,8 @@ export class AcademicGateway extends AcademicNotificationService implements AiNo
     constructor(
         private readonly authenticateRequest: AuthenticateAcademicRequestUseCase,
         private readonly adminGateway: AdminGateway,
-        private readonly webPush: WebPushService
+        private readonly webPush: WebPushService,
+        private readonly bootstrapTracker: AcademicBootstrapTracker
     ) {
         super();
     }
@@ -147,6 +150,14 @@ export class AcademicGateway extends AcademicNotificationService implements AiNo
                 transport: client.conn.transport.name,
                 roomClients: this.getRoomClientCount(room)
             });
+            // A resource can finish scraping (and its bootstrap-ready fire) in
+            // the window between the worker publishing it and this socket
+            // finishing its room join - the client would then never hear that
+            // the data is ready. Replaying the already-settled bootstrap state
+            // straight to this socket closes that race. Fire-and-forget with
+            // its own error handling, exactly like broadcastLiveUserCount: a
+            // hiccup here must never affect an otherwise-accepted connection.
+            this.replayBootstrapState(client, credentials.cpf);
         } catch (error) {
             appLogger.warning('Rejected academic WebSocket connection with invalid token.', {
                 socketId: client.id,
@@ -171,6 +182,38 @@ export class AcademicGateway extends AcademicNotificationService implements AiNo
         // Socket.io has already removed this socket from its rooms by the
         // time this fires, so the count below already excludes it.
         this.broadcastLiveUserCount();
+    }
+
+    // Fire-and-forget replay of an already-settled bootstrap to a single
+    // socket that joined after the original room broadcast. Only emits when
+    // the bootstrap has actually finished (ready/failed); a still-pending or
+    // absent state means the normal live events will reach this socket now
+    // that it's in the room, so there's nothing to replay.
+    private replayBootstrapState(client: Socket, cpf: string): void {
+        void this.bootstrapTracker
+            .get(cpf)
+            .then((state) => {
+                if (!state || state.status === 'pending') {
+                    return;
+                }
+
+                const { cpf: _cpf, ...payload } = toBootstrapNotification(state);
+                const event = state.status === 'ready' ? ACADEMIC_BOOTSTRAP_READY_EVENT : ACADEMIC_BOOTSTRAP_FAILED_EVENT;
+                client.emit(event, payload);
+                appLogger.info('Replayed settled academic bootstrap state to a newly joined socket.', {
+                    socketId: client.id,
+                    status: state.status,
+                    readyResources: state.readyResources,
+                    failedResources: state.failedResources
+                });
+            })
+            .catch((error: unknown) => {
+                appLogger.warning('Failed to replay academic bootstrap state to a newly joined socket.', {
+                    socketId: client.id,
+                    errorName: error instanceof Error ? error.name : 'UnknownError',
+                    message: error instanceof Error ? error.message : String(error)
+                });
+            });
     }
 
     emitResourceReady(event: AcademicResourceNotification): void {

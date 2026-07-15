@@ -38,9 +38,15 @@ describe('FindGradesAcrossPreviousPeriodsUseCase', () => {
 
     it('keeps walking backwards past periods with no matching subject', async () => {
         const { cache, scrapingJobService } = buildDeps();
-        (cache.getGrades as any)
-            .mockResolvedValueOnce([{ code: 'FIS201', subject: 'Fisica 1' }])
-            .mockResolvedValueOnce([{ code: 'MAT101', subject: 'Calculo 2' }]);
+        // Periods within a batch are fetched concurrently, so the mock has to
+        // key off (year, period) rather than call order — an order-based mock
+        // would attribute a value to whichever concurrent read happened to run
+        // first. 2025/2 has no match; 2025/1 does.
+        (cache.getGrades as any).mockImplementation((_cpf: string, year: string, period: string) => {
+            if (year === '2025' && period === '2') return Promise.resolve([{ code: 'FIS201', subject: 'Fisica 1' }]);
+            if (year === '2025' && period === '1') return Promise.resolve([{ code: 'MAT101', subject: 'Calculo 2' }]);
+            return Promise.resolve([]);
+        });
 
         const useCase = new FindGradesAcrossPreviousPeriodsUseCase(cache, scrapingJobService);
         const result = await useCase.execute({ credentials: CREDENTIALS, subjectQuery: 'calculo 2' });
@@ -51,9 +57,19 @@ describe('FindGradesAcrossPreviousPeriodsUseCase', () => {
 
     it('live-scrapes a period on a cache miss and returns the match once the job finishes', async () => {
         const { cache, scrapingJobService } = buildDeps();
-        (cache.getGrades as any)
-            .mockRejectedValueOnce(new AcademicResourceNotFoundException('grades'))
-            .mockResolvedValueOnce([{ code: 'MAT101', subject: 'Calculo 2' }]);
+        // Batched periods are fetched concurrently, so model per-(year, period)
+        // behaviour instead of call order: 2025/2 misses the cache first, then
+        // hits once its live scrape finishes; every other period has no match.
+        let period2Reads = 0;
+        (cache.getGrades as any).mockImplementation((_cpf: string, year: string, period: string) => {
+            if (year === '2025' && period === '2') {
+                period2Reads += 1;
+                return period2Reads === 1
+                    ? Promise.reject(new AcademicResourceNotFoundException('grades'))
+                    : Promise.resolve([{ code: 'MAT101', subject: 'Calculo 2' }]);
+            }
+            return Promise.resolve([]);
+        });
 
         const useCase = new FindGradesAcrossPreviousPeriodsUseCase(cache, scrapingJobService);
         const result = await useCase.execute({ credentials: CREDENTIALS, subjectQuery: 'calculo 2' });

@@ -13,15 +13,16 @@ import { createEcampusUseCases } from '@/modules/academic/presentation/compositi
 import { connectEcampusRealtime, type EcampusBootstrapEvent, type EcampusResourceFailedEvent, type EcampusResourceReadyEvent } from '@/modules/academic/infrastructure/realtime/ecampus-realtime-client';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { TranslationKey, TranslationValues } from '@/shared/i18n/languages';
-
-type WorkspaceTab = 'home' | 'profile' | 'schedule' | 'grades' | 'lessonPlan' | 'ai';
-type ResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects' | 'lessonPlan' | 'prefetch' | 'restore' | 'login' | 'logout' | 'aiChat';
-type InitialResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects' | 'lessonPlan';
-type BootstrapResourceKey = 'profile' | 'schedule' | 'grades' | 'lessonPlanSubjects';
-
-// Upper bound on how long any single resource can stay "pending" before its
-// skeleton is force-cleared — see perResourceTimeoutsRef below.
-const RESOURCE_STUCK_TIMEOUT_MS = 25000;
+import {
+    BOOTSTRAP_RESOURCES,
+    SYNC_DEADLINE_MS,
+    SYNC_POLL_INTERVAL_MS,
+    toInitialResourceKey,
+    type InitialResourceKey,
+    type ResourceKey,
+    type WorkspaceTab
+} from '@/modules/academic/presentation/hooks/use-ecampus-workspace.constants';
+import { createBootstrapSync, type BootstrapSync } from '@/modules/academic/presentation/hooks/resource-sync-engine';
 
 interface LoginInput {
     user: string;
@@ -69,7 +70,7 @@ const DEFAULT_REQUEST_OPTIONS: Required<Pick<RequestOptions, 'reportError' | 'sh
     showGlobalLoading: true
 };
 const IS_AI_FEATURE_ENABLED = true;
-const BOOTSTRAP_RESOURCES: BootstrapResourceKey[] = ['profile', 'schedule', 'grades', 'lessonPlanSubjects'];
+const SILENT_REQUEST_OPTIONS: RequestOptions = { reportError: false, showGlobalLoading: false };
 
 function getCurrentGradesInput(): GradesInput {
     const current = AcademicPeriod.guessCurrent();
@@ -88,18 +89,8 @@ export function useEcampusWorkspace() {
     const currentGradesInput = useMemo(() => getCurrentGradesInput(), []);
     const sessionGeneration = useRef(0);
     const isExpiringSessionRef = useRef(false);
-    const isWaitingForInitialEventsRef = useRef(false);
-    const hasRealtimeConnectedRef = useRef(false);
-    const initialEventsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const inFlightRequests = useRef(new Map<ResourceKey, Promise<unknown>>());
     const pendingInitialResourcesRef = useRef(new Set<InitialResourceKey>());
-    // Safety net per resource: normally a resource clears itself via a
-    // realtime "resource-ready" event, but if that event is ever dropped
-    // (a WebSocket reconnect race, a job that silently fails server-side)
-    // the resource would stay "pending" — and its skeleton on screen —
-    // forever. This force-resolves it after a bounded wait no matter which
-    // code path marked it pending.
-    const perResourceTimeoutsRef = useRef(new Map<InitialResourceKey, ReturnType<typeof setTimeout>>());
     const realtimeHandlerRef = useRef<(event: EcampusResourceReadyEvent) => void>(() => undefined);
     const realtimeFailureHandlerRef = useRef<(event: EcampusResourceFailedEvent) => void>(() => undefined);
     const realtimeBootstrapReadyHandlerRef = useRef<(event: EcampusBootstrapEvent) => void>(() => undefined);
@@ -110,8 +101,29 @@ export function useEcampusWorkspace() {
     // grades refresh re-running loadLessonPlanSubjects) doesn't re-scrape data
     // that's already loaded and just sitting on screen.
     const loadedLessonPlanIdRef = useRef<string | null>(null);
+    // The period eCampus actually resolved for grades — which can differ from
+    // the calendar-guessed one (e.g. the current term has nothing posted yet,
+    // so eCampus serves the previous one). Every period-scoped pull below
+    // prefers this once it's known.
     const pendingGradesPeriodRef = useRef<GradesInput | null>(null);
     const loadedResourcesRef = useRef(new Set<InitialResourceKey>());
+    // The sync engine's callbacks are reassigned every render (like the realtime
+    // handlers) so they always close over fresh state; the engine instance
+    // itself is created once and just delegates through these refs.
+    const syncPendingRef = useRef<() => Promise<void>>(() => Promise.resolve());
+    const isBootstrapDoneRef = useRef<() => boolean>(() => true);
+    const onBootstrapDeadlineRef = useRef<() => void>(() => undefined);
+    const bootstrapSyncRef = useRef<BootstrapSync | null>(null);
+    if (!bootstrapSyncRef.current) {
+        bootstrapSyncRef.current = createBootstrapSync({
+            loadPending: () => syncPendingRef.current(),
+            isDone: () => isBootstrapDoneRef.current(),
+            onDeadline: () => onBootstrapDeadlineRef.current(),
+            pollIntervalMs: SYNC_POLL_INTERVAL_MS,
+            deadlineMs: SYNC_DEADLINE_MS
+        });
+    }
+
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [loadingRequests, setLoadingRequests] = useState(0);
@@ -127,13 +139,8 @@ export function useEcampusWorkspace() {
     const [aiChatConversationId, setAiChatConversationId] = useState<string | undefined>();
     const [pendingInitialResources, setPendingInitialResources] = useState<Set<InitialResourceKey>>(new Set());
 
-    // lessonPlan is deliberately excluded here: eCampus doesn't always have a
-    // published teaching plan for a subject, and even when it does, scraping
-    // it is a separate lazy job that only starts after the bootstrap
-    // resources (profile/schedule/grades/lessonPlanSubjects) are already in —
-    // gating the initial skeleton on it would tack a whole extra scrape round
-    // trip onto every first load. It gets its own isLessonPlanLoading flag
-    // instead, for the course-details screen that actually needs it.
+    // lessonPlan is excluded from the home skeleton (see BOOTSTRAP_RESOURCES);
+    // it drives its own isLessonPlanLoading flag for the course-details screen.
     const isInitialDataLoading = Array.from(pendingInitialResources).some((resource) => resource !== 'lessonPlan');
     const isLessonPlanLoading = pendingInitialResources.has('lessonPlan');
     const isLoading = loadingRequests > 0 || isInitialDataLoading;
@@ -161,10 +168,7 @@ export function useEcampusWorkspace() {
         pendingGradesPeriodRef.current = null;
         loadedResourcesRef.current.clear();
         pendingInitialResourcesRef.current.clear();
-        perResourceTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
-        perResourceTimeoutsRef.current.clear();
-        isWaitingForInitialEventsRef.current = false;
-        clearInitialEventsTimeout();
+        bootstrapSyncRef.current?.stop();
         setPendingInitialResources(new Set());
     };
 
@@ -173,43 +177,30 @@ export function useEcampusWorkspace() {
         inFlightRequests.current.clear();
         loadedResourcesRef.current.clear();
         pendingInitialResourcesRef.current.clear();
-        perResourceTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
-        perResourceTimeoutsRef.current.clear();
-        isWaitingForInitialEventsRef.current = false;
-        hasRealtimeConnectedRef.current = false;
-        clearInitialEventsTimeout();
+        bootstrapSyncRef.current?.stop();
         setLoadingRequests(0);
         setPendingInitialResources(new Set());
         return sessionGeneration.current;
     };
 
-    const clearPerResourceTimeout = (resource: InitialResourceKey) => {
-        const timeout = perResourceTimeoutsRef.current.get(resource);
-        if (timeout) {
-            clearTimeout(timeout);
-            perResourceTimeoutsRef.current.delete(resource);
-        }
-    };
-
+    // Marking something pending is the single invariant that keeps the sync
+    // engine responsible for it: (re)start the engine so an immediate pull runs
+    // now and the poll keeps retrying until every pending resource settles.
     const markInitialResourcesPending = (resources: InitialResourceKey[]) => {
+        if (resources.length === 0) {
+            return;
+        }
+
         resources.forEach((resource) => pendingInitialResourcesRef.current.add(resource));
         setPendingInitialResources((current) => {
             const next = new Set(current);
             resources.forEach((resource) => next.add(resource));
             return next;
         });
-
-        resources.forEach((resource) => {
-            clearPerResourceTimeout(resource);
-            perResourceTimeoutsRef.current.set(resource, setTimeout(() => {
-                perResourceTimeoutsRef.current.delete(resource);
-                markInitialResourceReady(resource);
-            }, RESOURCE_STUCK_TIMEOUT_MS));
-        });
+        bootstrapSyncRef.current?.start();
     };
 
     const markInitialResourceReady = (resource: InitialResourceKey) => {
-        clearPerResourceTimeout(resource);
         pendingInitialResourcesRef.current.delete(resource);
         setPendingInitialResources((current) => {
             if (!current.has(resource)) {
@@ -228,48 +219,90 @@ export function useEcampusWorkspace() {
     // tell "never loaded" apart from "loaded, and there's nothing there".
     const isLoaded = (resource: InitialResourceKey) => loadedResourcesRef.current.has(resource);
 
-    const clearInitialEventsTimeout = () => {
-        if (initialEventsTimeoutRef.current) {
-            clearTimeout(initialEventsTimeoutRef.current);
-            initialEventsTimeoutRef.current = null;
-        }
-    };
-
-    // The bootstrap tracker's completion signal (bootstrap-ready /
-    // bootstrap-failed) fires exactly once every required resource has
-    // settled, whether it succeeded or failed — so there's no need to poll
-    // the cache speculatively while waiting for it. This timeout only
-    // exists as a last resort if that signal itself never arrives (e.g. a
-    // dropped Redis pub/sub message).
-    const waitForInitialScrapingEvents = () => {
-        isWaitingForInitialEventsRef.current = true;
-        markInitialResourcesPending([...BOOTSTRAP_RESOURCES, 'lessonPlan']);
-        clearInitialEventsTimeout();
-        initialEventsTimeoutRef.current = setTimeout(() => {
-            if (!isWaitingForInitialEventsRef.current) {
-                return;
-            }
-
-            isWaitingForInitialEventsRef.current = false;
-            setTranslatedError('errors.generic', undefined, true);
-            pendingInitialResourcesRef.current.clear();
-            perResourceTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
-            perResourceTimeoutsRef.current.clear();
-            setPendingInitialResources(new Set());
-        }, 30000);
-    };
-
-    const finishInitialScrapingEvents = async () => {
-        if (!isWaitingForInitialEventsRef.current) {
+    // Pulls every currently-pending initial resource straight from cache-aside.
+    // 200 → the loader marks it ready; 202 (pending) → it stays pending and the
+    // next poll tick retries. This is the engine's loadPending.
+    const syncPendingInitialResources = async () => {
+        const pending = Array.from(pendingInitialResourcesRef.current);
+        if (pending.length === 0) {
             return;
         }
 
-        isWaitingForInitialEventsRef.current = false;
-        clearInitialEventsTimeout();
         const gradesOverride = pendingGradesPeriodRef.current ?? undefined;
-        pendingGradesPeriodRef.current = null;
-        await loadInitialDataFromCache({ reportError: false, showGlobalLoading: false }, gradesOverride);
+        await Promise.allSettled(pending.map((resource) => loadInitialResource(resource, gradesOverride)));
     };
+
+    const loadInitialResource = (resource: InitialResourceKey, gradesOverride?: GradesInput): Promise<void> => {
+        switch (resource) {
+            case 'profile':
+                return loadProfile(SILENT_REQUEST_OPTIONS);
+            case 'schedule':
+                return loadSchedule(SILENT_REQUEST_OPTIONS);
+            case 'grades':
+                return loadGrades(SILENT_REQUEST_OPTIONS, gradesOverride);
+            case 'lessonPlanSubjects':
+                // Subjects are period-scoped; loading them before grades has
+                // reported the resolved period would just have to be redone.
+                if (!isLoaded('grades') && isInitialResourcePending('grades')) {
+                    return Promise.resolve();
+                }
+                return loadLessonPlanSubjects(SILENT_REQUEST_OPTIONS, gradesOverride);
+            case 'lessonPlan':
+                // The lesson plan's planId comes from the subject list, so wait
+                // for that before trying to pull it.
+                if (!isLoaded('lessonPlanSubjects')) {
+                    return Promise.resolve();
+                }
+                return loadLessonPlan(SILENT_REQUEST_OPTIONS);
+            default:
+                return Promise.resolve();
+        }
+    };
+
+    // Loads the four bootstrap resources straight from cache regardless of
+    // pending state — used when the backend reports the bootstrap finished
+    // (ready or failed) and we just want whatever it managed to cache.
+    const loadBootstrapFromCache = async (gradesOverride?: GradesInput) => {
+        await Promise.allSettled([
+            loadProfile(SILENT_REQUEST_OPTIONS),
+            loadSchedule(SILENT_REQUEST_OPTIONS),
+            loadGrades(SILENT_REQUEST_OPTIONS, gradesOverride),
+            loadLessonPlanSubjects(SILENT_REQUEST_OPTIONS, gradesOverride)
+        ]);
+    };
+
+    // Kicks off a first load: mark the bootstrap set (plus the lazily-loaded
+    // lesson plan) pending and let the sync engine drive them to completion,
+    // accelerated by realtime events but not dependent on them.
+    const beginBootstrap = (gradesOverride?: GradesInput) => {
+        if (gradesOverride) {
+            pendingGradesPeriodRef.current = gradesOverride;
+        }
+        markInitialResourcesPending([...BOOTSTRAP_RESOURCES, 'lessonPlan']);
+    };
+
+    // Called by the engine when the deadline passes with resources still stuck.
+    // Clear the skeletons so the UI is never frozen; only raise the workspace
+    // error banner if a *bootstrap* resource (one the home screen needs) is the
+    // one that never arrived — a stuck lesson plan alone is a normal state the
+    // course screen already renders inline.
+    const handleBootstrapDeadline = () => {
+        const stuck = Array.from(pendingInitialResourcesRef.current);
+        if (stuck.length === 0) {
+            return;
+        }
+
+        const bootstrapStuck = stuck.some((resource) => resource !== 'lessonPlan');
+        pendingInitialResourcesRef.current.clear();
+        setPendingInitialResources(new Set());
+        if (bootstrapStuck) {
+            setTranslatedError('errors.generic', undefined, true);
+        }
+    };
+
+    syncPendingRef.current = syncPendingInitialResources;
+    isBootstrapDoneRef.current = () => pendingInitialResourcesRef.current.size === 0;
+    onBootstrapDeadlineRef.current = handleBootstrapDeadline;
 
     const expireSession = async (message?: string, options: { silent?: boolean } = {}) => {
         if (isExpiringSessionRef.current) {
@@ -480,7 +513,7 @@ export function useEcampusWorkspace() {
         }
 
         if (selectedSubject?.planId) {
-            await enqueueLessonPlanScrape(selectedSubject.planId, { reportError: false, showGlobalLoading: false });
+            await enqueueLessonPlanScrape(selectedSubject.planId, SILENT_REQUEST_OPTIONS);
         } else {
             setLessonPlan([]);
             markInitialResourceReady('lessonPlan');
@@ -492,7 +525,13 @@ export function useEcampusWorkspace() {
         const selectedSubject = pickLessonPlanSubject(lessonPlanSubjects, selectedLessonPlanSubjectCode);
 
         if (!selectedSubject) {
-            setTranslatedError('errors.loadSubjectsFirst');
+            // No subjects yet to derive a plan from. Only the explicit,
+            // user-triggered path should surface guidance; the silent sync/poll
+            // path just settles the resource so nothing stays stuck.
+            if (options?.reportError) {
+                setTranslatedError('errors.loadSubjectsFirst');
+            }
+            markInitialResourceReady('lessonPlan');
             return;
         }
 
@@ -528,37 +567,13 @@ export function useEcampusWorkspace() {
         });
     };
 
-    const loadInitialDataFromCache = async (options?: RequestOptions, gradesOverride?: GradesInput) => {
-        await Promise.allSettled([
-            loadProfile(options),
-            loadSchedule(options),
-            loadGrades(options, gradesOverride),
-            loadLessonPlanSubjects(options, gradesOverride)
-        ]);
-    };
-
     realtimeHandlerRef.current = (event: EcampusResourceReadyEvent) => {
-        // During bootstrap wait, only track the lesson-plan planId and the
-        // grades period eCampus actually resolved (A3). All data loading
-        // happens in batch when bootstrap-ready fires.
-        if (isWaitingForInitialEventsRef.current) {
-            if (event.resource === 'lesson-plan' && event.planId) {
-                pendingLessonPlanPlanIdRef.current = event.planId;
-            }
-            if (event.resource === 'grades' && event.year && event.period) {
-                pendingGradesPeriodRef.current = { year: event.year, period: event.period };
-            }
-            return;
-        }
-
-        const silentOptions: RequestOptions = { reportError: false, showGlobalLoading: false };
-
         switch (event.resource) {
             case 'profile':
-                void loadProfile(silentOptions);
+                void loadProfile(SILENT_REQUEST_OPTIONS);
                 return;
             case 'schedule':
-                void loadSchedule(silentOptions);
+                void loadSchedule(SILENT_REQUEST_OPTIONS);
                 return;
             case 'grades':
                 // Trust the period eCampus actually scraped, not whatever
@@ -567,19 +582,22 @@ export function useEcampusWorkspace() {
                 // guessed one has nothing posted yet).
                 if (event.year && event.period) {
                     const resolved = { year: event.year, period: event.period };
-                    void loadGrades(silentOptions, resolved);
-                    void loadLessonPlanSubjects(silentOptions, resolved);
+                    pendingGradesPeriodRef.current = resolved;
+                    void loadGrades(SILENT_REQUEST_OPTIONS, resolved);
+                    void loadLessonPlanSubjects(SILENT_REQUEST_OPTIONS, resolved);
+                } else {
+                    void loadGrades(SILENT_REQUEST_OPTIONS);
                 }
                 return;
             case 'lesson-plan-subjects':
                 if (isLoaded('grades') || !isInitialResourcePending('grades')) {
-                    void loadLessonPlanSubjects(silentOptions);
+                    void loadLessonPlanSubjects(SILENT_REQUEST_OPTIONS);
                 }
                 return;
             case 'lesson-plan': {
                 const selectedSubject = pickLessonPlanSubject(lessonPlanSubjects, selectedLessonPlanSubjectCode);
                 if (!event.planId || event.planId === selectedSubject?.planId) {
-                    void loadLessonPlan(silentOptions);
+                    void loadLessonPlan(SILENT_REQUEST_OPTIONS);
                     return;
                 }
 
@@ -594,103 +612,77 @@ export function useEcampusWorkspace() {
             return;
         }
 
-        if (!isWaitingForInitialEventsRef.current) {
+        // During an initial load, a single resource failure is left to the
+        // poll/deadline to resolve rather than immediately banner-ing — the
+        // scrape may still be retrying server-side.
+        if (pendingInitialResourcesRef.current.size === 0) {
             setRawError(event.message || 'Nao foi possivel carregar todos os dados agora.', true);
         }
     };
 
     realtimeBootstrapReadyHandlerRef.current = () => {
-        if (isWaitingForInitialEventsRef.current) {
-            void finishInitialScrapingEvents();
-        }
+        // The backend says every bootstrap resource settled (or a socket just
+        // joined and got the replay). Pull whatever is still pending now
+        // instead of waiting for the next poll tick.
+        bootstrapSyncRef.current?.signal();
     };
 
     realtimeBootstrapFailedHandlerRef.current = (event: EcampusBootstrapEvent) => {
-        if (!isWaitingForInitialEventsRef.current) {
-            return;
-        }
-
-        isWaitingForInitialEventsRef.current = false;
-        clearInitialEventsTimeout();
+        pendingInitialResourcesRef.current.clear();
+        bootstrapSyncRef.current?.stop();
         setPendingInitialResources(new Set());
         setRawError(event.failedResources.length > 0
             ? `Nao foi possivel carregar: ${event.failedResources.join(', ')}.`
             : 'Nao foi possivel carregar todos os dados agora.', true);
         const gradesOverride = pendingGradesPeriodRef.current ?? undefined;
         pendingGradesPeriodRef.current = null;
-        void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false }, gradesOverride);
+        void loadBootstrapFromCache(gradesOverride);
     };
 
     const prefetchWorkspace = async (options?: PrefetchOptions) => {
         await runSingle('prefetch', async () => {
-            const tasks: Array<Promise<unknown>> = [];
-            const resourcesToWaitFor: InitialResourceKey[] = [];
-            const taskFactories: Array<() => Promise<unknown>> = [];
-            const silentOptions: RequestOptions = {
-                reportError: options?.reportError ?? false,
-                showGlobalLoading: false
-            };
+            if (options?.force) {
+                const resources: InitialResourceKey[] = [];
+                const tasks: Array<Promise<unknown>> = [];
+                const enqueueOptions: RequestOptions = {
+                    reportError: options?.reportError ?? false,
+                    showGlobalLoading: false
+                };
 
-            if (!options?.force) {
-                if ((options?.includeProfile ?? true) && !profile && !isInitialResourcePending('profile')) {
-                    resourcesToWaitFor.push('profile');
-                    taskFactories.push(() => loadProfile(silentOptions));
+                if (options.includeProfile ?? true) {
+                    resources.push('profile');
+                    tasks.push(run(() => useCases.enqueueScrapeJob.execute('profile'), enqueueOptions));
                 }
 
-                if (!isLoaded('schedule') && !isInitialResourcePending('schedule')) {
-                    resourcesToWaitFor.push('schedule');
-                    taskFactories.push(() => loadSchedule(silentOptions));
-                }
+                resources.push('schedule');
+                tasks.push(run(() => useCases.enqueueScrapeJob.execute('schedule'), enqueueOptions));
 
-                if (!isLoaded('grades') && !isInitialResourcePending('grades')) {
-                    resourcesToWaitFor.push('grades');
-                    taskFactories.push(() => loadGrades(silentOptions));
-                }
+                resources.push('grades');
+                tasks.push(run(() => useCases.enqueueScrapeJob.execute('grades', getGradesJobData(gradesInput, currentGradesInput)), enqueueOptions));
 
-                if (!isLoaded('lessonPlanSubjects') && !isInitialResourcePending('lessonPlanSubjects')) {
-                    resourcesToWaitFor.push('lessonPlanSubjects', 'lessonPlan');
-                    taskFactories.push(() => loadLessonPlanSubjects(silentOptions));
-                }
+                resources.push('lessonPlanSubjects', 'lessonPlan');
+                tasks.push(run(() => useCases.enqueueScrapeJob.execute('lesson-plan-subjects'), enqueueOptions));
 
-                markInitialResourcesPending(resourcesToWaitFor);
-                await Promise.allSettled(taskFactories.map((task) => task()));
+                markInitialResourcesPending(resources);
+                await Promise.allSettled(tasks);
                 return;
             }
 
-            if ((options?.includeProfile ?? true) && (options.force || (!profile && !isInitialResourcePending('profile')))) {
-                resourcesToWaitFor.push('profile');
-                tasks.push(run(() => useCases.enqueueScrapeJob.execute('profile'), {
-                    reportError: options?.reportError ?? false,
-                    showGlobalLoading: false
-                }));
+            const resources: InitialResourceKey[] = [];
+            if ((options?.includeProfile ?? true) && !profile && !isInitialResourcePending('profile')) {
+                resources.push('profile');
+            }
+            if (!isLoaded('schedule') && !isInitialResourcePending('schedule')) {
+                resources.push('schedule');
+            }
+            if (!isLoaded('grades') && !isInitialResourcePending('grades')) {
+                resources.push('grades');
+            }
+            if (!isLoaded('lessonPlanSubjects') && !isInitialResourcePending('lessonPlanSubjects')) {
+                resources.push('lessonPlanSubjects', 'lessonPlan');
             }
 
-            if (options.force || (!isLoaded('schedule') && !isInitialResourcePending('schedule'))) {
-                resourcesToWaitFor.push('schedule');
-                tasks.push(run(() => useCases.enqueueScrapeJob.execute('schedule'), {
-                    reportError: options?.reportError ?? false,
-                    showGlobalLoading: false
-                }));
-            }
-
-            if (options.force || (!isLoaded('grades') && !isInitialResourcePending('grades'))) {
-                resourcesToWaitFor.push('grades');
-                tasks.push(run(() => useCases.enqueueScrapeJob.execute('grades', getGradesJobData(gradesInput, currentGradesInput)), {
-                    reportError: options?.reportError ?? false,
-                    showGlobalLoading: false
-                }));
-            }
-
-            if (options.force || (!isLoaded('lessonPlanSubjects') && !isInitialResourcePending('lessonPlanSubjects'))) {
-                resourcesToWaitFor.push('lessonPlanSubjects', 'lessonPlan');
-                tasks.push(run(() => useCases.enqueueScrapeJob.execute('lesson-plan-subjects'), {
-                    reportError: options?.reportError ?? false,
-                    showGlobalLoading: false
-                }));
-            }
-
-            markInitialResourcesPending(resourcesToWaitFor);
-            await Promise.allSettled(tasks);
+            markInitialResourcesPending(resources);
         });
     };
 
@@ -711,10 +703,14 @@ export function useEcampusWorkspace() {
                 session.accessToken,
                 (event) => realtimeHandlerRef.current(event),
                 () => {
-                    if (!disposed && isWaitingForInitialEventsRef.current && hasRealtimeConnectedRef.current) {
-                        void loadInitialDataFromCache({ reportError: false, showGlobalLoading: false });
+                    // On every (re)connect — including the very first one after
+                    // login — pull anything still pending. This is the fix for
+                    // the room-join race: the backend may have emitted
+                    // resource/bootstrap events before this socket joined its
+                    // room, so those events are gone; the pull recovers them.
+                    if (!disposed) {
+                        bootstrapSyncRef.current?.signal();
                     }
-                    hasRealtimeConnectedRef.current = true;
                 },
                 (event) => {
                     if (!disposed) {
@@ -787,7 +783,7 @@ export function useEcampusWorkspace() {
 
             setIsAuthenticated(true);
             setIsReady(true);
-            await prefetchWorkspace({ force: false });
+            beginBootstrap();
         } finally {
             setIsReady(true);
         }
@@ -804,7 +800,7 @@ export function useEcampusWorkspace() {
         clearWorkspaceData();
         setIsAuthenticated(true);
         clearError();
-        waitForInitialScrapingEvents();
+        beginBootstrap();
     };
 
     const logout = async () => {
@@ -913,29 +909,29 @@ export function useEcampusWorkspace() {
         if (tab === 'home') void prefetchWorkspace();
         if (tab === 'profile' && !isLoaded('profile') && !isInitialResourcePending('profile')) {
             markInitialResourcesPending(['profile']);
-            void run(() => useCases.enqueueScrapeJob.execute('profile'), { reportError: false, showGlobalLoading: false });
+            void run(() => useCases.enqueueScrapeJob.execute('profile'), SILENT_REQUEST_OPTIONS);
         }
         if (tab === 'schedule' && !isLoaded('schedule') && !isInitialResourcePending('schedule')) {
             markInitialResourcesPending(['schedule']);
-            void run(() => useCases.enqueueScrapeJob.execute('schedule'), { reportError: false, showGlobalLoading: false });
+            void run(() => useCases.enqueueScrapeJob.execute('schedule'), SILENT_REQUEST_OPTIONS);
         }
         if (tab === 'grades' && !isLoaded('grades') && !isInitialResourcePending('grades')) {
             markInitialResourcesPending(['grades']);
-            void run(() => useCases.enqueueScrapeJob.execute('grades', getGradesJobData(gradesInput, currentGradesInput)), { reportError: false, showGlobalLoading: false });
+            void run(() => useCases.enqueueScrapeJob.execute('grades', getGradesJobData(gradesInput, currentGradesInput)), SILENT_REQUEST_OPTIONS);
         }
         if (tab === 'lessonPlan' && !isLoaded('grades') && !isInitialResourcePending('grades')) {
             markInitialResourcesPending(['grades']);
-            void run(() => useCases.enqueueScrapeJob.execute('grades', getGradesJobData(gradesInput, currentGradesInput)), { reportError: false, showGlobalLoading: false });
+            void run(() => useCases.enqueueScrapeJob.execute('grades', getGradesJobData(gradesInput, currentGradesInput)), SILENT_REQUEST_OPTIONS);
         }
         if (tab === 'lessonPlan' && !isLoaded('lessonPlanSubjects') && !isInitialResourcePending('lessonPlanSubjects')) {
             markInitialResourcesPending(['lessonPlanSubjects', 'lessonPlan']);
-            void run(() => useCases.enqueueScrapeJob.execute('lesson-plan-subjects'), { reportError: false, showGlobalLoading: false });
+            void run(() => useCases.enqueueScrapeJob.execute('lesson-plan-subjects'), SILENT_REQUEST_OPTIONS);
         }
         if (tab === 'lessonPlan' && isLoaded('lessonPlanSubjects') && !isLoaded('lessonPlan') && !isInitialResourcePending('lessonPlan')) {
             const selectedSubject = pickLessonPlanSubject(lessonPlanSubjects, selectedLessonPlanSubjectCode);
             if (selectedSubject?.planId) {
                 markInitialResourcesPending(['lessonPlan']);
-                void enqueueLessonPlanScrape(selectedSubject.planId, { reportError: false, showGlobalLoading: false });
+                void enqueueLessonPlanScrape(selectedSubject.planId, SILENT_REQUEST_OPTIONS);
             }
         }
         // AI tab doesn't require data loading
