@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Translate } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
+import { isApprovedStatus, parseGrade } from '@/modules/academic/presentation/views/workspace.utils';
 
 export type CourseCard = {
     absences: string;
@@ -109,8 +110,19 @@ export function useLessonPlanCourses({ grades, items, schedule, selectedSubjectC
             });
         }
 
-        return Array.from(byCode.values()).sort((a, b) => a.subject.localeCompare(b.subject));
+        return Array.from(byCode.values()).sort((a, b) => {
+            const bucketDiff = courseSortBucket(a) - courseSortBucket(b);
+            return bucketDiff !== 0 ? bucketDiff : a.subject.localeCompare(b.subject);
+        });
     }, [grades, items, schedule, selectedSubjectCode, subjects, t]);
+}
+
+// Cards always read approved subjects first, then subjects with at least one
+// grade entered, then subjects with no grades yet at the bottom.
+function courseSortBucket(course: CourseCard): number {
+    if (isApprovedStatus(course.status)) return 0;
+    if (parseGrade(course.finalGrade) !== null || course.evaluationItems.some((item) => parseGrade(item.score) !== null)) return 1;
+    return 2;
 }
 
 function buildAttendanceSummary(
