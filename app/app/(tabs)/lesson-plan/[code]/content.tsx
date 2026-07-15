@@ -34,7 +34,7 @@ export default function CourseContentRoute() {
     return (
         <CourseContentScreen
             course={course}
-            loading={workspace.isLoading && course.code === workspace.selectedLessonPlanSubjectCode}
+            loading={workspace.isLessonPlanLoading && course.code === workspace.selectedLessonPlanSubjectCode}
             onBack={() => router.back()}
             t={t}
         />

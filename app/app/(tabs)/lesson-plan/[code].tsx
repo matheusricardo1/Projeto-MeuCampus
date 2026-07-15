@@ -34,7 +34,7 @@ export default function CourseDetailsRoute() {
     return (
         <CourseDetailsScreen
             course={course}
-            loading={workspace.isLoading && course.code === workspace.selectedLessonPlanSubjectCode}
+            loading={workspace.isLessonPlanLoading && course.code === workspace.selectedLessonPlanSubjectCode}
             onBack={() => router.back()}
             onOpenFullContent={() => router.push(`/lesson-plan/${encodeURIComponent(course.code)}/content`)}
             semester={`${workspace.gradesInput.year}.${workspace.gradesInput.period}`}

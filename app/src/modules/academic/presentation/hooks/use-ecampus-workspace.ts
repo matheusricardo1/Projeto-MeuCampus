@@ -127,7 +127,15 @@ export function useEcampusWorkspace() {
     const [aiChatConversationId, setAiChatConversationId] = useState<string | undefined>();
     const [pendingInitialResources, setPendingInitialResources] = useState<Set<InitialResourceKey>>(new Set());
 
-    const isInitialDataLoading = pendingInitialResources.size > 0;
+    // lessonPlan is deliberately excluded here: eCampus doesn't always have a
+    // published teaching plan for a subject, and even when it does, scraping
+    // it is a separate lazy job that only starts after the bootstrap
+    // resources (profile/schedule/grades/lessonPlanSubjects) are already in —
+    // gating the initial skeleton on it would tack a whole extra scrape round
+    // trip onto every first load. It gets its own isLessonPlanLoading flag
+    // instead, for the course-details screen that actually needs it.
+    const isInitialDataLoading = Array.from(pendingInitialResources).some((resource) => resource !== 'lessonPlan');
+    const isLessonPlanLoading = pendingInitialResources.has('lessonPlan');
     const isLoading = loadingRequests > 0 || isInitialDataLoading;
     const error = errorState
         ? errorState.kind === 'translated'
@@ -943,6 +951,7 @@ export function useEcampusWorkspace() {
         gradesInput,
         isAuthenticated,
         isInitialDataLoading,
+        isLessonPlanLoading,
         isLoading,
         aiChatConversationId,
         aiChatMessages,
