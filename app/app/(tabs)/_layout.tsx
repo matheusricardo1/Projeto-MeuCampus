@@ -258,6 +258,9 @@ export default function TabsLayout() {
     const leaveAIChat = () => navigateToTab('home');
     const closeChatHistory = () => setShowChatHistory(false);
     const isAIPage = IS_AI_FEATURE_ENABLED && activeTab === 'ai';
+    // Community runs its own full-height immersive feed, so it opts out of the
+    // shared padded ScrollView (like the AI page) but keeps the header + nav.
+    const isCommunityPage = activeTab === 'community';
     // Course details/content pages ship their own top bar with a back button —
     // the shared "Meu Campus" header and bottom nav would just be redundant chrome there.
     const isCourseDetailsPage = pathname.startsWith('/lesson-plan/');
@@ -420,7 +423,7 @@ export default function TabsLayout() {
             </View>
         </View>
     );
-    const pageContent = isAIPage ? (
+    const pageContent = (isAIPage || isCommunityPage) ? (
         <View style={styles.flexScroll}>
             <Slot />
         </View>

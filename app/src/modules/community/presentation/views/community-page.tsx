@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ArrowLeft, CheckCircle2, Clock, ExternalLink, Plus, Search, Send, Users } from 'lucide-react-native';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Animated, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { ArrowLeft, CheckCircle2, Clock, ExternalLink, Plus, Search, Send } from 'lucide-react-native';
 import { colors, radii, shadows, spacing, textShadows, typography } from '@/shared/design-system';
 import { hapticTap } from '@/shared/haptics';
 import { useCommunity } from '@/modules/community/presentation/hooks/use-community';
@@ -14,13 +15,14 @@ import {
     type FieldSpec,
     type SectionSpec
 } from '@/modules/community/domain/community-catalog';
+import { themeOf } from '@/modules/community/domain/community-theme';
 import type { CommunityCategory, CommunityPost, RuLevel } from '@/modules/community/domain/community-post';
 
 type CreateFn = (input: { category: CommunityCategory; body: string; authorName: string; payload?: Record<string, unknown> | null }) => Promise<CommunityPost>;
 
 const ANNOUNCEMENT_SECTIONS = COMMUNITY_SECTIONS.filter((section) => section.categories.every((cat) => cat.kind === 'form'));
 
-export function CommunityPage({ authorName }: { authorName: string }) {
+export function CommunityPage({ authorName, bottomInset = 96 }: { authorName: string; bottomInset?: number }) {
     const community = useCommunity('FILA_RU');
     const [composeCategory, setComposeCategory] = useState<CommunityCategory | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
@@ -38,48 +40,56 @@ export function CommunityPage({ authorName }: { authorName: string }) {
                 authorName={authorName}
                 isPosting={community.isPosting}
                 error={community.error}
+                bottomInset={bottomInset}
                 onSubmit={community.createPost}
                 onCancel={() => setComposeCategory(null)}
                 onDone={(status) => {
                     setComposeCategory(null);
                     setNotice(status === 'APPROVED'
-                        ? 'Publicado! Já está visível na comunidade.'
-                        : 'Anúncio enviado! Ficará visível assim que um administrador aprovar.');
+                        ? 'Publicado! Já está no ar.'
+                        : 'Enviado! Aparece assim que um admin aprovar.');
                 }}
             />
         );
     }
 
     return (
-        <BrowseView
+        <ImmersiveFeed
             community={community}
             authorName={authorName}
             notice={notice}
-            onDismissNotice={() => setNotice(null)}
+            bottomInset={bottomInset}
             onCompose={(category) => { hapticTap(); setComposeCategory(category); }}
         />
     );
 }
 
-// ---------------------------------------------------------------- Browse view
+// ============================================================ Immersive feed
 
-function BrowseView({
+function ImmersiveFeed({
     community,
     authorName,
     notice,
-    onDismissNotice,
+    bottomInset,
     onCompose
 }: {
     community: ReturnType<typeof useCommunity>;
     authorName: string;
     notice: string | null;
-    onDismissNotice: () => void;
+    bottomInset: number;
     onCompose: (category: CommunityCategory) => void;
 }) {
+    const { height } = useWindowDimensions();
     const [query, setQuery] = useState('');
+    const [searchOpen, setSearchOpen] = useState(false);
+    const scrollY = useRef(new Animated.Value(0)).current;
+
     const activeSection = getSectionOf(community.category);
     const activeCategory = getCategorySpec(community.category);
-    const isAnnouncement = activeCategory.kind === 'form';
+    const isRealtime = activeCategory.kind === 'quick';
+
+    const cardHeight = Math.max(380, Math.min(height * 0.56, 540));
+    const itemSize = cardHeight + spacing[4];
 
     const filteredPosts = useMemo(() => filterPosts(community.posts, query), [community.posts, query]);
 
@@ -87,104 +97,143 @@ function BrowseView({
         const first = section.categories[0];
         if (first && first.id !== community.category) {
             hapticTap();
+            setQuery('');
             community.setCategory(first.id);
         }
     };
 
-    return (
-        <View style={styles.container}>
-            {notice ? (
-                <Pressable onPress={onDismissNotice} style={styles.noticeCard}>
-                    <CheckCircle2 color={colors.success} size={18} />
-                    <Text style={styles.noticeText}>{notice}</Text>
-                </Pressable>
-            ) : null}
+    const onScroll = Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true });
 
-            <View style={styles.searchBar}>
-                <Search color={colors.textSubtle} size={18} />
-                <TextInput
-                    value={query}
-                    onChangeText={setQuery}
-                    placeholder="Buscar na comunidade..."
-                    placeholderTextColor={colors.textSubtle}
-                    style={styles.searchInput}
-                    returnKeyType="search"
-                />
+    // Realtime categories get a report card as the first item; announcements
+    // are view-only in the feed and post via the floating Anunciar button.
+    const leadCards = isRealtime ? 1 : 0;
+
+    return (
+        <View style={styles.screen}>
+            <View style={styles.topBar}>
+                {searchOpen ? (
+                    <View style={styles.searchBar}>
+                        <Search color={colors.textSubtle} size={18} />
+                        <TextInput
+                            autoFocus
+                            value={query}
+                            onChangeText={setQuery}
+                            placeholder="Buscar..."
+                            placeholderTextColor={colors.textSubtle}
+                            style={styles.searchInput}
+                            returnKeyType="search"
+                        />
+                        <Pressable onPress={() => { setQuery(''); setSearchOpen(false); }} hitSlop={8}>
+                            <Text style={styles.searchCancel}>Cancelar</Text>
+                        </Pressable>
+                    </View>
+                ) : (
+                    <>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sectionRow}>
+                            {COMMUNITY_SECTIONS.map((section) => {
+                                const Icon = section.icon;
+                                const active = section.id === activeSection.id;
+                                return (
+                                    <Pressable
+                                        key={section.id}
+                                        onPress={() => selectSection(section)}
+                                        style={({ pressed }) => [styles.sectionPill, active ? styles.sectionPillActive : null, pressed ? styles.pressed : null]}
+                                    >
+                                        <Icon color={active ? colors.inverseText : colors.brand} size={15} />
+                                        <Text style={[styles.sectionPillText, active ? styles.sectionPillTextActive : null]}>{section.label}</Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </ScrollView>
+                        <Pressable onPress={() => setSearchOpen(true)} style={({ pressed }) => [styles.searchButton, pressed ? styles.pressed : null]}>
+                            <Search color={colors.textMuted} size={18} />
+                        </Pressable>
+                    </>
+                )}
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sectionRow}>
-                {COMMUNITY_SECTIONS.map((section) => {
-                    const Icon = section.icon;
-                    const active = section.id === activeSection.id;
-                    return (
-                        <Pressable
-                            key={section.id}
-                            onPress={() => selectSection(section)}
-                            style={({ pressed }) => [styles.sectionTab, active ? styles.sectionTabActive : null, pressed ? styles.pressed : null]}
-                        >
-                            <Icon color={active ? colors.inverseText : colors.brand} size={16} />
-                            <Text style={[styles.sectionTabText, active ? styles.sectionTabTextActive : null]}>{section.label}</Text>
-                        </Pressable>
-                    );
-                })}
-            </ScrollView>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {activeSection.categories.map((cat) => {
-                    const active = cat.id === community.category;
-                    return (
-                        <Pressable
-                            key={cat.id}
-                            onPress={() => { hapticTap(); community.setCategory(cat.id); }}
-                            style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
-                        >
-                            <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{cat.label}</Text>
-                        </Pressable>
-                    );
-                })}
-            </ScrollView>
-
-            {/* Crowdsourcing keeps an instant inline report; announcements are
-                view-only here and post through the Anunciar button below. */}
-            {activeCategory.kind === 'quick' ? (
-                <QuickReport spec={activeCategory} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />
+            {activeSection.categories.length > 1 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow} style={styles.chipRowWrap}>
+                    {activeSection.categories.map((cat) => {
+                        const active = cat.id === community.category;
+                        return (
+                            <Pressable
+                                key={cat.id}
+                                onPress={() => { hapticTap(); setQuery(''); community.setCategory(cat.id); }}
+                                style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
+                            >
+                                <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{themeOf(cat.id).emoji} {cat.label}</Text>
+                            </Pressable>
+                        );
+                    })}
+                </ScrollView>
             ) : null}
 
-            {community.error ? (
-                <View style={styles.errorBanner}>
-                    <Text style={styles.errorText}>{community.error}</Text>
+            {notice ? (
+                <View style={styles.noticeCard}>
+                    <CheckCircle2 color={colors.success} size={16} />
+                    <Text style={styles.noticeText}>{notice}</Text>
                 </View>
             ) : null}
 
-            {community.isLoading ? (
-                <View style={styles.loadingWrap}>
-                    <ActivityIndicator color={colors.brand} />
-                </View>
-            ) : filteredPosts.length === 0 ? (
-                <View style={styles.emptyCard}>
-                    <Users color={colors.textSubtle} size={28} />
-                    <Text style={styles.emptyText}>
-                        {query ? 'Nada encontrado para essa busca.' : isAnnouncement ? 'Nenhum anúncio por aqui ainda.' : 'Nada por aqui ainda. Seja o primeiro a compartilhar.'}
-                    </Text>
-                </View>
-            ) : (
-                <View style={styles.feed}>
-                    {filteredPosts.map((post) => (
-                        <PostCard key={post.id} post={post} onConfirm={() => community.confirmPost(post.id)} />
-                    ))}
-                </View>
-            )}
+            <Animated.ScrollView
+                showsVerticalScrollIndicator={false}
+                onScroll={onScroll}
+                scrollEventThrottle={16}
+                snapToInterval={itemSize}
+                decelerationRate="fast"
+                contentContainerStyle={{ paddingTop: spacing[2], paddingBottom: bottomInset + spacing[6], paddingHorizontal: spacing[1] }}
+            >
+                {isRealtime ? (
+                    <DepthCard index={0} itemSize={itemSize} scrollY={scrollY} height={cardHeight}>
+                        <LiveComposeCard spec={activeCategory} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />
+                    </DepthCard>
+                ) : null}
 
-            {isAnnouncement ? (
+                {community.isLoading ? (
+                    <View style={[styles.stateCard, { height: cardHeight }]}>
+                        <Text style={styles.stateEmoji}>⏳</Text>
+                        <Text style={styles.stateText}>Carregando...</Text>
+                    </View>
+                ) : filteredPosts.length === 0 ? (
+                    <View style={[styles.stateCard, { height: cardHeight }]}>
+                        <Text style={styles.stateEmoji}>{query ? '🔍' : themeOf(community.category).emoji}</Text>
+                        <Text style={styles.stateText}>
+                            {query ? 'Nada encontrado.' : isRealtime ? 'Nenhum relato ainda. Seja o primeiro!' : 'Nenhum anúncio ainda.'}
+                        </Text>
+                    </View>
+                ) : (
+                    filteredPosts.map((post, i) => (
+                        <DepthCard key={post.id} index={i + leadCards} itemSize={itemSize} scrollY={scrollY} height={cardHeight}>
+                            <FeedCard post={post} onConfirm={() => community.confirmPost(post.id)} />
+                        </DepthCard>
+                    ))
+                )}
+            </Animated.ScrollView>
+
+            {!isRealtime ? (
                 <Pressable
                     onPress={() => onCompose(community.category)}
-                    style={({ pressed }) => [styles.fab, pressed ? styles.fabPressed : null]}
+                    style={({ pressed }) => [styles.fab, { bottom: bottomInset + spacing[4] }, pressed ? styles.fabPressed : null]}
                 >
                     <Plus color={colors.inverseText} size={20} />
                     <Text style={styles.fabText}>Anunciar</Text>
                 </Pressable>
             ) : null}
         </View>
+    );
+}
+
+/** Wraps a card so it scales/dims as it moves away from the viewport focus. */
+function DepthCard({ index, itemSize, scrollY, height, children }: { index: number; itemSize: number; scrollY: Animated.Value; height: number; children: ReactNode }) {
+    const inputRange = [(index - 1) * itemSize, index * itemSize, (index + 1) * itemSize];
+    const scale = scrollY.interpolate({ inputRange, outputRange: [0.92, 1, 0.92], extrapolate: 'clamp' });
+    const opacity = scrollY.interpolate({ inputRange, outputRange: [0.5, 1, 0.5], extrapolate: 'clamp' });
+
+    return (
+        <Animated.View style={{ height, marginBottom: spacing[4], opacity, transform: [{ scale }] }}>
+            {children}
+        </Animated.View>
     );
 }
 
@@ -199,13 +248,191 @@ function filterPosts(posts: CommunityPost[], query: string): CommunityPost[] {
     });
 }
 
-// --------------------------------------------------------------- Compose flow
+// ============================================================= Feed card
+
+function FeedCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => void }) {
+    const spec = getCategorySpec(post.category);
+    const theme = themeOf(post.category);
+    const payload = post.payload ?? {};
+    const isRealtime = spec.kind === 'quick';
+    const description = typeof payload.descricao === 'string' ? payload.descricao : null;
+    const primaryKey = spec.primaryKey ?? 'titulo';
+    const link = typeof payload.link === 'string' ? payload.link : null;
+
+    const chips = spec.kind === 'form'
+        ? (spec.fields ?? [])
+            .filter((field) => field.key !== primaryKey && field.key !== 'descricao' && field.key !== 'link')
+            .map((field) => [field.key, payload[field.key]] as const)
+            .filter(([, val]) => typeof val === 'string' && (val as string).length > 0)
+        : [];
+
+    return (
+        <View style={styles.card}>
+            <LinearGradient colors={theme.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+            <View style={styles.cardVignette} />
+            <View style={styles.cardInner}>
+                <View style={styles.cardTopRow}>
+                    <View style={styles.glassBadge}>
+                        <Text style={styles.badgeEmoji}>{theme.emoji}</Text>
+                        <Text style={styles.badgeLabel}>{spec.label}</Text>
+                    </View>
+                    <View style={styles.glassChip}>
+                        {isRealtime ? <LiveDot /> : <Clock color="rgba(255,255,255,0.85)" size={12} />}
+                        <Text style={styles.timeText}>{isRealtime ? 'AO VIVO · ' : ''}{formatRelativeTime(post.createdAt)}</Text>
+                    </View>
+                </View>
+
+                <View style={styles.cardCenter}>
+                    {isRealtime ? <HeroStatus post={post} accent={theme.accent} /> : null}
+                    <Text style={[styles.cardTitle, isRealtime ? styles.cardTitleSmall : null]} numberOfLines={isRealtime ? 2 : 3}>{post.body}</Text>
+                    {description ? <Text style={styles.cardDescription} numberOfLines={3}>{description}</Text> : null}
+                    {chips.length > 0 ? (
+                        <View style={styles.chipsWrap}>
+                            {chips.map(([key, val]) => (
+                                <View key={key} style={styles.detailChip}>
+                                    <Text style={styles.detailChipText}>
+                                        {FIELD_LABELS[key] ? `${FIELD_LABELS[key]} · ` : ''}{String(val)}
+                                    </Text>
+                                </View>
+                            ))}
+                        </View>
+                    ) : null}
+                    {link ? (
+                        <Pressable onPress={() => openLink(link)} style={({ pressed }) => [styles.linkChip, pressed ? styles.pressed : null]}>
+                            <ExternalLink color={colors.text} size={14} />
+                            <Text numberOfLines={1} style={styles.linkChipText}>Abrir link</Text>
+                        </Pressable>
+                    ) : null}
+                </View>
+
+                <View style={styles.cardBottomRow}>
+                    <View style={styles.authorChip}>
+                        <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(post.authorName)}</Text></View>
+                        <Text numberOfLines={1} style={styles.authorName}>{post.authorName}</Text>
+                    </View>
+                    {isRealtime ? (
+                        <Pressable onPress={() => { hapticTap(); onConfirm(); }} style={({ pressed }) => [styles.confirmPill, pressed ? styles.pressed : null]}>
+                            <CheckCircle2 color={colors.text} size={15} />
+                            <Text style={styles.confirmPillText}>Confirmar{post.confirmCount > 0 ? ` · ${post.confirmCount}` : ''}</Text>
+                        </Pressable>
+                    ) : null}
+                </View>
+            </View>
+        </View>
+    );
+}
+
+function HeroStatus({ post, accent }: { post: CommunityPost; accent: string }) {
+    const payload = post.payload ?? {};
+    const level = typeof payload.level === 'string' ? (payload.level as RuLevel) : null;
+
+    if (level) {
+        const fill = level === 'empty' ? 1 : level === 'moderate' ? 2 : 3;
+        return (
+            <View style={styles.hero}>
+                <Text style={[styles.heroWord, { color: accent }]}>{RU_LEVEL_LABEL[level].toUpperCase()}</Text>
+                <View style={styles.meter}>
+                    {[1, 2, 3].map((seg) => (
+                        <View key={seg} style={[styles.meterSeg, seg <= fill ? { backgroundColor: accent } : null]} />
+                    ))}
+                </View>
+            </View>
+        );
+    }
+
+    if (typeof payload.dropped === 'boolean') {
+        return <Text style={[styles.heroWord, { color: accent }]}>{payload.dropped ? 'CAIU ✓' : 'AINDA NÃO'}</Text>;
+    }
+    if (typeof payload.hasPower === 'boolean') {
+        return <Text style={[styles.heroWord, { color: accent }]}>{payload.hasPower ? 'VOLTOU ✓' : 'SEM LUZ'}</Text>;
+    }
+    return null;
+}
+
+function LiveDot() {
+    const pulse = useRef(new Animated.Value(0)).current;
+    useEffect(() => {
+        const loop = Animated.loop(Animated.sequence([
+            Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+            Animated.timing(pulse, { toValue: 0, duration: 900, useNativeDriver: true })
+        ]));
+        loop.start();
+        return () => loop.stop();
+    }, [pulse]);
+    const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+    return <Animated.View style={[styles.liveDot, { opacity }]} />;
+}
+
+// ============================================================ Live report card
+
+function LiveComposeCard({ spec, isPosting, authorName, onSubmit }: { spec: CategorySpec; isPosting: boolean; authorName: string; onSubmit: CreateFn }) {
+    const [value, setValue] = useState('');
+    const theme = themeOf(spec.id);
+    const quick = spec.quick;
+    if (!quick) return null;
+
+    const needsValue = Boolean(quick.needsFieldKey);
+    const trimmed = value.trim();
+    const disabled = isPosting || (needsValue && !trimmed);
+
+    const submit = async (body: string, payload: Record<string, unknown>) => {
+        hapticTap();
+        try {
+            await onSubmit({ category: spec.id, body, authorName, payload });
+            setValue('');
+        } catch {
+            // error surfaced by the hook
+        }
+    };
+
+    return (
+        <View style={styles.card}>
+            <LinearGradient colors={theme.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+            <View style={styles.cardVignette} />
+            <View style={styles.cardInner}>
+                <View style={styles.glassBadge}>
+                    <Text style={styles.badgeEmoji}>{theme.emoji}</Text>
+                    <Text style={styles.badgeLabel}>Reportar agora</Text>
+                </View>
+                <View style={styles.cardCenter}>
+                    <Text style={styles.composePrompt}>{quick.prompt}</Text>
+                    {needsValue ? (
+                        <TextInput
+                            value={value}
+                            onChangeText={setValue}
+                            placeholder={quick.needsFieldLabel}
+                            placeholderTextColor="rgba(255,255,255,0.6)"
+                            style={styles.glassInput}
+                            maxLength={80}
+                        />
+                    ) : null}
+                    <View style={styles.quickRow}>
+                        {quick.options(trimmed).map((option) => (
+                            <Pressable
+                                key={option.label}
+                                disabled={disabled}
+                                onPress={() => void submit(option.body, option.payload)}
+                                style={({ pressed }) => [styles.quickButton, pressed ? styles.pressed : null, disabled ? styles.disabled : null]}
+                            >
+                                <Text style={styles.quickButtonText}>{option.label}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                </View>
+                <Text style={styles.composeFootnote}>Seu relato aparece na hora para a comunidade.</Text>
+            </View>
+        </View>
+    );
+}
+
+// ============================================================ Compose (announcements)
 
 function ComposeScreen({
     initialCategory,
     authorName,
     isPosting,
     error,
+    bottomInset,
     onSubmit,
     onCancel,
     onDone
@@ -214,6 +441,7 @@ function ComposeScreen({
     authorName: string;
     isPosting: boolean;
     error: string | null;
+    bottomInset: number;
     onSubmit: CreateFn;
     onCancel: () => void;
     onDone: (status: CommunityPost['status']) => void;
@@ -223,14 +451,13 @@ function ComposeScreen({
     const spec = getCategorySpec(category);
 
     return (
-        <View style={styles.container}>
+        <ScrollView style={styles.screen} contentContainerStyle={{ padding: spacing[4], paddingBottom: bottomInset + spacing[6], gap: spacing[4] }}>
             <View style={styles.composeHeader}>
                 <Pressable onPress={() => { hapticTap(); onCancel(); }} style={({ pressed }) => [styles.backButton, pressed ? styles.pressed : null]}>
                     <ArrowLeft color={colors.text} size={20} />
                 </Pressable>
                 <Text style={styles.composeTitle}>Novo anúncio</Text>
             </View>
-
             <Text style={styles.composeHint}>Escolha a categoria e preencha os detalhes. Seu anúncio passa por aprovação antes de aparecer para todos.</Text>
 
             {ANNOUNCEMENT_SECTIONS.map((section) => (
@@ -245,7 +472,7 @@ function ComposeScreen({
                                     onPress={() => { hapticTap(); setCategory(cat.id); }}
                                     style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
                                 >
-                                    <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{cat.label}</Text>
+                                    <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{themeOf(cat.id).emoji} {cat.label}</Text>
                                 </Pressable>
                             );
                         })}
@@ -253,43 +480,20 @@ function ComposeScreen({
                 </View>
             ))}
 
-            <FormComposer
-                key={spec.id}
-                spec={spec}
-                sectionLabel={activeSection.label}
-                isPosting={isPosting}
-                authorName={authorName}
-                onSubmit={onSubmit}
-                onDone={onDone}
-            />
+            <FormComposer key={spec.id} spec={spec} sectionLabel={activeSection.label} isPosting={isPosting} authorName={authorName} onSubmit={onSubmit} onDone={onDone} />
 
-            {error ? (
-                <View style={styles.errorBanner}>
-                    <Text style={styles.errorText}>{error}</Text>
-                </View>
-            ) : null}
-        </View>
+            {error ? <View style={styles.errorBanner}><Text style={styles.errorText}>{error}</Text></View> : null}
+        </ScrollView>
     );
 }
 
 function FormComposer({
-    spec,
-    sectionLabel,
-    isPosting,
-    authorName,
-    onSubmit,
-    onDone
+    spec, sectionLabel, isPosting, authorName, onSubmit, onDone
 }: {
-    spec: CategorySpec;
-    sectionLabel: string;
-    isPosting: boolean;
-    authorName: string;
-    onSubmit: CreateFn;
-    onDone: (status: CommunityPost['status']) => void;
+    spec: CategorySpec; sectionLabel: string; isPosting: boolean; authorName: string; onSubmit: CreateFn; onDone: (status: CommunityPost['status']) => void;
 }) {
     const fields = spec.fields ?? [];
     const [values, setValues] = useState<Record<string, string>>({});
-
     const setField = (key: string, val: string) => setValues((current) => ({ ...current, [key]: val }));
 
     const missingRequired = fields.some((field) => field.required && !(values[field.key] ?? '').trim());
@@ -309,21 +513,17 @@ function FormComposer({
             setValues({});
             onDone(created.status);
         } catch {
-            // error surfaced by the hook / compose screen
+            // error surfaced upstream
         }
     };
 
     return (
         <View style={styles.composer}>
-            <Text style={styles.composerTitle}>{spec.label} · {sectionLabel}</Text>
+            <Text style={styles.composerTitle}>{themeOf(spec.id).emoji} {spec.label} · {sectionLabel}</Text>
             {fields.map((field) => (
                 <FieldInput key={field.key} field={field} value={values[field.key] ?? ''} onChange={(val) => setField(field.key, val)} />
             ))}
-            <Pressable
-                disabled={disabled}
-                onPress={() => void submit()}
-                style={({ pressed }) => [styles.submitButton, pressed ? styles.pressed : null, disabled ? styles.disabled : null]}
-            >
+            <Pressable disabled={disabled} onPress={() => void submit()} style={({ pressed }) => [styles.submitButton, pressed ? styles.pressed : null, disabled ? styles.disabled : null]}>
                 <Send color={colors.inverseText} size={16} />
                 <Text style={styles.submitButtonText}>Enviar para aprovação</Text>
             </Pressable>
@@ -338,11 +538,7 @@ function FieldInput({ field, value, onChange }: { field: FieldSpec; value: strin
                 {(field.options ?? []).map((option) => {
                     const active = value === option;
                     return (
-                        <Pressable
-                            key={option}
-                            onPress={() => { hapticTap(); onChange(option); }}
-                            style={({ pressed }) => [styles.selectChip, active ? styles.selectChipActive : null, pressed ? styles.pressed : null]}
-                        >
+                        <Pressable key={option} onPress={() => { hapticTap(); onChange(option); }} style={({ pressed }) => [styles.selectChip, active ? styles.selectChipActive : null, pressed ? styles.pressed : null]}>
                             <Text style={[styles.selectChipText, active ? styles.selectChipTextActive : null]}>{option}</Text>
                         </Pressable>
                     );
@@ -367,126 +563,7 @@ function FieldInput({ field, value, onChange }: { field: FieldSpec; value: strin
     );
 }
 
-// --------------------------------------------------------------- Quick report
-
-function QuickReport({ spec, isPosting, authorName, onSubmit }: { spec: CategorySpec; isPosting: boolean; authorName: string; onSubmit: CreateFn }) {
-    const [value, setValue] = useState('');
-    const quick = spec.quick;
-    if (!quick) return null;
-
-    const needsValue = Boolean(quick.needsFieldKey);
-    const trimmed = value.trim();
-    const disabled = isPosting || (needsValue && !trimmed);
-
-    const submit = async (body: string, payload: Record<string, unknown>) => {
-        hapticTap();
-        try {
-            await onSubmit({ category: spec.id, body, authorName, payload });
-            setValue('');
-        } catch {
-            // error surfaced by the hook
-        }
-    };
-
-    return (
-        <View style={styles.quickCard}>
-            <Text style={styles.quickPrompt}>{quick.prompt}</Text>
-            {needsValue ? (
-                <TextInput
-                    value={value}
-                    onChangeText={setValue}
-                    placeholder={quick.needsFieldLabel}
-                    placeholderTextColor={colors.textSubtle}
-                    style={styles.input}
-                    maxLength={80}
-                />
-            ) : null}
-            <View style={styles.quickRow}>
-                {quick.options(trimmed).map((option) => (
-                    <Pressable
-                        key={option.label}
-                        disabled={disabled}
-                        onPress={() => void submit(option.body, option.payload)}
-                        style={({ pressed }) => [
-                            styles.quickButton,
-                            option.tone === 'positive' ? styles.quickButtonPositive : option.tone === 'negative' ? styles.quickButtonNegative : null,
-                            pressed ? styles.pressed : null,
-                            disabled ? styles.disabled : null
-                        ]}
-                    >
-                        <Text style={[
-                            styles.quickButtonText,
-                            option.tone === 'positive' ? styles.quickButtonTextPositive : option.tone === 'negative' ? styles.quickButtonTextNegative : null
-                        ]}>{option.label}</Text>
-                    </Pressable>
-                ))}
-            </View>
-        </View>
-    );
-}
-
-// ----------------------------------------------------------------- Post card
-
-function PostCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => void }) {
-    const spec = getCategorySpec(post.category);
-    const payload = post.payload ?? {};
-    const level = typeof payload.level === 'string' ? (payload.level as RuLevel) : null;
-    const description = typeof payload.descricao === 'string' ? payload.descricao : null;
-    const primaryKey = spec.primaryKey ?? 'titulo';
-
-    const detailEntries = spec.kind === 'form'
-        ? (spec.fields ?? [])
-            .filter((field) => field.key !== primaryKey && field.key !== 'descricao')
-            .map((field) => [field.key, payload[field.key]] as const)
-            .filter(([, val]) => typeof val === 'string' && val.length > 0)
-        : [];
-
-    return (
-        <View style={styles.postCard}>
-            <View style={styles.postHeader}>
-                <View style={styles.postAuthorWrap}>
-                    <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(post.authorName)}</Text></View>
-                    <Text numberOfLines={1} style={styles.postAuthor}>{post.authorName}</Text>
-                </View>
-                <View style={styles.postTimeWrap}>
-                    <Clock color={colors.textSubtle} size={12} />
-                    <Text style={styles.postTime}>{formatRelativeTime(post.createdAt)}</Text>
-                </View>
-            </View>
-
-            <Text style={styles.postBody}>{post.body}</Text>
-
-            {level ? (
-                <View style={[styles.levelTag, levelTagStyle[level]]}>
-                    <Text style={[styles.levelTagText, levelTagTextStyle[level]]}>{RU_LEVEL_LABEL[level]}</Text>
-                </View>
-            ) : null}
-
-            {detailEntries.map(([key, val]) => (
-                key === 'link' ? (
-                    <Pressable key={key} onPress={() => openLink(String(val))} style={styles.linkRow}>
-                        <ExternalLink color={colors.brand} size={14} />
-                        <Text numberOfLines={1} style={styles.linkText}>{String(val)}</Text>
-                    </Pressable>
-                ) : (
-                    <Text key={key} style={styles.detailLine}>
-                        <Text style={styles.detailLabel}>{FIELD_LABELS[key] ? `${FIELD_LABELS[key]}: ` : ''}</Text>
-                        {String(val)}
-                    </Text>
-                )
-            ))}
-
-            {description ? <Text style={styles.postDescription}>{description}</Text> : null}
-
-            {spec.kind === 'quick' ? (
-                <Pressable onPress={() => { hapticTap(); onConfirm(); }} style={({ pressed }) => [styles.confirmButton, pressed ? styles.pressed : null]}>
-                    <CheckCircle2 color={colors.brand} size={16} />
-                    <Text style={styles.confirmText}>Confirmar{post.confirmCount > 0 ? ` · ${post.confirmCount}` : ''}</Text>
-                </Pressable>
-            ) : null}
-        </View>
-    );
-}
+// ============================================================ helpers
 
 function initialsOf(name: string): string {
     const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -504,58 +581,33 @@ function openLink(url: string): void {
 function formatRelativeTime(iso: string): string {
     const then = new Date(iso).getTime();
     if (Number.isNaN(then)) return '';
-    const diffMs = Date.now() - then;
-    const minutes = Math.floor(diffMs / 60000);
+    const minutes = Math.floor((Date.now() - then) / 60000);
     if (minutes < 1) return 'agora';
     if (minutes < 60) return `há ${minutes} min`;
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `há ${hours} h`;
-    const days = Math.floor(hours / 24);
-    return `há ${days} d`;
+    return `há ${Math.floor(hours / 24)} d`;
 }
 
+const GLASS = 'rgba(255,255,255,0.16)';
+const GLASS_BORDER = 'rgba(255,255,255,0.28)';
+
 const styles = StyleSheet.create({
-    container: {
-        gap: spacing[4]
+    screen: {
+        flex: 1
     },
-    noticeCard: {
+    topBar: {
         alignItems: 'center',
-        backgroundColor: colors.successSubtle,
-        borderColor: colors.success,
-        borderRadius: radii.md,
-        borderWidth: 1,
-        flexDirection: 'row',
-        gap: spacing[3],
-        padding: spacing[4]
-    },
-    noticeText: {
-        ...typography.body,
-        color: colors.success,
-        flex: 1,
-        fontSize: 13,
-        fontWeight: '700'
-    },
-    searchBar: {
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderColor: colors.border,
-        borderRadius: radii.pill,
-        borderWidth: 1,
         flexDirection: 'row',
         gap: spacing[2],
-        paddingHorizontal: spacing[4]
-    },
-    searchInput: {
-        ...typography.body,
-        color: colors.text,
-        flex: 1,
-        paddingVertical: spacing[3]
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2]
     },
     sectionRow: {
         gap: spacing[2],
         paddingRight: spacing[2]
     },
-    sectionTab: {
+    sectionPill: {
         alignItems: 'center',
         backgroundColor: colors.surface,
         borderColor: colors.border,
@@ -566,30 +618,60 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacing[4],
         paddingVertical: spacing[2]
     },
-    sectionTabActive: {
+    sectionPillActive: {
         backgroundColor: colors.brand,
         borderColor: colors.brand
     },
-    sectionTabText: {
+    sectionPillText: {
         ...typography.label,
         color: colors.brand
     },
-    sectionTabTextActive: {
+    sectionPillTextActive: {
         color: colors.inverseText
+    },
+    searchButton: {
+        alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        height: 38,
+        justifyContent: 'center',
+        width: 38
+    },
+    searchBar: {
+        alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        flex: 1,
+        flexDirection: 'row',
+        gap: spacing[2],
+        paddingHorizontal: spacing[4]
+    },
+    searchInput: {
+        ...typography.body,
+        color: colors.text,
+        flex: 1,
+        paddingVertical: spacing[2]
+    },
+    searchCancel: {
+        ...typography.label,
+        color: colors.brand
+    },
+    chipRowWrap: {
+        flexGrow: 0
     },
     chipRow: {
         gap: spacing[2],
-        paddingRight: spacing[2]
-    },
-    wrapRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: spacing[2]
+        paddingHorizontal: spacing[4],
+        paddingBottom: spacing[2]
     },
     chip: {
         backgroundColor: colors.surface,
         borderColor: colors.border,
-        borderRadius: radii.md,
+        borderRadius: radii.pill,
         borderWidth: 1,
         paddingHorizontal: spacing[3],
         paddingVertical: spacing[2]
@@ -607,18 +689,234 @@ const styles = StyleSheet.create({
         color: colors.brand,
         fontWeight: '700'
     },
-    quickCard: {
-        backgroundColor: colors.brandSubtle,
-        borderColor: colors.brandMuted,
+    wrapRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing[2]
+    },
+    noticeCard: {
+        alignItems: 'center',
+        backgroundColor: colors.successSubtle,
+        borderColor: colors.success,
         borderRadius: radii.md,
         borderWidth: 1,
-        gap: spacing[3],
-        padding: spacing[4]
+        flexDirection: 'row',
+        gap: spacing[2],
+        marginHorizontal: spacing[4],
+        marginBottom: spacing[1],
+        padding: spacing[3]
     },
-    quickPrompt: {
+    noticeText: {
         ...typography.label,
-        color: colors.brandDark,
-        fontSize: 13
+        color: colors.success,
+        flex: 1
+    },
+    // Immersive card
+    card: {
+        borderRadius: radii.lg + 8,
+        flex: 1,
+        overflow: 'hidden',
+        ...shadows.elevated
+    },
+    cardVignette: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.12)'
+    },
+    cardInner: {
+        flex: 1,
+        justifyContent: 'space-between',
+        padding: spacing[5]
+    },
+    cardTopRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'space-between'
+    },
+    glassBadge: {
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        backgroundColor: GLASS,
+        borderColor: GLASS_BORDER,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: spacing[2],
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[2]
+    },
+    badgeEmoji: {
+        fontSize: 16
+    },
+    badgeLabel: {
+        ...typography.label,
+        color: colors.inverseText,
+        fontSize: 12
+    },
+    glassChip: {
+        alignItems: 'center',
+        backgroundColor: GLASS,
+        borderColor: GLASS_BORDER,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: spacing[2],
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[1]
+    },
+    timeText: {
+        color: 'rgba(255,255,255,0.9)',
+        fontFamily: typography.label.fontFamily,
+        fontSize: 11,
+        fontWeight: '700'
+    },
+    liveDot: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: radii.pill,
+        height: 7,
+        width: 7
+    },
+    cardCenter: {
+        flex: 1,
+        gap: spacing[3],
+        justifyContent: 'center'
+    },
+    hero: {
+        gap: spacing[3]
+    },
+    heroWord: {
+        fontFamily: typography.title.fontFamily,
+        fontSize: 46,
+        fontWeight: '900',
+        letterSpacing: -1,
+        ...textShadows.heroOnBrand
+    },
+    meter: {
+        flexDirection: 'row',
+        gap: spacing[2]
+    },
+    meterSeg: {
+        backgroundColor: 'rgba(255,255,255,0.25)',
+        borderRadius: radii.pill,
+        flex: 1,
+        height: 8
+    },
+    cardTitle: {
+        color: colors.inverseText,
+        fontFamily: typography.title.fontFamily,
+        fontSize: 26,
+        fontWeight: '800',
+        lineHeight: 32,
+        ...textShadows.heroOnBrand
+    },
+    cardTitleSmall: {
+        fontSize: 19,
+        lineHeight: 24
+    },
+    cardDescription: {
+        color: 'rgba(255,255,255,0.92)',
+        fontFamily: typography.body.fontFamily,
+        fontSize: 14,
+        lineHeight: 20
+    },
+    chipsWrap: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing[2]
+    },
+    detailChip: {
+        backgroundColor: GLASS,
+        borderColor: GLASS_BORDER,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[1]
+    },
+    detailChipText: {
+        color: colors.inverseText,
+        fontFamily: typography.body.fontFamily,
+        fontSize: 12.5,
+        fontWeight: '600'
+    },
+    linkChip: {
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        backgroundColor: '#FFFFFF',
+        borderRadius: radii.pill,
+        flexDirection: 'row',
+        gap: spacing[2],
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2]
+    },
+    linkChipText: {
+        ...typography.label,
+        color: colors.text
+    },
+    cardBottomRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'space-between'
+    },
+    authorChip: {
+        alignItems: 'center',
+        flex: 1,
+        flexDirection: 'row',
+        gap: spacing[2]
+    },
+    avatar: {
+        alignItems: 'center',
+        backgroundColor: GLASS,
+        borderColor: GLASS_BORDER,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        height: 30,
+        justifyContent: 'center',
+        width: 30
+    },
+    avatarText: {
+        color: colors.inverseText,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 11,
+        fontWeight: '800'
+    },
+    authorName: {
+        color: 'rgba(255,255,255,0.95)',
+        flexShrink: 1,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 13,
+        fontWeight: '700'
+    },
+    confirmPill: {
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: radii.pill,
+        flexDirection: 'row',
+        gap: spacing[2],
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2]
+    },
+    confirmPillText: {
+        ...typography.label,
+        color: colors.text
+    },
+    // Live compose card
+    composePrompt: {
+        color: colors.inverseText,
+        fontFamily: typography.title.fontFamily,
+        fontSize: 24,
+        fontWeight: '800',
+        lineHeight: 30,
+        ...textShadows.heroOnBrand
+    },
+    glassInput: {
+        backgroundColor: GLASS,
+        borderColor: GLASS_BORDER,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        color: colors.inverseText,
+        fontFamily: typography.body.fontFamily,
+        fontSize: 15,
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[3]
     },
     quickRow: {
         flexDirection: 'row',
@@ -626,33 +924,64 @@ const styles = StyleSheet.create({
     },
     quickButton: {
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderColor: colors.brandMuted,
+        backgroundColor: '#FFFFFF',
         borderRadius: radii.md,
-        borderWidth: 1,
         flex: 1,
         justifyContent: 'center',
         paddingVertical: spacing[3]
     },
-    quickButtonPositive: {
-        backgroundColor: colors.successSubtle,
-        borderColor: colors.successSubtle
-    },
-    quickButtonNegative: {
-        backgroundColor: colors.dangerSubtle,
-        borderColor: colors.dangerBorder
-    },
     quickButtonText: {
         ...typography.label,
-        color: colors.brand
+        color: colors.text,
+        fontSize: 13
     },
-    quickButtonTextPositive: {
-        color: colors.success
+    composeFootnote: {
+        color: 'rgba(255,255,255,0.85)',
+        fontFamily: typography.body.fontFamily,
+        fontSize: 12
     },
-    quickButtonTextNegative: {
-        color: colors.danger
+    // State cards
+    stateCard: {
+        alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.lg + 8,
+        borderWidth: 1,
+        gap: spacing[3],
+        justifyContent: 'center',
+        marginBottom: spacing[4],
+        padding: spacing[6]
     },
-    // Compose
+    stateEmoji: {
+        fontSize: 40
+    },
+    stateText: {
+        ...typography.body,
+        color: colors.textMuted,
+        textAlign: 'center'
+    },
+    // FAB
+    fab: {
+        ...shadows.elevated,
+        alignItems: 'center',
+        alignSelf: 'center',
+        backgroundColor: colors.brand,
+        borderRadius: radii.pill,
+        flexDirection: 'row',
+        gap: spacing[2],
+        paddingHorizontal: spacing[6],
+        paddingVertical: spacing[3],
+        position: 'absolute'
+    },
+    fabPressed: {
+        opacity: 0.85
+    },
+    fabText: {
+        ...typography.label,
+        color: colors.inverseText,
+        fontSize: 14
+    },
+    // Compose screen
     composeHeader: {
         alignItems: 'center',
         flexDirection: 'row',
@@ -752,129 +1081,6 @@ const styles = StyleSheet.create({
         color: colors.inverseText,
         fontSize: 14
     },
-    // Feed
-    feed: {
-        gap: spacing[3]
-    },
-    postCard: {
-        ...shadows.elevated,
-        backgroundColor: colors.surface,
-        borderColor: colors.border,
-        borderRadius: radii.md,
-        borderWidth: 1,
-        gap: spacing[2],
-        padding: spacing[4]
-    },
-    postHeader: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'space-between'
-    },
-    postAuthorWrap: {
-        alignItems: 'center',
-        flex: 1,
-        flexDirection: 'row',
-        gap: spacing[2]
-    },
-    avatar: {
-        alignItems: 'center',
-        backgroundColor: colors.brandSubtle,
-        borderRadius: radii.pill,
-        height: 28,
-        justifyContent: 'center',
-        width: 28
-    },
-    avatarText: {
-        ...typography.label,
-        color: colors.brand,
-        fontSize: 11
-    },
-    postAuthor: {
-        ...typography.label,
-        color: colors.text,
-        flex: 1
-    },
-    postTimeWrap: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        gap: spacing[1]
-    },
-    postTime: {
-        ...typography.body,
-        color: colors.textSubtle,
-        fontSize: 12
-    },
-    postBody: {
-        ...typography.title,
-        color: colors.text,
-        fontSize: 15
-    },
-    detailLine: {
-        ...typography.body,
-        color: colors.textMuted,
-        fontSize: 13
-    },
-    detailLabel: {
-        color: colors.textSubtle,
-        fontWeight: '700'
-    },
-    linkRow: {
-        alignItems: 'center',
-        alignSelf: 'flex-start',
-        flexDirection: 'row',
-        gap: spacing[2]
-    },
-    linkText: {
-        ...typography.body,
-        color: colors.brand,
-        fontSize: 13,
-        textDecorationLine: 'underline'
-    },
-    postDescription: {
-        ...typography.body,
-        color: colors.text,
-        marginTop: spacing[1]
-    },
-    levelTag: {
-        alignSelf: 'flex-start',
-        borderRadius: radii.pill,
-        paddingHorizontal: spacing[3],
-        paddingVertical: spacing[1]
-    },
-    levelTagText: {
-        ...typography.label,
-        fontSize: 11
-    },
-    confirmButton: {
-        alignItems: 'center',
-        alignSelf: 'flex-start',
-        flexDirection: 'row',
-        gap: spacing[2],
-        marginTop: spacing[1],
-        paddingVertical: spacing[1]
-    },
-    confirmText: {
-        ...typography.label,
-        color: colors.brand
-    },
-    // States
-    loadingWrap: {
-        paddingVertical: spacing[8]
-    },
-    emptyCard: {
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderColor: colors.border,
-        borderRadius: radii.md,
-        borderWidth: 1,
-        gap: spacing[3],
-        padding: spacing[8]
-    },
-    emptyText: {
-        ...typography.body,
-        color: colors.textMuted,
-        textAlign: 'center'
-    },
     errorBanner: {
         backgroundColor: colors.dangerSubtle,
         borderColor: colors.dangerBorder,
@@ -886,43 +1092,10 @@ const styles = StyleSheet.create({
         ...typography.body,
         color: colors.danger
     },
-    // FAB
-    fab: {
-        ...shadows.elevated,
-        alignItems: 'center',
-        alignSelf: 'center',
-        backgroundColor: colors.brand,
-        borderRadius: radii.pill,
-        flexDirection: 'row',
-        gap: spacing[2],
-        marginTop: spacing[2],
-        paddingHorizontal: spacing[6],
-        paddingVertical: spacing[3]
-    },
-    fabPressed: {
-        opacity: 0.85
-    },
-    fabText: {
-        ...typography.label,
-        color: colors.inverseText,
-        fontSize: 14
-    },
     pressed: {
         opacity: 0.7
     },
     disabled: {
         opacity: 0.5
     }
-});
-
-const levelTagStyle = StyleSheet.create({
-    empty: { backgroundColor: colors.successSubtle },
-    moderate: { backgroundColor: colors.warningSubtle },
-    full: { backgroundColor: colors.dangerSubtle }
-});
-
-const levelTagTextStyle = StyleSheet.create({
-    empty: { color: colors.success },
-    moderate: { color: colors.warning },
-    full: { color: colors.danger }
 });
