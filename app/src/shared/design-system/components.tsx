@@ -130,7 +130,7 @@ const textToneStyle = StyleSheet.create({
 
 const componentStyles = StyleSheet.create({
     surface: {
-        ...shadows.surface,
+        ...shadows.elevated,
         borderColor: colors.border,
         borderRadius: radii.md,
         borderWidth: 1,

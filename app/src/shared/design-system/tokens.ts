@@ -94,5 +94,16 @@ export const shadows = {
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0,
         shadowRadius: 0
+    },
+    // The lifted, slightly-3D look of the home AI CTA / profile primary
+    // action — a soft, colored shadow (not plain black) that reads as a
+    // floating card rather than a flat rectangle. Reused across every card
+    // surface so the whole app shares one consistent "elevated" language.
+    elevated: {
+        elevation: 10,
+        shadowColor: '#0B3D32',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.22,
+        shadowRadius: 20
     }
 } as const;
