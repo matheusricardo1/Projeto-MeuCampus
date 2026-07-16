@@ -99,7 +99,7 @@ function ScheduleTimelineCard({ active, index, item, onPress, t }: { active: boo
         <View style={styles.scheduleTimelineItem}>
             <View style={styles.scheduleTimelineMarkerColumn}>
                 <View style={[styles.scheduleTimelineMarker, active ? styles.scheduleTimelineMarkerActive : null]}>
-                    <Icon color={active ? '#ffffff' : '#0B6B52'} size={18} />
+                    <Icon color={active ? '#ffffff' : '#003215'} size={18} />
                 </View>
             </View>
 
