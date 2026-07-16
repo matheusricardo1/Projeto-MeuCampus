@@ -11,12 +11,12 @@ export function NotificationsPage() {
             <View style={styles.notificationsTopRow}>
                 <View style={styles.notificationsTitleRow}>
                     <View style={styles.notificationsMenuIcon}>
-                        <Menu color="#003215" size={22} />
+                        <Menu color="#0B6B52" size={22} />
                     </View>
                     <Text style={styles.notificationsTitle}>{t('notifications.title')}</Text>
                 </View>
                 <Pressable style={({ pressed }) => [styles.notificationsReadButton, pressed ? styles.pressedFeedback : null]}>
-                    <CheckCheck color="#003215" size={17} />
+                    <CheckCheck color="#0B6B52" size={17} />
                     <Text style={styles.notificationsReadButtonText}>{t('notifications.markRead')}</Text>
                 </Pressable>
             </View>
@@ -36,7 +36,7 @@ export function NotificationsPage() {
                 <Text style={styles.notificationsSectionLabel}>{t('notifications.previous')}</Text>
                 <View style={styles.notificationsHintCard}>
                     <View style={styles.notificationsHintIcon}>
-                        <Info color="#003215" size={22} />
+                        <Info color="#0B6B52" size={22} />
                     </View>
                     <View style={styles.notificationsHintText}>
                         <Text style={styles.notificationsHintTitle}>{t('notifications.emptyHistoryTitle')}</Text>
