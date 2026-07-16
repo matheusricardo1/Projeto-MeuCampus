@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Post, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Post, UseGuards, UnauthorizedException } from '@nestjs/common';
 import { AdminLoginUseCase } from '@admin/application/use-cases/admin-login.usecase';
 import { GetAdminMetricsUseCase } from '@admin/application/use-cases/get-admin-metrics.usecase';
 import { GetAiUsageTodayUseCase } from '@admin/application/use-cases/get-ai-usage-today.usecase';
 import { AdminAuthGuard } from '@admin/presentation/http/guards/admin-auth.guard';
 import { InvalidAdminCredentialsException } from '@admin/domain/exceptions/invalid-admin-credentials.exception';
 import { PushSubscriptionRepository } from '@push/infrastructure/prisma/push-subscription.repository';
+import { CommunityPostRepository } from '@community/infrastructure/prisma/community-post.repository';
 
 interface PushSubscribeRequest {
     endpoint?: string;
@@ -17,7 +18,8 @@ export class AdminController {
         private readonly adminLoginUseCase: AdminLoginUseCase,
         private readonly getAdminMetricsUseCase: GetAdminMetricsUseCase,
         private readonly getAiUsageTodayUseCase: GetAiUsageTodayUseCase,
-        private readonly pushSubscriptionRepository: PushSubscriptionRepository
+        private readonly pushSubscriptionRepository: PushSubscriptionRepository,
+        private readonly communityPostRepository: CommunityPostRepository
     ) {}
 
     @Post('auth/login')
@@ -78,5 +80,43 @@ export class AdminController {
         }
 
         await this.pushSubscriptionRepository.remove(body.endpoint);
+    }
+
+    // --- Community moderation -------------------------------------------------
+
+    @Get('community/pending')
+    @UseGuards(AdminAuthGuard)
+    async pendingCommunityPosts() {
+        const posts = await this.communityPostRepository.listPending();
+        return posts.map((post) => ({
+            id: post.id,
+            authorName: post.authorName,
+            category: post.category,
+            body: post.body,
+            payload: post.payload,
+            createdAt: post.createdAt.toISOString()
+        }));
+    }
+
+    @Post('community/:id/approve')
+    @UseGuards(AdminAuthGuard)
+    @HttpCode(200)
+    async approveCommunityPost(@Param('id') id: string) {
+        const ok = await this.communityPostRepository.setStatus(id, 'APPROVED');
+        if (!ok) {
+            throw new NotFoundException('Post nao encontrado.');
+        }
+        return { status: 'ok' };
+    }
+
+    @Post('community/:id/reject')
+    @UseGuards(AdminAuthGuard)
+    @HttpCode(200)
+    async rejectCommunityPost(@Param('id') id: string) {
+        const ok = await this.communityPostRepository.setStatus(id, 'REJECTED');
+        if (!ok) {
+            throw new NotFoundException('Post nao encontrado.');
+        }
+        return { status: 'ok' };
     }
 }

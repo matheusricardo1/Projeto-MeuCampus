@@ -139,6 +139,44 @@ export async function unsubscribeFromPush(token: string, endpoint: string): Prom
     });
 }
 
+export interface PendingCommunityPost {
+    id: string;
+    authorName: string;
+    category: string;
+    body: string;
+    payload: Record<string, unknown> | null;
+    createdAt: string;
+}
+
+export async function fetchPendingCommunityPosts(token: string): Promise<PendingCommunityPost[]> {
+    const response = await fetch(`${getApiBaseUrl()}/admin/community/pending`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (response.status === 401) {
+        throw new AdminUnauthorizedError();
+    }
+    if (!response.ok) {
+        throw new Error('Nao foi possivel carregar os anuncios pendentes.');
+    }
+
+    return response.json() as Promise<PendingCommunityPost[]>;
+}
+
+export async function moderateCommunityPost(token: string, id: string, action: 'approve' | 'reject'): Promise<void> {
+    const response = await fetch(`${getApiBaseUrl()}/admin/community/${encodeURIComponent(id)}/${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (response.status === 401) {
+        throw new AdminUnauthorizedError();
+    }
+    if (!response.ok) {
+        throw new Error('Nao foi possivel atualizar o anuncio.');
+    }
+}
+
 export function connectAdminLiveUsers(token: string, onCount: (count: number) => void): () => void {
     const socket: Socket = io(`${new URL(getApiBaseUrl()).origin}/admin`, {
         auth: { token },

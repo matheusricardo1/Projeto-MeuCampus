@@ -14,6 +14,24 @@ export function isCommunityCategory(value: unknown): value is CommunityCategory 
     return typeof value === 'string' && (COMMUNITY_CATEGORIES as readonly string[]).includes(value);
 }
 
+export type CommunityPostStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+/**
+ * Real-time crowdsourcing signals must appear instantly — waiting on admin
+ * approval would defeat the whole point ("a fila do RU está lotada" is useless
+ * an hour later). Everything else (marketplace/divulgação/oportunidades) is a
+ * durable announcement and goes through moderation.
+ */
+const REALTIME_CATEGORIES: readonly CommunityCategory[] = ['BOLSA', 'ENERGIA', 'FILA_RU'];
+
+export function isRealtimeCategory(category: CommunityCategory): boolean {
+    return REALTIME_CATEGORIES.includes(category);
+}
+
+export function initialStatusFor(category: CommunityCategory): CommunityPostStatus {
+    return isRealtimeCategory(category) ? 'APPROVED' : 'PENDING';
+}
+
 /** Category-specific structured fields, persisted as JSON alongside the free-text body. */
 export type CommunityPayload = Record<string, unknown>;
 
@@ -22,6 +40,7 @@ export interface CommunityPost {
     authorId: string;
     authorName: string;
     category: CommunityCategory;
+    status: CommunityPostStatus;
     body: string;
     payload: CommunityPayload | null;
     confirmCount: number;

@@ -3,8 +3,10 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/shared/prisma/prisma.service';
 import {
     COMMUNITY_FEED_WINDOW_HOURS,
+    initialStatusFor,
     type CommunityCategory,
     type CommunityPost,
+    type CommunityPostStatus,
     type CreateCommunityPostInput
 } from '@community/domain/community-post.entity';
 
@@ -13,6 +15,7 @@ interface CommunityPostRow {
     authorId: string;
     authorName: string;
     category: CommunityCategory;
+    status: CommunityPostStatus;
     body: string;
     payload: Prisma.JsonValue | null;
     confirmCount: number;
@@ -31,6 +34,9 @@ export class CommunityPostRepository {
                 authorId: input.authorId,
                 authorName: input.authorName,
                 category: input.category,
+                // Real-time signals are public instantly; announcements wait for
+                // admin approval. Derived here so callers can't bypass it.
+                status: initialStatusFor(input.category),
                 body: input.body,
                 // Only set payload when present — exactOptionalPropertyTypes rejects
                 // an explicit `undefined`, and null would clobber the JSON column.
@@ -41,15 +47,32 @@ export class CommunityPostRepository {
         return toDomain(row);
     }
 
-    /** Recent reports for a category (or all categories) within its freshness window. */
+    /** Public feed: only APPROVED posts for a category (or all) within its window. */
     async listByCategory(category?: CommunityCategory): Promise<CommunityPost[]> {
         const rows = await this.prisma.communityPost.findMany({
-            where: this.freshnessWhere(category),
+            where: { status: 'APPROVED', ...this.freshnessWhere(category) },
             orderBy: { createdAt: 'desc' },
             take: MAX_FEED_ITEMS
         });
 
         return rows.map(toDomain);
+    }
+
+    /** Moderation queue: pending announcements, oldest first (FIFO review). */
+    async listPending(): Promise<CommunityPost[]> {
+        const rows = await this.prisma.communityPost.findMany({
+            where: { status: 'PENDING' },
+            orderBy: { createdAt: 'asc' },
+            take: MAX_FEED_ITEMS
+        });
+
+        return rows.map(toDomain);
+    }
+
+    /** Approve/reject a post (admin). Returns false if the post no longer exists. */
+    async setStatus(postId: string, status: CommunityPostStatus): Promise<boolean> {
+        const result = await this.prisma.communityPost.updateMany({ where: { id: postId }, data: { status } });
+        return result.count > 0;
     }
 
     /**
@@ -118,6 +141,7 @@ function toDomain(row: CommunityPostRow): CommunityPost {
         authorId: row.authorId,
         authorName: row.authorName,
         category: row.category,
+        status: row.status,
         body: row.body,
         payload: (row.payload as CommunityPost['payload']) ?? null,
         confirmCount: row.confirmCount,

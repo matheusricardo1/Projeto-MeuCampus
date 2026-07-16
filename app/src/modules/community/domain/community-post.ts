@@ -8,10 +8,13 @@ export type CommunityCategory = (typeof COMMUNITY_CATEGORIES)[number];
 
 export type RuLevel = 'empty' | 'moderate' | 'full';
 
+export type CommunityPostStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export interface CommunityPost {
     id: string;
     authorName: string;
     category: CommunityCategory;
+    status: CommunityPostStatus;
     body: string;
     payload: Record<string, unknown> | null;
     confirmCount: number;

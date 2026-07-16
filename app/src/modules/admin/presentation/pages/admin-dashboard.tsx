@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRootNavigationState, useRouter } from 'expo-router';
-import { Activity, Bell, BellRing, Coins, CreditCard, LogOut, TrendingUp, Users, Wallet } from 'lucide-react-native';
+import { Activity, Bell, BellRing, Check, Coins, CreditCard, LogOut, ShieldCheck, TrendingUp, Users, Wallet, X } from 'lucide-react-native';
 import { colors, fonts, radii, spacing } from '@/shared/design-system';
 import { SkeletonBlock } from '@/modules/academic/presentation/views/components';
-import { AdminUnauthorizedError, connectAdminLiveUsers, fetchAdminMetrics, fetchAiUsageToday, type AdminMetrics, type AiUsageToday } from '@/modules/admin/infrastructure/admin-api';
+import { AdminUnauthorizedError, connectAdminLiveUsers, fetchAdminMetrics, fetchAiUsageToday, fetchPendingCommunityPosts, moderateCommunityPost, type AdminMetrics, type AiUsageToday, type PendingCommunityPost } from '@/modules/admin/infrastructure/admin-api';
 import { clearAdminToken, getAdminToken } from '@/modules/admin/infrastructure/admin-token-store';
 import { disableOwnerPushNotifications, enableOwnerPushNotifications, getPushSubscriptionState, type PushSubscriptionState } from '@/modules/admin/infrastructure/push-subscription';
 import { AiUsageChart } from '@/modules/admin/presentation/components/ai-usage-chart';
@@ -27,6 +27,8 @@ export function AdminDashboardPage() {
     const rootNavigationState = useRootNavigationState();
     const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
     const [aiUsageToday, setAiUsageToday] = useState<AiUsageToday | null>(null);
+    const [pendingPosts, setPendingPosts] = useState<PendingCommunityPost[]>([]);
+    const [moderatingId, setModeratingId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [pushState, setPushState] = useState<PushSubscriptionState>('unsupported');
     const [isTogglingPush, setIsTogglingPush] = useState(false);
@@ -46,12 +48,14 @@ export function AdminDashboardPage() {
         }
 
         try {
-            const [metricsData, usageData] = await Promise.all([
+            const [metricsData, usageData, pendingData] = await Promise.all([
                 fetchAdminMetrics(token),
-                fetchAiUsageToday(token)
+                fetchAiUsageToday(token),
+                fetchPendingCommunityPosts(token)
             ]);
             setMetrics(metricsData);
             setAiUsageToday(usageData);
+            setPendingPosts(pendingData);
             setError(null);
         } catch (fetchError) {
             if (fetchError instanceof AdminUnauthorizedError) {
@@ -102,6 +106,24 @@ export function AdminDashboardPage() {
             setIsTogglingPush(false);
         }
     }, [isTogglingPush, logout, pushState]);
+
+    const moderate = useCallback(async (id: string, action: 'approve' | 'reject') => {
+        const token = getAdminToken();
+        if (!token || moderatingId) return;
+
+        setModeratingId(id);
+        try {
+            await moderateCommunityPost(token, id, action);
+            setPendingPosts((current) => current.filter((post) => post.id !== id));
+        } catch (moderateError) {
+            if (moderateError instanceof AdminUnauthorizedError) {
+                logout();
+                return;
+            }
+        } finally {
+            setModeratingId(null);
+        }
+    }, [logout, moderatingId]);
 
     if (error) {
         return (
@@ -191,9 +213,57 @@ export function AdminDashboardPage() {
                     </View>
 
                     {aiUsageToday ? <AiUsageChart usage={aiUsageToday} /> : null}
+
+                    <View style={styles.moderationHeaderRow}>
+                        <ShieldCheck color={colors.brand} size={18} />
+                        <Text style={styles.moderationTitle}>Moderação da Comunidade</Text>
+                        {pendingPosts.length > 0 ? (
+                            <View style={styles.pendingBadge}><Text style={styles.pendingBadgeText}>{pendingPosts.length}</Text></View>
+                        ) : null}
+                    </View>
+                    {pendingPosts.length === 0 ? (
+                        <View style={styles.moderationEmpty}>
+                            <Text style={styles.moderationEmptyText}>Nenhum anúncio aguardando aprovação.</Text>
+                        </View>
+                    ) : (
+                        <View style={styles.moderationList}>
+                            {pendingPosts.map((post) => (
+                                <PendingCard key={post.id} post={post} busy={moderatingId === post.id} onModerate={(action) => void moderate(post.id, action)} />
+                            ))}
+                        </View>
+                    )}
                 </>
             )}
         </ScrollView>
+    );
+}
+
+function PendingCard({ post, busy, onModerate }: { post: PendingCommunityPost; busy: boolean; onModerate: (action: 'approve' | 'reject') => void }) {
+    const details = Object.entries(post.payload ?? {})
+        .filter(([key, val]) => key !== 'titulo' && key !== 'descricao' && typeof val === 'string' && val.length > 0)
+        .map(([key, val]) => `${key}: ${String(val)}`);
+    const description = typeof post.payload?.descricao === 'string' ? post.payload.descricao : null;
+
+    return (
+        <View style={styles.pendingCard}>
+            <View style={styles.pendingTopRow}>
+                <Text style={styles.pendingCategory}>{post.category}</Text>
+                <Text style={styles.pendingAuthor}>{post.authorName}</Text>
+            </View>
+            <Text style={styles.pendingBody}>{post.body}</Text>
+            {details.length > 0 ? <Text style={styles.pendingDetails}>{details.join('  ·  ')}</Text> : null}
+            {description ? <Text style={styles.pendingDescription}>{description}</Text> : null}
+            <View style={styles.pendingActions}>
+                <Pressable disabled={busy} onPress={() => onModerate('reject')} style={({ pressed }) => [styles.rejectButton, pressed ? styles.pressedFeedback : null, busy ? styles.pressedFeedback : null]}>
+                    <X color={colors.danger} size={16} />
+                    <Text style={styles.rejectText}>Rejeitar</Text>
+                </Pressable>
+                <Pressable disabled={busy} onPress={() => onModerate('approve')} style={({ pressed }) => [styles.approveButton, pressed ? styles.pressedFeedback : null, busy ? styles.pressedFeedback : null]}>
+                    <Check color={colors.inverseText} size={16} />
+                    <Text style={styles.approveText}>Aprovar</Text>
+                </Pressable>
+            </View>
+        </View>
     );
 }
 
@@ -357,5 +427,128 @@ const styles = StyleSheet.create({
     },
     pressedFeedback: {
         opacity: 0.7
+    },
+    moderationHeaderRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing[2],
+        marginTop: spacing[2]
+    },
+    moderationTitle: {
+        color: colors.brandDark,
+        fontFamily: fonts.medium,
+        fontSize: 17,
+        fontWeight: '800'
+    },
+    pendingBadge: {
+        alignItems: 'center',
+        backgroundColor: colors.warning,
+        borderRadius: radii.pill,
+        justifyContent: 'center',
+        minWidth: 22,
+        paddingHorizontal: 7,
+        paddingVertical: 2
+    },
+    pendingBadgeText: {
+        color: colors.inverseText,
+        fontFamily: fonts.medium,
+        fontSize: 12,
+        fontWeight: '800'
+    },
+    moderationEmpty: {
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        padding: spacing[4]
+    },
+    moderationEmptyText: {
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
+        fontSize: 13,
+        textAlign: 'center'
+    },
+    moderationList: {
+        gap: spacing[3]
+    },
+    pendingCard: {
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        gap: spacing[2],
+        padding: spacing[4]
+    },
+    pendingTopRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'space-between'
+    },
+    pendingCategory: {
+        color: colors.brand,
+        fontFamily: fonts.medium,
+        fontSize: 11,
+        fontWeight: '800',
+        textTransform: 'uppercase'
+    },
+    pendingAuthor: {
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
+        fontSize: 12
+    },
+    pendingBody: {
+        color: colors.text,
+        fontFamily: fonts.medium,
+        fontSize: 15,
+        fontWeight: '700'
+    },
+    pendingDetails: {
+        color: colors.textMuted,
+        fontFamily: fonts.sans,
+        fontSize: 12.5
+    },
+    pendingDescription: {
+        color: colors.text,
+        fontFamily: fonts.sans,
+        fontSize: 13
+    },
+    pendingActions: {
+        flexDirection: 'row',
+        gap: spacing[2],
+        marginTop: spacing[1]
+    },
+    rejectButton: {
+        alignItems: 'center',
+        backgroundColor: colors.dangerSubtle,
+        borderColor: colors.dangerBorder,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        flex: 1,
+        flexDirection: 'row',
+        gap: spacing[2],
+        justifyContent: 'center',
+        paddingVertical: spacing[3]
+    },
+    rejectText: {
+        color: colors.danger,
+        fontFamily: fonts.medium,
+        fontSize: 13,
+        fontWeight: '800'
+    },
+    approveButton: {
+        alignItems: 'center',
+        backgroundColor: colors.brand,
+        borderRadius: radii.md,
+        flex: 1,
+        flexDirection: 'row',
+        gap: spacing[2],
+        justifyContent: 'center',
+        paddingVertical: spacing[3]
+    },
+    approveText: {
+        color: colors.inverseText,
+        fontFamily: fonts.medium,
+        fontSize: 13,
+        fontWeight: '800'
     }
 });

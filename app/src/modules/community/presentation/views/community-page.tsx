@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { CheckCircle2, ExternalLink, Info, Users } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, Clock, ExternalLink, Plus, Search, Send, Users } from 'lucide-react-native';
 import { colors, radii, shadows, spacing, textShadows, typography } from '@/shared/design-system';
 import { hapticTap } from '@/shared/haptics';
 import { useCommunity } from '@/modules/community/presentation/hooks/use-community';
@@ -14,14 +14,74 @@ import {
     type FieldSpec,
     type SectionSpec
 } from '@/modules/community/domain/community-catalog';
-import type { CommunityPost, RuLevel } from '@/modules/community/domain/community-post';
+import type { CommunityCategory, CommunityPost, RuLevel } from '@/modules/community/domain/community-post';
 
-type SubmitFn = (input: { body: string; authorName: string; payload?: Record<string, unknown> | null }) => Promise<void>;
+type CreateFn = (input: { category: CommunityCategory; body: string; authorName: string; payload?: Record<string, unknown> | null }) => Promise<CommunityPost>;
+
+const ANNOUNCEMENT_SECTIONS = COMMUNITY_SECTIONS.filter((section) => section.categories.every((cat) => cat.kind === 'form'));
 
 export function CommunityPage({ authorName }: { authorName: string }) {
     const community = useCommunity('FILA_RU');
+    const [composeCategory, setComposeCategory] = useState<CommunityCategory | null>(null);
+    const [notice, setNotice] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!notice) return;
+        const timer = setTimeout(() => setNotice(null), 5000);
+        return () => clearTimeout(timer);
+    }, [notice]);
+
+    if (composeCategory) {
+        return (
+            <ComposeScreen
+                initialCategory={composeCategory}
+                authorName={authorName}
+                isPosting={community.isPosting}
+                error={community.error}
+                onSubmit={community.createPost}
+                onCancel={() => setComposeCategory(null)}
+                onDone={(status) => {
+                    setComposeCategory(null);
+                    setNotice(status === 'APPROVED'
+                        ? 'Publicado! Já está visível na comunidade.'
+                        : 'Anúncio enviado! Ficará visível assim que um administrador aprovar.');
+                }}
+            />
+        );
+    }
+
+    return (
+        <BrowseView
+            community={community}
+            authorName={authorName}
+            notice={notice}
+            onDismissNotice={() => setNotice(null)}
+            onCompose={(category) => { hapticTap(); setComposeCategory(category); }}
+        />
+    );
+}
+
+// ---------------------------------------------------------------- Browse view
+
+function BrowseView({
+    community,
+    authorName,
+    notice,
+    onDismissNotice,
+    onCompose
+}: {
+    community: ReturnType<typeof useCommunity>;
+    authorName: string;
+    notice: string | null;
+    onDismissNotice: () => void;
+    onCompose: (category: CommunityCategory) => void;
+}) {
+    const [query, setQuery] = useState('');
     const activeSection = getSectionOf(community.category);
     const activeCategory = getCategorySpec(community.category);
+    const isAnnouncement = activeCategory.kind === 'form';
+
+    const filteredPosts = useMemo(() => filterPosts(community.posts, query), [community.posts, query]);
 
     const selectSection = (section: SectionSpec) => {
         const first = section.categories[0];
@@ -33,11 +93,23 @@ export function CommunityPage({ authorName }: { authorName: string }) {
 
     return (
         <View style={styles.container}>
-            <View style={styles.disclaimerCard}>
-                <Info color={colors.brand} size={18} />
-                <Text style={styles.disclaimerText}>
-                    Mural colaborativo dos alunos — não são informações oficiais da UFAM. Ajude confirmando os relatos e mantendo os anúncios atualizados.
-                </Text>
+            {notice ? (
+                <Pressable onPress={onDismissNotice} style={styles.noticeCard}>
+                    <CheckCircle2 color={colors.success} size={18} />
+                    <Text style={styles.noticeText}>{notice}</Text>
+                </Pressable>
+            ) : null}
+
+            <View style={styles.searchBar}>
+                <Search color={colors.textSubtle} size={18} />
+                <TextInput
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="Buscar na comunidade..."
+                    placeholderTextColor={colors.textSubtle}
+                    style={styles.searchInput}
+                    returnKeyType="search"
+                />
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sectionRow}>
@@ -72,9 +144,11 @@ export function CommunityPage({ authorName }: { authorName: string }) {
                 })}
             </ScrollView>
 
-            {activeCategory.kind === 'quick'
-                ? <QuickComposer key={activeCategory.id} spec={activeCategory} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />
-                : <FormComposer key={activeCategory.id} spec={activeCategory} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />}
+            {/* Crowdsourcing keeps an instant inline report; announcements are
+                view-only here and post through the Anunciar button below. */}
+            {activeCategory.kind === 'quick' ? (
+                <QuickReport spec={activeCategory} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />
+            ) : null}
 
             {community.error ? (
                 <View style={styles.errorBanner}>
@@ -86,79 +160,133 @@ export function CommunityPage({ authorName }: { authorName: string }) {
                 <View style={styles.loadingWrap}>
                     <ActivityIndicator color={colors.brand} />
                 </View>
-            ) : community.posts.length === 0 ? (
+            ) : filteredPosts.length === 0 ? (
                 <View style={styles.emptyCard}>
                     <Users color={colors.textSubtle} size={28} />
-                    <Text style={styles.emptyText}>Nada por aqui ainda. Seja o primeiro a compartilhar com a comunidade.</Text>
+                    <Text style={styles.emptyText}>
+                        {query ? 'Nada encontrado para essa busca.' : isAnnouncement ? 'Nenhum anúncio por aqui ainda.' : 'Nada por aqui ainda. Seja o primeiro a compartilhar.'}
+                    </Text>
                 </View>
             ) : (
                 <View style={styles.feed}>
-                    {community.posts.map((post) => (
+                    {filteredPosts.map((post) => (
                         <PostCard key={post.id} post={post} onConfirm={() => community.confirmPost(post.id)} />
                     ))}
                 </View>
             )}
+
+            {isAnnouncement ? (
+                <Pressable
+                    onPress={() => onCompose(community.category)}
+                    style={({ pressed }) => [styles.fab, pressed ? styles.fabPressed : null]}
+                >
+                    <Plus color={colors.inverseText} size={20} />
+                    <Text style={styles.fabText}>Anunciar</Text>
+                </Pressable>
+            ) : null}
         </View>
     );
 }
 
-function QuickComposer({ spec, isPosting, authorName, onSubmit }: { spec: CategorySpec; isPosting: boolean; authorName: string; onSubmit: SubmitFn }) {
-    const [value, setValue] = useState('');
-    const quick = spec.quick;
-    if (!quick) return null;
+function filterPosts(posts: CommunityPost[], query: string): CommunityPost[] {
+    const q = query.trim().toLocaleLowerCase('pt-BR');
+    if (!q) return posts;
+    return posts.filter((post) => {
+        const haystack = [post.body, post.authorName, ...Object.values(post.payload ?? {}).map((v) => String(v))]
+            .join(' ')
+            .toLocaleLowerCase('pt-BR');
+        return haystack.includes(q);
+    });
+}
 
-    const needsValue = Boolean(quick.needsFieldKey);
-    const trimmed = value.trim();
-    const disabled = isPosting || (needsValue && !trimmed);
+// --------------------------------------------------------------- Compose flow
 
-    const submit = async (body: string, payload: Record<string, unknown>) => {
-        hapticTap();
-        try {
-            await onSubmit({ body, authorName, payload });
-            setValue('');
-        } catch {
-            // error surfaced by the hook
-        }
-    };
+function ComposeScreen({
+    initialCategory,
+    authorName,
+    isPosting,
+    error,
+    onSubmit,
+    onCancel,
+    onDone
+}: {
+    initialCategory: CommunityCategory;
+    authorName: string;
+    isPosting: boolean;
+    error: string | null;
+    onSubmit: CreateFn;
+    onCancel: () => void;
+    onDone: (status: CommunityPost['status']) => void;
+}) {
+    const [category, setCategory] = useState<CommunityCategory>(initialCategory);
+    const activeSection = getSectionOf(category);
+    const spec = getCategorySpec(category);
 
     return (
-        <View style={styles.composer}>
-            <Text style={styles.composerTitle}>{quick.prompt}</Text>
-            {needsValue ? (
-                <TextInput
-                    value={value}
-                    onChangeText={setValue}
-                    placeholder={quick.needsFieldLabel}
-                    placeholderTextColor={colors.textSubtle}
-                    style={styles.input}
-                    maxLength={80}
-                />
-            ) : null}
-            <View style={styles.quickRow}>
-                {quick.options(trimmed).map((option) => (
-                    <Pressable
-                        key={option.label}
-                        disabled={disabled}
-                        onPress={() => void submit(option.body, option.payload)}
-                        style={({ pressed }) => [
-                            styles.quickButton,
-                            option.tone === 'positive' ? styles.quickButtonPositive : option.tone === 'negative' ? styles.quickButtonNegative : null,
-                            pressed ? styles.pressed : null,
-                            disabled ? styles.disabled : null
-                        ]}
-                    >
-                        <Text style={[
-                            styles.quickButtonText,
-                            option.tone === 'positive' ? styles.quickButtonTextPositive : option.tone === 'negative' ? styles.quickButtonTextNegative : null
-                        ]}>{option.label}</Text>
-                    </Pressable>
-                ))}
+        <View style={styles.container}>
+            <View style={styles.composeHeader}>
+                <Pressable onPress={() => { hapticTap(); onCancel(); }} style={({ pressed }) => [styles.backButton, pressed ? styles.pressed : null]}>
+                    <ArrowLeft color={colors.text} size={20} />
+                </Pressable>
+                <Text style={styles.composeTitle}>Novo anúncio</Text>
             </View>
+
+            <Text style={styles.composeHint}>Escolha a categoria e preencha os detalhes. Seu anúncio passa por aprovação antes de aparecer para todos.</Text>
+
+            {ANNOUNCEMENT_SECTIONS.map((section) => (
+                <View key={section.id} style={styles.composeSectionBlock}>
+                    <Text style={styles.composeSectionLabel}>{section.label}</Text>
+                    <View style={styles.wrapRow}>
+                        {section.categories.map((cat) => {
+                            const active = cat.id === category;
+                            return (
+                                <Pressable
+                                    key={cat.id}
+                                    onPress={() => { hapticTap(); setCategory(cat.id); }}
+                                    style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
+                                >
+                                    <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{cat.label}</Text>
+                                </Pressable>
+                            );
+                        })}
+                    </View>
+                </View>
+            ))}
+
+            <FormComposer
+                key={spec.id}
+                spec={spec}
+                sectionLabel={activeSection.label}
+                isPosting={isPosting}
+                authorName={authorName}
+                onSubmit={onSubmit}
+                onDone={onDone}
+            />
+
+            {error ? (
+                <View style={styles.errorBanner}>
+                    <Text style={styles.errorText}>{error}</Text>
+                </View>
+            ) : null}
         </View>
     );
 }
 
-function FormComposer({ spec, isPosting, authorName, onSubmit }: { spec: CategorySpec; isPosting: boolean; authorName: string; onSubmit: SubmitFn }) {
+function FormComposer({
+    spec,
+    sectionLabel,
+    isPosting,
+    authorName,
+    onSubmit,
+    onDone
+}: {
+    spec: CategorySpec;
+    sectionLabel: string;
+    isPosting: boolean;
+    authorName: string;
+    onSubmit: CreateFn;
+    onDone: (status: CommunityPost['status']) => void;
+}) {
     const fields = spec.fields ?? [];
     const [values, setValues] = useState<Record<string, string>>({});
 
@@ -177,16 +305,17 @@ function FormComposer({ spec, isPosting, authorName, onSubmit }: { spec: Categor
         }
         const body = (values[primaryKey] ?? '').trim() || spec.label;
         try {
-            await onSubmit({ body, authorName, payload });
+            const created = await onSubmit({ category: spec.id, body, authorName, payload });
             setValues({});
+            onDone(created.status);
         } catch {
-            // error surfaced by the hook
+            // error surfaced by the hook / compose screen
         }
     };
 
     return (
         <View style={styles.composer}>
-            <Text style={styles.composerTitle}>Publicar em {spec.label}</Text>
+            <Text style={styles.composerTitle}>{spec.label} · {sectionLabel}</Text>
             {fields.map((field) => (
                 <FieldInput key={field.key} field={field} value={values[field.key] ?? ''} onChange={(val) => setField(field.key, val)} />
             ))}
@@ -195,7 +324,8 @@ function FormComposer({ spec, isPosting, authorName, onSubmit }: { spec: Categor
                 onPress={() => void submit()}
                 style={({ pressed }) => [styles.submitButton, pressed ? styles.pressed : null, disabled ? styles.disabled : null]}
             >
-                <Text style={styles.submitButtonText}>Publicar</Text>
+                <Send color={colors.inverseText} size={16} />
+                <Text style={styles.submitButtonText}>Enviar para aprovação</Text>
             </Pressable>
         </View>
     );
@@ -237,6 +367,66 @@ function FieldInput({ field, value, onChange }: { field: FieldSpec; value: strin
     );
 }
 
+// --------------------------------------------------------------- Quick report
+
+function QuickReport({ spec, isPosting, authorName, onSubmit }: { spec: CategorySpec; isPosting: boolean; authorName: string; onSubmit: CreateFn }) {
+    const [value, setValue] = useState('');
+    const quick = spec.quick;
+    if (!quick) return null;
+
+    const needsValue = Boolean(quick.needsFieldKey);
+    const trimmed = value.trim();
+    const disabled = isPosting || (needsValue && !trimmed);
+
+    const submit = async (body: string, payload: Record<string, unknown>) => {
+        hapticTap();
+        try {
+            await onSubmit({ category: spec.id, body, authorName, payload });
+            setValue('');
+        } catch {
+            // error surfaced by the hook
+        }
+    };
+
+    return (
+        <View style={styles.quickCard}>
+            <Text style={styles.quickPrompt}>{quick.prompt}</Text>
+            {needsValue ? (
+                <TextInput
+                    value={value}
+                    onChangeText={setValue}
+                    placeholder={quick.needsFieldLabel}
+                    placeholderTextColor={colors.textSubtle}
+                    style={styles.input}
+                    maxLength={80}
+                />
+            ) : null}
+            <View style={styles.quickRow}>
+                {quick.options(trimmed).map((option) => (
+                    <Pressable
+                        key={option.label}
+                        disabled={disabled}
+                        onPress={() => void submit(option.body, option.payload)}
+                        style={({ pressed }) => [
+                            styles.quickButton,
+                            option.tone === 'positive' ? styles.quickButtonPositive : option.tone === 'negative' ? styles.quickButtonNegative : null,
+                            pressed ? styles.pressed : null,
+                            disabled ? styles.disabled : null
+                        ]}
+                    >
+                        <Text style={[
+                            styles.quickButtonText,
+                            option.tone === 'positive' ? styles.quickButtonTextPositive : option.tone === 'negative' ? styles.quickButtonTextNegative : null
+                        ]}>{option.label}</Text>
+                    </Pressable>
+                ))}
+            </View>
+        </View>
+    );
+}
+
+// ----------------------------------------------------------------- Post card
+
 function PostCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => void }) {
     const spec = getCategorySpec(post.category);
     const payload = post.payload ?? {};
@@ -244,8 +434,6 @@ function PostCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => v
     const description = typeof payload.descricao === 'string' ? payload.descricao : null;
     const primaryKey = spec.primaryKey ?? 'titulo';
 
-    // Detail lines: every payload field except the ones already shown (body,
-    // description, and crowdsourcing internals reflected in the body).
     const detailEntries = spec.kind === 'form'
         ? (spec.fields ?? [])
             .filter((field) => field.key !== primaryKey && field.key !== 'descricao')
@@ -256,9 +444,16 @@ function PostCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => v
     return (
         <View style={styles.postCard}>
             <View style={styles.postHeader}>
-                <Text numberOfLines={1} style={styles.postAuthor}>{post.authorName}</Text>
-                <Text style={styles.postTime}>{formatRelativeTime(post.createdAt)}</Text>
+                <View style={styles.postAuthorWrap}>
+                    <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(post.authorName)}</Text></View>
+                    <Text numberOfLines={1} style={styles.postAuthor}>{post.authorName}</Text>
+                </View>
+                <View style={styles.postTimeWrap}>
+                    <Clock color={colors.textSubtle} size={12} />
+                    <Text style={styles.postTime}>{formatRelativeTime(post.createdAt)}</Text>
+                </View>
             </View>
+
             <Text style={styles.postBody}>{post.body}</Text>
 
             {level ? (
@@ -293,6 +488,14 @@ function PostCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => v
     );
 }
 
+function initialsOf(name: string): string {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    const first = parts[0]![0] ?? '';
+    const last = parts.length > 1 ? parts[parts.length - 1]![0] ?? '' : '';
+    return (first + last).toLocaleUpperCase('pt-BR');
+}
+
 function openLink(url: string): void {
     const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
     void Linking.openURL(normalized).catch(() => undefined);
@@ -315,19 +518,38 @@ const styles = StyleSheet.create({
     container: {
         gap: spacing[4]
     },
-    disclaimerCard: {
-        alignItems: 'flex-start',
-        backgroundColor: colors.brandSubtle,
+    noticeCard: {
+        alignItems: 'center',
+        backgroundColor: colors.successSubtle,
+        borderColor: colors.success,
         borderRadius: radii.md,
+        borderWidth: 1,
         flexDirection: 'row',
         gap: spacing[3],
         padding: spacing[4]
     },
-    disclaimerText: {
+    noticeText: {
         ...typography.body,
-        color: colors.textMuted,
+        color: colors.success,
         flex: 1,
-        fontSize: 13
+        fontSize: 13,
+        fontWeight: '700'
+    },
+    searchBar: {
+        alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: spacing[2],
+        paddingHorizontal: spacing[4]
+    },
+    searchInput: {
+        ...typography.body,
+        color: colors.text,
+        flex: 1,
+        paddingVertical: spacing[3]
     },
     sectionRow: {
         gap: spacing[2],
@@ -359,6 +581,11 @@ const styles = StyleSheet.create({
         gap: spacing[2],
         paddingRight: spacing[2]
     },
+    wrapRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing[2]
+    },
     chip: {
         backgroundColor: colors.surface,
         borderColor: colors.border,
@@ -379,6 +606,85 @@ const styles = StyleSheet.create({
     chipTextActive: {
         color: colors.brand,
         fontWeight: '700'
+    },
+    quickCard: {
+        backgroundColor: colors.brandSubtle,
+        borderColor: colors.brandMuted,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        gap: spacing[3],
+        padding: spacing[4]
+    },
+    quickPrompt: {
+        ...typography.label,
+        color: colors.brandDark,
+        fontSize: 13
+    },
+    quickRow: {
+        flexDirection: 'row',
+        gap: spacing[2]
+    },
+    quickButton: {
+        alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.brandMuted,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        flex: 1,
+        justifyContent: 'center',
+        paddingVertical: spacing[3]
+    },
+    quickButtonPositive: {
+        backgroundColor: colors.successSubtle,
+        borderColor: colors.successSubtle
+    },
+    quickButtonNegative: {
+        backgroundColor: colors.dangerSubtle,
+        borderColor: colors.dangerBorder
+    },
+    quickButtonText: {
+        ...typography.label,
+        color: colors.brand
+    },
+    quickButtonTextPositive: {
+        color: colors.success
+    },
+    quickButtonTextNegative: {
+        color: colors.danger
+    },
+    // Compose
+    composeHeader: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing[3]
+    },
+    backButton: {
+        alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        height: 40,
+        justifyContent: 'center',
+        width: 40
+    },
+    composeTitle: {
+        ...typography.title,
+        ...textShadows.heading,
+        color: colors.brandDark
+    },
+    composeHint: {
+        ...typography.body,
+        color: colors.textMuted,
+        fontSize: 13
+    },
+    composeSectionBlock: {
+        gap: spacing[2]
+    },
+    composeSectionLabel: {
+        ...typography.eyebrow,
+        color: colors.textSubtle,
+        textTransform: 'uppercase'
     },
     composer: {
         ...shadows.elevated,
@@ -432,50 +738,21 @@ const styles = StyleSheet.create({
     selectChipTextActive: {
         color: colors.inverseText
     },
-    quickRow: {
-        flexDirection: 'row',
-        gap: spacing[2]
-    },
-    quickButton: {
-        alignItems: 'center',
-        backgroundColor: colors.brandSubtle,
-        borderColor: colors.brandMuted,
-        borderRadius: radii.md,
-        borderWidth: 1,
-        flex: 1,
-        justifyContent: 'center',
-        paddingVertical: spacing[3]
-    },
-    quickButtonPositive: {
-        backgroundColor: colors.successSubtle,
-        borderColor: colors.successSubtle
-    },
-    quickButtonNegative: {
-        backgroundColor: colors.dangerSubtle,
-        borderColor: colors.dangerBorder
-    },
-    quickButtonText: {
-        ...typography.label,
-        color: colors.brand
-    },
-    quickButtonTextPositive: {
-        color: colors.success
-    },
-    quickButtonTextNegative: {
-        color: colors.danger
-    },
     submitButton: {
         alignItems: 'center',
         backgroundColor: colors.brand,
         borderRadius: radii.md,
+        flexDirection: 'row',
+        gap: spacing[2],
         justifyContent: 'center',
-        paddingVertical: spacing[3]
+        paddingVertical: spacing[4]
     },
     submitButtonText: {
         ...typography.label,
         color: colors.inverseText,
         fontSize: 14
     },
+    // Feed
     feed: {
         gap: spacing[3]
     },
@@ -493,10 +770,34 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between'
     },
+    postAuthorWrap: {
+        alignItems: 'center',
+        flex: 1,
+        flexDirection: 'row',
+        gap: spacing[2]
+    },
+    avatar: {
+        alignItems: 'center',
+        backgroundColor: colors.brandSubtle,
+        borderRadius: radii.pill,
+        height: 28,
+        justifyContent: 'center',
+        width: 28
+    },
+    avatarText: {
+        ...typography.label,
+        color: colors.brand,
+        fontSize: 11
+    },
     postAuthor: {
         ...typography.label,
         color: colors.text,
         flex: 1
+    },
+    postTimeWrap: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing[1]
     },
     postTime: {
         ...typography.body,
@@ -556,6 +857,7 @@ const styles = StyleSheet.create({
         ...typography.label,
         color: colors.brand
     },
+    // States
     loadingWrap: {
         paddingVertical: spacing[8]
     },
@@ -583,6 +885,27 @@ const styles = StyleSheet.create({
     errorText: {
         ...typography.body,
         color: colors.danger
+    },
+    // FAB
+    fab: {
+        ...shadows.elevated,
+        alignItems: 'center',
+        alignSelf: 'center',
+        backgroundColor: colors.brand,
+        borderRadius: radii.pill,
+        flexDirection: 'row',
+        gap: spacing[2],
+        marginTop: spacing[2],
+        paddingHorizontal: spacing[6],
+        paddingVertical: spacing[3]
+    },
+    fabPressed: {
+        opacity: 0.85
+    },
+    fabText: {
+        ...typography.label,
+        color: colors.inverseText,
+        fontSize: 14
     },
     pressed: {
         opacity: 0.7

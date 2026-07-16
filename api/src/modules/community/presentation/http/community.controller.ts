@@ -128,6 +128,7 @@ export class CommunityController {
             id: post.id,
             authorName: post.authorName,
             category: post.category,
+            status: post.status,
             body: post.body,
             payload: post.payload,
             confirmCount: post.confirmCount,

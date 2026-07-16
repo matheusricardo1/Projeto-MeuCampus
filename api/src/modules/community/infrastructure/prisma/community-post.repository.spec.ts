@@ -9,6 +9,7 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
             create: vi.fn(),
             findMany: vi.fn().mockResolvedValue([]),
             update: vi.fn(),
+            updateMany: vi.fn(),
             findUnique: vi.fn(),
             deleteMany: vi.fn()
         },
@@ -25,6 +26,7 @@ const baseRow = {
     authorId: 'author-hash',
     authorName: 'Aluno UFAM',
     category: 'FILA_RU',
+    status: 'APPROVED',
     body: 'RU vazio agora',
     payload: { level: 'empty' },
     confirmCount: 0,
@@ -53,7 +55,18 @@ describe('CommunityPostRepository', () => {
 
         expect(post.id).toBe('p1');
         expect(post.category).toBe('FILA_RU');
+        expect(post.status).toBe('APPROVED');
         expect(post.payload).toEqual({ level: 'empty' });
+    });
+
+    it('auto-approves real-time signals but leaves announcements pending', async () => {
+        (prisma.communityPost.create as any).mockResolvedValue(baseRow);
+
+        await repo.create({ authorId: 'a', authorName: 'n', category: 'FILA_RU', body: 'RU cheio' });
+        await repo.create({ authorId: 'a', authorName: 'n', category: 'COMIDAS', body: 'Brigadeiro' });
+
+        expect((prisma.communityPost.create as any).mock.calls[0][0].data.status).toBe('APPROVED');
+        expect((prisma.communityPost.create as any).mock.calls[1][0].data.status).toBe('PENDING');
     });
 
     it('omits payload from the create data when none is provided', async () => {
@@ -69,9 +82,28 @@ describe('CommunityPostRepository', () => {
         await repo.listByCategory('FILA_RU');
 
         const arg = (prisma.communityPost.findMany as any).mock.calls[0][0];
+        expect(arg.where.status).toBe('APPROVED');
         expect(arg.where.category).toBe('FILA_RU');
         expect(arg.where.createdAt.gte).toBeInstanceOf(Date);
         expect(arg.orderBy).toEqual({ createdAt: 'desc' });
+    });
+
+    it('lists pending posts oldest-first for the moderation queue', async () => {
+        await repo.listPending();
+
+        const arg = (prisma.communityPost.findMany as any).mock.calls[0][0];
+        expect(arg.where).toEqual({ status: 'PENDING' });
+        expect(arg.orderBy).toEqual({ createdAt: 'asc' });
+    });
+
+    it('sets a post status and reports whether a row was updated', async () => {
+        (prisma.communityPost.updateMany as any).mockResolvedValue({ count: 1 });
+        expect(await repo.setStatus('p1', 'APPROVED')).toBe(true);
+        const arg = (prisma.communityPost.updateMany as any).mock.calls[0][0];
+        expect(arg).toEqual({ where: { id: 'p1' }, data: { status: 'APPROVED' } });
+
+        (prisma.communityPost.updateMany as any).mockResolvedValue({ count: 0 });
+        expect(await repo.setStatus('missing', 'REJECTED')).toBe(false);
     });
 
     it('confirms a report inside a transaction and returns the new count', async () => {

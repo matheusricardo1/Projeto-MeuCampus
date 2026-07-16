@@ -10,7 +10,7 @@ interface UseCommunityResult {
     isPosting: boolean;
     error: string | null;
     refresh: () => Promise<void>;
-    createPost: (input: Omit<CreateCommunityPostInput, 'category'>) => Promise<void>;
+    createPost: (input: CreateCommunityPostInput) => Promise<CommunityPost>;
     confirmPost: (id: string) => Promise<void>;
 }
 
@@ -52,15 +52,20 @@ export function useCommunity(initialCategory: CommunityCategory = 'FILA_RU'): Us
 
     const refresh = useCallback(() => load(category), [load, category]);
 
-    const createPost = useCallback(async (input: Omit<CreateCommunityPostInput, 'category'>) => {
+    const createPost = useCallback(async (input: CreateCommunityPostInput) => {
         setIsPosting(true);
         setError(null);
         try {
-            const created = await client.createPost({ ...input, category });
-            // Optimistically prepend so the author sees their report immediately.
-            setPosts((current) => [created, ...current]);
+            const created = await client.createPost(input);
+            // Real-time signals come back APPROVED — show them immediately.
+            // Announcements come back PENDING (await moderation) — don't inject
+            // them into the public feed; the caller shows an "aguardando" state.
+            if (created.status === 'APPROVED' && created.category === category) {
+                setPosts((current) => [created, ...current]);
+            }
+            return created;
         } catch (caught) {
-            setError(caught instanceof Error ? caught.message : 'Nao foi possivel publicar o relato.');
+            setError(caught instanceof Error ? caught.message : 'Nao foi possivel publicar.');
             throw caught;
         } finally {
             setIsPosting(false);

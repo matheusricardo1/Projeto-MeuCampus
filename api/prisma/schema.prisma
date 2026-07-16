@@ -42,6 +42,16 @@ enum CommunityCategory {
   PESQUISA
 }
 
+/// Moderation state. Real-time crowdsourcing signals (bolsa/energia/fila RU) are
+/// created already APPROVED so they stay instant; marketplace/divulgação/
+/// oportunidades announcements start PENDING and only become public once an
+/// admin approves them.
+enum CommunityPostStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 /// id is never the raw CPF - it is HMAC-SHA256(CPF) via pseudonymousUserId(),
 /// a one-way derivation. You can look up a user from a CPF, never a CPF from
 /// a user id (LGPD-friendly pseudonymization, see pseudonymous-user-id.ts).
@@ -95,13 +105,14 @@ model CommunityPost {
   authorId     String
   authorName   String
   category     CommunityCategory
+  status       CommunityPostStatus     @default(PENDING)
   body         String
   payload      Json?
   confirmCount Int                     @default(0)
   createdAt    DateTime                @default(now())
   confirmations CommunityConfirmation[]
 
-  @@index([category, createdAt])
+  @@index([status, category, createdAt])
 }
 
 /// One row per (post, user) so the same student can't inflate confirmCount by

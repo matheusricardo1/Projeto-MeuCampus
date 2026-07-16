@@ -1,12 +1,16 @@
 -- CreateEnum
 CREATE TYPE "CommunityCategory" AS ENUM ('BOLSA', 'ENERGIA', 'FILA_RU', 'COMIDAS', 'ALUGUEIS', 'TROCAS_VENDAS', 'EVENTOS', 'PALESTRAS', 'FORMATURAS', 'ACHADOS_PERDIDOS', 'EMPREGOS', 'ESTAGIO', 'PESQUISA');
 
+-- CreateEnum
+CREATE TYPE "CommunityPostStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
+
 -- CreateTable
 CREATE TABLE "CommunityPost" (
     "id" TEXT NOT NULL,
     "authorId" TEXT NOT NULL,
     "authorName" TEXT NOT NULL,
     "category" "CommunityCategory" NOT NULL,
+    "status" "CommunityPostStatus" NOT NULL DEFAULT 'PENDING',
     "body" TEXT NOT NULL,
     "payload" JSONB,
     "confirmCount" INTEGER NOT NULL DEFAULT 0,
@@ -26,7 +30,7 @@ CREATE TABLE "CommunityConfirmation" (
 );
 
 -- CreateIndex
-CREATE INDEX "CommunityPost_category_createdAt_idx" ON "CommunityPost"("category", "createdAt");
+CREATE INDEX "CommunityPost_status_category_createdAt_idx" ON "CommunityPost"("status", "category", "createdAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "CommunityConfirmation_postId_userId_key" ON "CommunityConfirmation"("postId", "userId");
