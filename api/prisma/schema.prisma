@@ -19,6 +19,15 @@ enum PaymentStatus {
   EXPIRED
 }
 
+/// Crowdsourcing signals shared by students in the Comunidade tab. Deliberately
+/// extensible — new sections (LIVROS, EVENTO, VAGA, ...) just add members here
+/// without touching the CommunityPost shape.
+enum CommunityCategory {
+  BOLSA
+  ENERGIA
+  FILA_RU
+}
+
 /// id is never the raw CPF - it is HMAC-SHA256(CPF) via pseudonymousUserId(),
 /// a one-way derivation. You can look up a user from a CPF, never a CPF from
 /// a user id (LGPD-friendly pseudonymization, see pseudonymous-user-id.ts).
@@ -59,6 +68,38 @@ model AiUsage {
   createdAt     DateTime @default(now())
 
   @@index([createdAt])
+}
+
+/// A crowdsourced report in the Comunidade tab (bolsa caiu?, fila do RU, quedas
+/// de energia). authorId is the same pseudonymous HMAC(CPF) used for User.id, so
+/// ownership/dedup/moderation are server-authenticated; authorName is a display
+/// snapshot sent by the client (spoofable but low-risk on a public board — see
+/// the identity note in the community module). payload carries category-specific
+/// fields: BOLSA { scholarship, dropped }, FILA_RU { level }, ENERGIA { location }.
+model CommunityPost {
+  id           String                  @id @default(uuid())
+  authorId     String
+  authorName   String
+  category     CommunityCategory
+  body         String
+  payload      Json?
+  confirmCount Int                     @default(0)
+  createdAt    DateTime                @default(now())
+  confirmations CommunityConfirmation[]
+
+  @@index([category, createdAt])
+}
+
+/// One row per (post, user) so the same student can't inflate confirmCount by
+/// confirming a report twice — keeps the crowdsourcing signal honest.
+model CommunityConfirmation {
+  id        String        @id @default(uuid())
+  postId    String
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime      @default(now())
+
+  @@unique([postId, userId])
 }
 
 /// Browser Web Push subscriptions for the owner's admin dashboard. Not tied

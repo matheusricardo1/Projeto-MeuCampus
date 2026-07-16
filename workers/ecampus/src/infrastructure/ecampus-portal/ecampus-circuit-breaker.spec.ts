@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EcampusCircuitBreaker } from '@/infrastructure/ecampus-portal/ecampus-circuit-breaker';
 
-const FAILURE_THRESHOLD = 5;
-const RESET_TIMEOUT_MS = 30000;
+// Mirror the breaker's own constants (kept private on the class).
+const MIN_REQUESTS_IN_WINDOW = 5;
+const RESET_TIMEOUT_MS = 2 * 60 * 1000;
 
 describe('EcampusCircuitBreaker', () => {
     beforeEach(() => {
@@ -13,44 +14,46 @@ describe('EcampusCircuitBreaker', () => {
         vi.useRealTimers();
     });
 
-    it('stays closed and keeps allowing attempts below the failure threshold', () => {
+    it('stays closed while there are too few samples to judge the error rate', () => {
         const breaker = new EcampusCircuitBreaker();
 
-        for (let i = 0; i < FAILURE_THRESHOLD - 1; i += 1) {
+        // Even an all-failure streak below the minimum sample size is too noisy
+        // to act on, so the breaker must keep letting requests through.
+        for (let i = 0; i < MIN_REQUESTS_IN_WINDOW - 1; i += 1) {
             breaker.recordFailure();
         }
 
         expect(breaker.canAttempt()).toBe(true);
     });
 
-    it('opens and blocks attempts once the failure threshold is reached', () => {
+    it('opens once the error rate crosses the threshold over the window', () => {
         const breaker = new EcampusCircuitBreaker();
 
-        for (let i = 0; i < FAILURE_THRESHOLD; i += 1) {
+        for (let i = 0; i < MIN_REQUESTS_IN_WINDOW; i += 1) {
             breaker.recordFailure();
         }
 
         expect(breaker.canAttempt()).toBe(false);
     });
 
-    it('resets the failure count on a success before the threshold is hit', () => {
+    it('stays closed when enough successes keep the error rate below the threshold', () => {
         const breaker = new EcampusCircuitBreaker();
 
-        for (let i = 0; i < FAILURE_THRESHOLD - 1; i += 1) {
-            breaker.recordFailure();
-        }
+        // 3 successes then 3 failures: at every failure the window has >= 5
+        // samples but the error rate peaks at 50% (< 60%), so it never trips.
         breaker.recordSuccess();
-
-        for (let i = 0; i < FAILURE_THRESHOLD - 1; i += 1) {
-            breaker.recordFailure();
-        }
+        breaker.recordSuccess();
+        breaker.recordSuccess();
+        breaker.recordFailure();
+        breaker.recordFailure();
+        breaker.recordFailure();
 
         expect(breaker.canAttempt()).toBe(true);
     });
 
     it('stays open until the reset timeout elapses, then allows a half-open probe', () => {
         const breaker = new EcampusCircuitBreaker();
-        for (let i = 0; i < FAILURE_THRESHOLD; i += 1) {
+        for (let i = 0; i < MIN_REQUESTS_IN_WINDOW; i += 1) {
             breaker.recordFailure();
         }
 
@@ -65,27 +68,24 @@ describe('EcampusCircuitBreaker', () => {
 
     it('closes again when the half-open probe succeeds', () => {
         const breaker = new EcampusCircuitBreaker();
-        for (let i = 0; i < FAILURE_THRESHOLD; i += 1) {
+        for (let i = 0; i < MIN_REQUESTS_IN_WINDOW; i += 1) {
             breaker.recordFailure();
         }
         vi.advanceTimersByTime(RESET_TIMEOUT_MS);
-        expect(breaker.canAttempt()).toBe(true);
+        expect(breaker.canAttempt()).toBe(true); // half-open probe allowed
 
         breaker.recordSuccess();
 
-        for (let i = 0; i < FAILURE_THRESHOLD - 1; i += 1) {
-            breaker.recordFailure();
-        }
-        expect(breaker.canAttempt()).toBe(true);
+        expect(breaker.canAttempt()).toBe(true); // back to closed
     });
 
     it('goes straight back to open when the half-open probe fails, without needing the full threshold again', () => {
         const breaker = new EcampusCircuitBreaker();
-        for (let i = 0; i < FAILURE_THRESHOLD; i += 1) {
+        for (let i = 0; i < MIN_REQUESTS_IN_WINDOW; i += 1) {
             breaker.recordFailure();
         }
         vi.advanceTimersByTime(RESET_TIMEOUT_MS);
-        expect(breaker.canAttempt()).toBe(true);
+        expect(breaker.canAttempt()).toBe(true); // half-open probe allowed
 
         breaker.recordFailure();
 

@@ -4,6 +4,7 @@ import { AdminModule } from '@admin/admin.module';
 import { AiModule } from '@ai/ai.module';
 import { AuthModule } from '@auth/auth.module';
 import { BillingModule } from '@billing/billing.module';
+import { CommunityModule } from '@community/community.module';
 import { EcampusModule } from '@ecampus/ecampus.module';
 import { HealthModule } from '@health/health.module';
 import { McpModule } from '@composition/mcp/mcp.module';
@@ -18,6 +19,7 @@ import { RealtimeModule } from '@composition/realtime/realtime.module';
         AcademicModule,
         AiModule,
         BillingModule,
+        CommunityModule,
         AdminModule,
         McpModule
     ]

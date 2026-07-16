@@ -17,6 +17,7 @@
       "@admin/*": ["src/modules/admin/*"],
       "@ai/*": ["src/modules/ai/*"],
       "@billing/*": ["src/modules/billing/*"],
+      "@community/*": ["src/modules/community/*"],
       "@academic/*": ["src/modules/academic/*"],
       "@auth/*": ["src/modules/auth/*"],
       "@ecampus/*": ["src/modules/ecampus/*"],

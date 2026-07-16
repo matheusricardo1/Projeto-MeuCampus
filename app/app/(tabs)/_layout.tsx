@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Bell, BookOpen, Calendar, GraduationCap, History, LayoutDashboard, Mic, Send, Sparkles, User, Brain } from 'lucide-react-native';
+import { ArrowLeft, Bell, BookOpen, Calendar, GraduationCap, History, LayoutDashboard, Mic, Send, Sparkles, User, Users, Brain } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import { colors, gradients } from '@/shared/design-system';
@@ -13,7 +13,7 @@ import { aiInputBarStyles } from '@/modules/academic/presentation/views/pages/ai
 import { AiOnboardingModal } from '@/modules/academic/presentation/views/components';
 import { hapticTap } from '@/shared/haptics';
 
-type TabId = 'home' | 'lessonPlan' | 'ai' | 'schedule' | 'profile' | 'notifications';
+type TabId = 'home' | 'lessonPlan' | 'ai' | 'schedule' | 'community' | 'profile' | 'notifications';
 
 /** UI-only chrome state routes need from this layout — not workspace data, so it stays out of WorkspaceContext. */
 interface TabsChrome {
@@ -50,12 +50,14 @@ const TAB_PATHS: Record<Exclude<TabId, 'notifications'>, string> = {
     lessonPlan: '/lesson-plan',
     ai: '/ai',
     schedule: '/schedule',
+    community: '/community',
     profile: '/profile'
 };
 
 function getActiveTab(pathname: string): TabId {
     if (pathname === '/') return 'home';
     if (pathname.startsWith('/schedule')) return 'schedule';
+    if (pathname.startsWith('/community')) return 'community';
     if (pathname.startsWith('/profile')) return 'profile';
     if (pathname.startsWith('/notifications')) return 'notifications';
     if (pathname.startsWith('/ai')) return 'ai';
@@ -174,6 +176,7 @@ export default function TabsLayout() {
         lessonPlan: t('nav.subjects'),
         profile: t('nav.profile'),
         schedule: t('nav.schedule'),
+        community: t('nav.community'),
         ai: t('nav.ai'),
         notifications: t('notifications.title')
     };
@@ -182,6 +185,7 @@ export default function TabsLayout() {
         { id: 'lessonPlan' as const, label: t('nav.subjects'), icon: BookOpen },
         ...(IS_AI_FEATURE_ENABLED ? [{ id: 'ai' as const, label: t('nav.ai'), icon: Brain }] : []),
         { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar },
+        { id: 'community' as const, label: t('nav.community'), icon: Users },
         { id: 'profile' as const, label: t('nav.profile'), icon: User }
     ];
     const activeTabLabel = tabLabels[activeTab];
@@ -190,6 +194,7 @@ export default function TabsLayout() {
         lessonPlan: workspace.loadLessonPlanSubjects,
         profile: workspace.loadProfile,
         schedule: workspace.loadSchedule,
+        community: async () => undefined,
         ai: async () => undefined,
         notifications: async () => undefined
     };

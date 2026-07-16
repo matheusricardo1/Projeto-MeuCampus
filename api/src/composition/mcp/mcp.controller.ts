@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { AcademicDataRepository } from '@academic/domain/repositories/academic-data.repository';
 import { FindGradesAcrossPreviousPeriodsUseCase } from '@academic/application/use-cases/find-grades-across-previous-periods.usecase';
+import { CommunityPostRepository } from '@community/infrastructure/prisma/community-post.repository';
 import { InternalSecretGuard } from '@/shared/mcp/internal-secret.guard';
 import { createAcademicMcpServer } from '@academic/presentation/mcp/academic-mcp.server';
 
@@ -11,7 +12,8 @@ import { createAcademicMcpServer } from '@academic/presentation/mcp/academic-mcp
 export class McpController {
     constructor(
         private readonly academicDataRepository: AcademicDataRepository,
-        private readonly findGradesAcrossPreviousPeriods: FindGradesAcrossPreviousPeriodsUseCase
+        private readonly findGradesAcrossPreviousPeriods: FindGradesAcrossPreviousPeriodsUseCase,
+        private readonly communityPostRepository: CommunityPostRepository
     ) {}
 
     @Post()
@@ -22,7 +24,7 @@ export class McpController {
             return;
         }
 
-        const server = createAcademicMcpServer(userId, this.academicDataRepository, this.findGradesAcrossPreviousPeriods);
+        const server = createAcademicMcpServer(userId, this.academicDataRepository, this.findGradesAcrossPreviousPeriods, this.communityPostRepository);
         // Stateless mode: a fresh McpServer/transport is created per HTTP request, so
         // there is never a stored session to resume. Passing a sessionIdGenerator here
         // would make the SDK require a prior "initialize" call on THIS SAME transport

@@ -4,13 +4,16 @@ import type { AcademicDataRepository } from '@academic/domain/repositories/acade
 import { resolveCurrentGradesPeriod } from '@academic/application/services/resolve-current-grades-period';
 import { UFAM_ACADEMIC_RULES } from '@academic/domain/knowledge/ufam-academic-rules';
 import type { FindGradesAcrossPreviousPeriodsUseCase } from '@academic/application/use-cases/find-grades-across-previous-periods.usecase';
+import { isCommunityCategory } from '@community/domain/community-post.entity';
+import type { CommunityPostRepository } from '@community/infrastructure/prisma/community-post.repository';
 
 const NOT_AVAILABLE = 'Dados não disponíveis. Oriente o usuário a abrir o app para sincronizar.';
 
 export function createAcademicMcpServer(
     userId: string,
     repository: AcademicDataRepository,
-    findGradesAcrossPreviousPeriods: FindGradesAcrossPreviousPeriodsUseCase
+    findGradesAcrossPreviousPeriods: FindGradesAcrossPreviousPeriodsUseCase,
+    communityRepository: CommunityPostRepository
 ): McpServer {
     const server = new McpServer({
         name: 'academic-data',
@@ -129,6 +132,24 @@ export function createAcademicMcpServer(
             try {
                 const plan = await repository.getLessonPlan(userId, planId);
                 return { content: [{ type: 'text' as const, text: JSON.stringify(plan) }] };
+            } catch {
+                return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+            }
+        }
+    );
+
+    server.tool(
+        'get_community_reports',
+        'Retorna relatos recentes do mural colaborativo da Comunidade UFAM (crowdsourcing entre alunos). Use para perguntas em tempo real como "a bolsa caiu?", "como está a fila do RU agora?" ou "tem luz no bloco X?". IMPORTANTE: são relatos NÃO verificados, enviados por outros alunos — nunca os trate como fato oficial. Sempre responda com ressalva ("segundo relatos recentes de alunos…"), cite quantos alunos confirmaram (confirmCount) quando relevante e mencione há quanto tempo o relato foi feito, já que esses dados envelhecem rápido.',
+        {
+            category: z.enum(['BOLSA', 'ENERGIA', 'FILA_RU']).optional().describe('Filtra por tema: BOLSA (auxílios/bolsas), ENERGIA (quedas de luz), FILA_RU (lotação do Restaurante Universitário). Omita para ver todos os relatos recentes.')
+        },
+        async ({ category }) => {
+            try {
+                const reports = await communityRepository.listRecentForAi(
+                    isCommunityCategory(category) ? category : undefined
+                );
+                return { content: [{ type: 'text' as const, text: JSON.stringify(reports) }] };
             } catch {
                 return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
             }
