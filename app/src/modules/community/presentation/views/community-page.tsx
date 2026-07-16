@@ -1,59 +1,80 @@
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { CheckCircle2, Info, Megaphone, Users, Utensils, Zap } from 'lucide-react-native';
-import { AppText, colors, radii, shadows, spacing, textShadows, typography } from '@/shared/design-system';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { CheckCircle2, ExternalLink, Info, Users } from 'lucide-react-native';
+import { colors, radii, shadows, spacing, textShadows, typography } from '@/shared/design-system';
 import { hapticTap } from '@/shared/haptics';
 import { useCommunity } from '@/modules/community/presentation/hooks/use-community';
-import type { CommunityCategory, CommunityPost, RuLevel } from '@/modules/community/domain/community-post';
+import {
+    COMMUNITY_SECTIONS,
+    FIELD_LABELS,
+    RU_LEVEL_LABEL,
+    getCategorySpec,
+    getSectionOf,
+    type CategorySpec,
+    type FieldSpec,
+    type SectionSpec
+} from '@/modules/community/domain/community-catalog';
+import type { CommunityPost, RuLevel } from '@/modules/community/domain/community-post';
 
-const CATEGORY_TABS: Array<{ id: CommunityCategory; label: string; icon: typeof Utensils }> = [
-    { id: 'FILA_RU', label: 'Fila do RU', icon: Utensils },
-    { id: 'BOLSA', label: 'Bolsa', icon: Megaphone },
-    { id: 'ENERGIA', label: 'Energia', icon: Zap }
-];
-
-const RU_OPTIONS: Array<{ level: RuLevel; label: string; body: string }> = [
-    { level: 'empty', label: 'Vazio', body: 'RU está vazio agora' },
-    { level: 'moderate', label: 'Moderado', body: 'RU com movimento moderado' },
-    { level: 'full', label: 'Lotado', body: 'RU está lotado agora' }
-];
-
-const RU_LEVEL_LABEL: Record<RuLevel, string> = {
-    empty: 'Vazio',
-    moderate: 'Moderado',
-    full: 'Lotado'
-};
+type SubmitFn = (input: { body: string; authorName: string; payload?: Record<string, unknown> | null }) => Promise<void>;
 
 export function CommunityPage({ authorName }: { authorName: string }) {
     const community = useCommunity('FILA_RU');
+    const activeSection = getSectionOf(community.category);
+    const activeCategory = getCategorySpec(community.category);
+
+    const selectSection = (section: SectionSpec) => {
+        const first = section.categories[0];
+        if (first && first.id !== community.category) {
+            hapticTap();
+            community.setCategory(first.id);
+        }
+    };
 
     return (
         <View style={styles.container}>
             <View style={styles.disclaimerCard}>
                 <Info color={colors.brand} size={18} />
                 <Text style={styles.disclaimerText}>
-                    Mural colaborativo dos alunos. São relatos em tempo real, não informações oficiais da UFAM — confirme quando puder ajudar a comunidade.
+                    Mural colaborativo dos alunos — não são informações oficiais da UFAM. Ajude confirmando os relatos e mantendo os anúncios atualizados.
                 </Text>
             </View>
 
-            <View style={styles.categoryRow}>
-                {CATEGORY_TABS.map((tab) => {
-                    const Icon = tab.icon;
-                    const active = community.category === tab.id;
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sectionRow}>
+                {COMMUNITY_SECTIONS.map((section) => {
+                    const Icon = section.icon;
+                    const active = section.id === activeSection.id;
                     return (
                         <Pressable
-                            key={tab.id}
-                            onPress={() => { hapticTap(); community.setCategory(tab.id); }}
-                            style={({ pressed }) => [styles.categoryTab, active ? styles.categoryTabActive : null, pressed ? styles.pressed : null]}
+                            key={section.id}
+                            onPress={() => selectSection(section)}
+                            style={({ pressed }) => [styles.sectionTab, active ? styles.sectionTabActive : null, pressed ? styles.pressed : null]}
                         >
                             <Icon color={active ? colors.inverseText : colors.brand} size={16} />
-                            <Text style={[styles.categoryTabText, active ? styles.categoryTabTextActive : null]}>{tab.label}</Text>
+                            <Text style={[styles.sectionTabText, active ? styles.sectionTabTextActive : null]}>{section.label}</Text>
                         </Pressable>
                     );
                 })}
-            </View>
+            </ScrollView>
 
-            <Composer category={community.category} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                {activeSection.categories.map((cat) => {
+                    const active = cat.id === community.category;
+                    return (
+                        <Pressable
+                            key={cat.id}
+                            onPress={() => { hapticTap(); community.setCategory(cat.id); }}
+                            style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
+                        >
+                            <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{cat.label}</Text>
+                        </Pressable>
+                    );
+                })}
+            </ScrollView>
+
+            {activeCategory.kind === 'quick'
+                ? <QuickComposer key={activeCategory.id} spec={activeCategory} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />
+                : <FormComposer key={activeCategory.id} spec={activeCategory} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />}
 
             {community.error ? (
                 <View style={styles.errorBanner}>
@@ -68,7 +89,7 @@ export function CommunityPage({ authorName }: { authorName: string }) {
             ) : community.posts.length === 0 ? (
                 <View style={styles.emptyCard}>
                     <Users color={colors.textSubtle} size={28} />
-                    <Text style={styles.emptyText}>Nenhum relato recente. Seja o primeiro a compartilhar com a comunidade.</Text>
+                    <Text style={styles.emptyText}>Nada por aqui ainda. Seja o primeiro a compartilhar com a comunidade.</Text>
                 </View>
             ) : (
                 <View style={styles.feed}>
@@ -81,118 +102,156 @@ export function CommunityPage({ authorName }: { authorName: string }) {
     );
 }
 
-function Composer({
-    category,
-    isPosting,
-    authorName,
-    onSubmit
-}: {
-    category: CommunityCategory;
-    isPosting: boolean;
-    authorName: string;
-    onSubmit: (input: { body: string; authorName: string; payload?: Record<string, unknown> | null }) => Promise<void>;
-}) {
-    const [scholarship, setScholarship] = useState('');
-    const [location, setLocation] = useState('');
+function QuickComposer({ spec, isPosting, authorName, onSubmit }: { spec: CategorySpec; isPosting: boolean; authorName: string; onSubmit: SubmitFn }) {
+    const [value, setValue] = useState('');
+    const quick = spec.quick;
+    if (!quick) return null;
+
+    const needsValue = Boolean(quick.needsFieldKey);
+    const trimmed = value.trim();
+    const disabled = isPosting || (needsValue && !trimmed);
 
     const submit = async (body: string, payload: Record<string, unknown>) => {
         hapticTap();
         try {
             await onSubmit({ body, authorName, payload });
-            setScholarship('');
-            setLocation('');
+            setValue('');
         } catch {
             // error surfaced by the hook
         }
     };
 
-    if (category === 'FILA_RU') {
-        return (
-            <View style={styles.composer}>
-                <Text style={styles.composerTitle}>Como está a fila do RU agora?</Text>
-                <View style={styles.quickRow}>
-                    {RU_OPTIONS.map((option) => (
-                        <Pressable
-                            key={option.level}
-                            disabled={isPosting}
-                            onPress={() => void submit(option.body, { level: option.level })}
-                            style={({ pressed }) => [styles.quickButton, pressed ? styles.pressed : null, isPosting ? styles.disabled : null]}
-                        >
-                            <Text style={styles.quickButtonText}>{option.label}</Text>
-                        </Pressable>
-                    ))}
-                </View>
-            </View>
-        );
-    }
-
-    if (category === 'BOLSA') {
-        const trimmed = scholarship.trim();
-        return (
-            <View style={styles.composer}>
-                <Text style={styles.composerTitle}>Alguma bolsa caiu?</Text>
+    return (
+        <View style={styles.composer}>
+            <Text style={styles.composerTitle}>{quick.prompt}</Text>
+            {needsValue ? (
                 <TextInput
-                    value={scholarship}
-                    onChangeText={setScholarship}
-                    placeholder="Qual auxílio/bolsa? (ex.: PNAES, monitoria)"
+                    value={value}
+                    onChangeText={setValue}
+                    placeholder={quick.needsFieldLabel}
                     placeholderTextColor={colors.textSubtle}
                     style={styles.input}
                     maxLength={80}
                 />
-                <View style={styles.quickRow}>
-                    <Pressable
-                        disabled={isPosting || !trimmed}
-                        onPress={() => void submit(`Bolsa "${trimmed}" caiu`, { scholarship: trimmed, dropped: true })}
-                        style={({ pressed }) => [styles.quickButton, styles.quickButtonPositive, pressed ? styles.pressed : null, (isPosting || !trimmed) ? styles.disabled : null]}
-                    >
-                        <Text style={[styles.quickButtonText, styles.quickButtonTextPositive]}>Caiu ✓</Text>
-                    </Pressable>
-                    <Pressable
-                        disabled={isPosting || !trimmed}
-                        onPress={() => void submit(`Bolsa "${trimmed}" ainda não caiu`, { scholarship: trimmed, dropped: false })}
-                        style={({ pressed }) => [styles.quickButton, pressed ? styles.pressed : null, (isPosting || !trimmed) ? styles.disabled : null]}
-                    >
-                        <Text style={styles.quickButtonText}>Não caiu</Text>
-                    </Pressable>
-                </View>
-            </View>
-        );
-    }
-
-    const trimmedLocation = location.trim();
-    return (
-        <View style={styles.composer}>
-            <Text style={styles.composerTitle}>Queda de energia no campus?</Text>
-            <TextInput
-                value={location}
-                onChangeText={setLocation}
-                placeholder="Onde? (ex.: Bloco M, ICE, setor sul)"
-                placeholderTextColor={colors.textSubtle}
-                style={styles.input}
-                maxLength={80}
-            />
+            ) : null}
             <View style={styles.quickRow}>
-                <Pressable
-                    disabled={isPosting || !trimmedLocation}
-                    onPress={() => void submit(`Sem energia em ${trimmedLocation}`, { location: trimmedLocation, hasPower: false })}
-                    style={({ pressed }) => [styles.quickButton, styles.quickButtonNegative, pressed ? styles.pressed : null, (isPosting || !trimmedLocation) ? styles.disabled : null]}
-                >
-                    <Text style={[styles.quickButtonText, styles.quickButtonTextNegative]}>Sem luz</Text>
-                </Pressable>
-                <Pressable
-                    disabled={isPosting || !trimmedLocation}
-                    onPress={() => void submit(`Energia voltou em ${trimmedLocation}`, { location: trimmedLocation, hasPower: true })}
-                    style={({ pressed }) => [styles.quickButton, pressed ? styles.pressed : null, (isPosting || !trimmedLocation) ? styles.disabled : null]}
-                >
-                    <Text style={styles.quickButtonText}>Voltou</Text>
-                </Pressable>
+                {quick.options(trimmed).map((option) => (
+                    <Pressable
+                        key={option.label}
+                        disabled={disabled}
+                        onPress={() => void submit(option.body, option.payload)}
+                        style={({ pressed }) => [
+                            styles.quickButton,
+                            option.tone === 'positive' ? styles.quickButtonPositive : option.tone === 'negative' ? styles.quickButtonNegative : null,
+                            pressed ? styles.pressed : null,
+                            disabled ? styles.disabled : null
+                        ]}
+                    >
+                        <Text style={[
+                            styles.quickButtonText,
+                            option.tone === 'positive' ? styles.quickButtonTextPositive : option.tone === 'negative' ? styles.quickButtonTextNegative : null
+                        ]}>{option.label}</Text>
+                    </Pressable>
+                ))}
             </View>
         </View>
     );
 }
 
+function FormComposer({ spec, isPosting, authorName, onSubmit }: { spec: CategorySpec; isPosting: boolean; authorName: string; onSubmit: SubmitFn }) {
+    const fields = spec.fields ?? [];
+    const [values, setValues] = useState<Record<string, string>>({});
+
+    const setField = (key: string, val: string) => setValues((current) => ({ ...current, [key]: val }));
+
+    const missingRequired = fields.some((field) => field.required && !(values[field.key] ?? '').trim());
+    const primaryKey = spec.primaryKey ?? 'titulo';
+    const disabled = isPosting || missingRequired;
+
+    const submit = async () => {
+        hapticTap();
+        const payload: Record<string, unknown> = {};
+        for (const field of fields) {
+            const raw = (values[field.key] ?? '').trim();
+            if (raw) payload[field.key] = raw;
+        }
+        const body = (values[primaryKey] ?? '').trim() || spec.label;
+        try {
+            await onSubmit({ body, authorName, payload });
+            setValues({});
+        } catch {
+            // error surfaced by the hook
+        }
+    };
+
+    return (
+        <View style={styles.composer}>
+            <Text style={styles.composerTitle}>Publicar em {spec.label}</Text>
+            {fields.map((field) => (
+                <FieldInput key={field.key} field={field} value={values[field.key] ?? ''} onChange={(val) => setField(field.key, val)} />
+            ))}
+            <Pressable
+                disabled={disabled}
+                onPress={() => void submit()}
+                style={({ pressed }) => [styles.submitButton, pressed ? styles.pressed : null, disabled ? styles.disabled : null]}
+            >
+                <Text style={styles.submitButtonText}>Publicar</Text>
+            </Pressable>
+        </View>
+    );
+}
+
+function FieldInput({ field, value, onChange }: { field: FieldSpec; value: string; onChange: (value: string) => void }) {
+    if (field.type === 'select') {
+        return (
+            <View style={styles.selectRow}>
+                {(field.options ?? []).map((option) => {
+                    const active = value === option;
+                    return (
+                        <Pressable
+                            key={option}
+                            onPress={() => { hapticTap(); onChange(option); }}
+                            style={({ pressed }) => [styles.selectChip, active ? styles.selectChipActive : null, pressed ? styles.pressed : null]}
+                        >
+                            <Text style={[styles.selectChipText, active ? styles.selectChipTextActive : null]}>{option}</Text>
+                        </Pressable>
+                    );
+                })}
+            </View>
+        );
+    }
+
+    const multiline = field.type === 'multiline';
+    return (
+        <TextInput
+            value={value}
+            onChangeText={onChange}
+            placeholder={field.placeholder ?? field.label}
+            placeholderTextColor={colors.textSubtle}
+            style={[styles.input, multiline ? styles.inputMultiline : null]}
+            maxLength={field.maxLength}
+            multiline={multiline}
+            keyboardType={field.type === 'number' ? 'numeric' : field.type === 'url' ? 'url' : 'default'}
+            autoCapitalize={field.type === 'url' ? 'none' : 'sentences'}
+        />
+    );
+}
+
 function PostCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => void }) {
-    const level = typeof post.payload?.level === 'string' ? (post.payload.level as RuLevel) : null;
+    const spec = getCategorySpec(post.category);
+    const payload = post.payload ?? {};
+    const level = typeof payload.level === 'string' ? (payload.level as RuLevel) : null;
+    const description = typeof payload.descricao === 'string' ? payload.descricao : null;
+    const primaryKey = spec.primaryKey ?? 'titulo';
+
+    // Detail lines: every payload field except the ones already shown (body,
+    // description, and crowdsourcing internals reflected in the body).
+    const detailEntries = spec.kind === 'form'
+        ? (spec.fields ?? [])
+            .filter((field) => field.key !== primaryKey && field.key !== 'descricao')
+            .map((field) => [field.key, payload[field.key]] as const)
+            .filter(([, val]) => typeof val === 'string' && val.length > 0)
+        : [];
 
     return (
         <View style={styles.postCard}>
@@ -201,17 +260,42 @@ function PostCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => v
                 <Text style={styles.postTime}>{formatRelativeTime(post.createdAt)}</Text>
             </View>
             <Text style={styles.postBody}>{post.body}</Text>
+
             {level ? (
                 <View style={[styles.levelTag, levelTagStyle[level]]}>
                     <Text style={[styles.levelTagText, levelTagTextStyle[level]]}>{RU_LEVEL_LABEL[level]}</Text>
                 </View>
             ) : null}
-            <Pressable onPress={() => { hapticTap(); onConfirm(); }} style={({ pressed }) => [styles.confirmButton, pressed ? styles.pressed : null]}>
-                <CheckCircle2 color={colors.brand} size={16} />
-                <Text style={styles.confirmText}>Confirmar{post.confirmCount > 0 ? ` · ${post.confirmCount}` : ''}</Text>
-            </Pressable>
+
+            {detailEntries.map(([key, val]) => (
+                key === 'link' ? (
+                    <Pressable key={key} onPress={() => openLink(String(val))} style={styles.linkRow}>
+                        <ExternalLink color={colors.brand} size={14} />
+                        <Text numberOfLines={1} style={styles.linkText}>{String(val)}</Text>
+                    </Pressable>
+                ) : (
+                    <Text key={key} style={styles.detailLine}>
+                        <Text style={styles.detailLabel}>{FIELD_LABELS[key] ? `${FIELD_LABELS[key]}: ` : ''}</Text>
+                        {String(val)}
+                    </Text>
+                )
+            ))}
+
+            {description ? <Text style={styles.postDescription}>{description}</Text> : null}
+
+            {spec.kind === 'quick' ? (
+                <Pressable onPress={() => { hapticTap(); onConfirm(); }} style={({ pressed }) => [styles.confirmButton, pressed ? styles.pressed : null]}>
+                    <CheckCircle2 color={colors.brand} size={16} />
+                    <Text style={styles.confirmText}>Confirmar{post.confirmCount > 0 ? ` · ${post.confirmCount}` : ''}</Text>
+                </Pressable>
+            ) : null}
         </View>
     );
+}
+
+function openLink(url: string): void {
+    const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    void Linking.openURL(normalized).catch(() => undefined);
 }
 
 function formatRelativeTime(iso: string): string {
@@ -245,32 +329,56 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: 13
     },
-    categoryRow: {
-        flexDirection: 'row',
-        gap: spacing[2]
+    sectionRow: {
+        gap: spacing[2],
+        paddingRight: spacing[2]
     },
-    categoryTab: {
+    sectionTab: {
         alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: spacing[2],
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2]
+    },
+    sectionTabActive: {
+        backgroundColor: colors.brand,
+        borderColor: colors.brand
+    },
+    sectionTabText: {
+        ...typography.label,
+        color: colors.brand
+    },
+    sectionTabTextActive: {
+        color: colors.inverseText
+    },
+    chipRow: {
+        gap: spacing[2],
+        paddingRight: spacing[2]
+    },
+    chip: {
         backgroundColor: colors.surface,
         borderColor: colors.border,
         borderRadius: radii.md,
         borderWidth: 1,
-        flex: 1,
-        flexDirection: 'row',
-        gap: spacing[2],
-        justifyContent: 'center',
-        paddingVertical: spacing[3]
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[2]
     },
-    categoryTabActive: {
-        backgroundColor: colors.brand,
+    chipActive: {
+        backgroundColor: colors.brandSubtle,
         borderColor: colors.brand
     },
-    categoryTabText: {
-        ...typography.label,
-        color: colors.brand
+    chipText: {
+        ...typography.body,
+        color: colors.textMuted,
+        fontSize: 13
     },
-    categoryTabTextActive: {
-        color: colors.inverseText
+    chipTextActive: {
+        color: colors.brand,
+        fontWeight: '700'
     },
     composer: {
         ...shadows.elevated,
@@ -296,6 +404,33 @@ const styles = StyleSheet.create({
         color: colors.text,
         paddingHorizontal: spacing[3],
         paddingVertical: spacing[3]
+    },
+    inputMultiline: {
+        minHeight: 72,
+        textAlignVertical: 'top'
+    },
+    selectRow: {
+        flexDirection: 'row',
+        gap: spacing[2]
+    },
+    selectChip: {
+        backgroundColor: colors.surface,
+        borderColor: colors.borderStrong,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2]
+    },
+    selectChipActive: {
+        backgroundColor: colors.brand,
+        borderColor: colors.brand
+    },
+    selectChipText: {
+        ...typography.label,
+        color: colors.brand
+    },
+    selectChipTextActive: {
+        color: colors.inverseText
     },
     quickRow: {
         flexDirection: 'row',
@@ -329,6 +464,18 @@ const styles = StyleSheet.create({
     quickButtonTextNegative: {
         color: colors.danger
     },
+    submitButton: {
+        alignItems: 'center',
+        backgroundColor: colors.brand,
+        borderRadius: radii.md,
+        justifyContent: 'center',
+        paddingVertical: spacing[3]
+    },
+    submitButtonText: {
+        ...typography.label,
+        color: colors.inverseText,
+        fontSize: 14
+    },
     feed: {
         gap: spacing[3]
     },
@@ -357,8 +504,35 @@ const styles = StyleSheet.create({
         fontSize: 12
     },
     postBody: {
+        ...typography.title,
+        color: colors.text,
+        fontSize: 15
+    },
+    detailLine: {
         ...typography.body,
-        color: colors.text
+        color: colors.textMuted,
+        fontSize: 13
+    },
+    detailLabel: {
+        color: colors.textSubtle,
+        fontWeight: '700'
+    },
+    linkRow: {
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        flexDirection: 'row',
+        gap: spacing[2]
+    },
+    linkText: {
+        ...typography.body,
+        color: colors.brand,
+        fontSize: 13,
+        textDecorationLine: 'underline'
+    },
+    postDescription: {
+        ...typography.body,
+        color: colors.text,
+        marginTop: spacing[1]
     },
     levelTag: {
         alignSelf: 'flex-start',

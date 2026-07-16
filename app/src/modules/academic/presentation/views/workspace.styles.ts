@@ -81,6 +81,7 @@ export const styles = StyleSheet.create({
     headerSubtitle: { color: colors.text, fontFamily: fonts.medium, fontSize: 13, fontWeight: '600', lineHeight: 18 },
     headerActions: { alignItems: 'center', flexDirection: 'row', gap: spacing[2] },
     headerNotificationButton: { alignItems: 'center', backgroundColor: '#ffffff', borderColor: '#c0c9be', borderRadius: radii.pill, borderWidth: 1, height: 44, justifyContent: 'center', width: 44 },
+    headerActionActive: { backgroundColor: colors.brandSubtle, borderColor: colors.brand },
     chatHistoryDismissLayer: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 64, zIndex: 29 },
     chatHistorySidebar: { backgroundColor: '#ffffff', borderColor: '#c0c9be', borderRadius: 8, borderWidth: 1, elevation: 24, gap: 12, left: 12, maxWidth: 360, padding: 14, position: 'absolute', shadowColor: '#101828', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.12, shadowRadius: 24, top: 76, width: '82%', zIndex: 30 },
     chatHistoryTitle: { color: colors.text, fontFamily: fonts.medium, fontSize: 15, fontWeight: '800', lineHeight: 20 },

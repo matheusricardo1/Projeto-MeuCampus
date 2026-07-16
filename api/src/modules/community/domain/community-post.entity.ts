@@ -1,4 +1,13 @@
-export const COMMUNITY_CATEGORIES = ['BOLSA', 'ENERGIA', 'FILA_RU'] as const;
+export const COMMUNITY_CATEGORIES = [
+    // Ajudar a comunidade (crowdsourcing em tempo real)
+    'BOLSA', 'ENERGIA', 'FILA_RU',
+    // Mercado
+    'COMIDAS', 'ALUGUEIS', 'TROCAS_VENDAS',
+    // Divulgação
+    'EVENTOS', 'PALESTRAS', 'FORMATURAS', 'ACHADOS_PERDIDOS',
+    // Oportunidades
+    'EMPREGOS', 'ESTAGIO', 'PESQUISA'
+] as const;
 export type CommunityCategory = (typeof COMMUNITY_CATEGORIES)[number];
 
 export function isCommunityCategory(value: unknown): value is CommunityCategory {
@@ -33,7 +42,19 @@ export interface CreateCommunityPostInput {
  * relevant for a few days.
  */
 export const COMMUNITY_FEED_WINDOW_HOURS: Record<CommunityCategory, number> = {
+    // Real-time signals go stale fast.
     BOLSA: 72,
     ENERGIA: 12,
-    FILA_RU: 6
+    FILA_RU: 6,
+    // Marketplace / listings stay relevant for days to weeks.
+    COMIDAS: 48,
+    ALUGUEIS: 24 * 30,
+    TROCAS_VENDAS: 24 * 21,
+    EVENTOS: 24 * 30,
+    PALESTRAS: 24 * 30,
+    FORMATURAS: 24 * 60,
+    ACHADOS_PERDIDOS: 24 * 14,
+    EMPREGOS: 24 * 30,
+    ESTAGIO: 24 * 30,
+    PESQUISA: 24 * 30
 };

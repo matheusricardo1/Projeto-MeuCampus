@@ -19,13 +19,27 @@ enum PaymentStatus {
   EXPIRED
 }
 
-/// Crowdsourcing signals shared by students in the Comunidade tab. Deliberately
-/// extensible — new sections (LIVROS, EVENTO, VAGA, ...) just add members here
-/// without touching the CommunityPost shape.
+/// Categories shared by students in the Comunidade tab, grouped in the app into
+/// sections (Mercado, Divulgação, Oportunidades, Ajudar a comunidade). The board
+/// is one table; per-category structured fields live in CommunityPost.payload.
 enum CommunityCategory {
+  // Ajudar a comunidade (crowdsourcing em tempo real)
   BOLSA
   ENERGIA
   FILA_RU
+  // Mercado
+  COMIDAS
+  ALUGUEIS
+  TROCAS_VENDAS
+  // Divulgação
+  EVENTOS
+  PALESTRAS
+  FORMATURAS
+  ACHADOS_PERDIDOS
+  // Oportunidades
+  EMPREGOS
+  ESTAGIO
+  PESQUISA
 }
 
 /// id is never the raw CPF - it is HMAC-SHA256(CPF) via pseudonymousUserId(),

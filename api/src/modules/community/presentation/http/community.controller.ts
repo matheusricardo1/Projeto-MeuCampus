@@ -8,6 +8,7 @@ import { isCommunityCategory, type CommunityCategory, type CommunityPost } from 
 
 const MAX_BODY_LENGTH = 500;
 const MAX_NAME_LENGTH = 120;
+const MAX_PAYLOAD_JSON_LENGTH = 2000;
 
 interface RequestWithAcademicCredentials extends Request {
     academicCredentials?: AcademicCredentials;
@@ -56,13 +57,14 @@ export class CommunityController {
         }
 
         const authorName = (body?.authorName ?? '').trim().slice(0, MAX_NAME_LENGTH) || 'Aluno(a) UFAM';
+        const payload = this.sanitizePayload(body?.payload);
 
         const post = await this.posts.create({
             authorId,
             authorName,
             category: body.category,
             body: text,
-            payload: body?.payload ?? null
+            payload
         });
 
         return this.toResponse(post);
@@ -94,6 +96,22 @@ export class CommunityController {
             throw new BadRequestException('Categoria invalida.');
         }
         return category;
+    }
+
+    // payload is category-specific structured JSON built by the client. We don't
+    // enforce a per-category schema server-side (MVP), but we do reject anything
+    // that isn't a plain object or is unreasonably large, to keep the column sane.
+    private sanitizePayload(payload: unknown): Record<string, unknown> | null {
+        if (payload === null || payload === undefined) {
+            return null;
+        }
+        if (typeof payload !== 'object' || Array.isArray(payload)) {
+            throw new BadRequestException('Dados do post invalidos.');
+        }
+        if (JSON.stringify(payload).length > MAX_PAYLOAD_JSON_LENGTH) {
+            throw new BadRequestException('Dados do post muito longos.');
+        }
+        return payload as Record<string, unknown>;
     }
 
     private requireCpf(request: RequestWithAcademicCredentials): string {

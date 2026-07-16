@@ -185,8 +185,7 @@ export default function TabsLayout() {
         { id: 'lessonPlan' as const, label: t('nav.subjects'), icon: BookOpen },
         ...(IS_AI_FEATURE_ENABLED ? [{ id: 'ai' as const, label: t('nav.ai'), icon: Brain }] : []),
         { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar },
-        { id: 'community' as const, label: t('nav.community'), icon: Users },
-        { id: 'profile' as const, label: t('nav.profile'), icon: User }
+        { id: 'community' as const, label: t('nav.community'), icon: Users }
     ];
     const activeTabLabel = tabLabels[activeTab];
     const tabActions: Record<TabId, () => Promise<void>> = {
@@ -255,6 +254,7 @@ export default function TabsLayout() {
             router.push('/notifications');
         }
     };
+    const openProfile = () => navigateToTab('profile');
     const leaveAIChat = () => navigateToTab('home');
     const closeChatHistory = () => setShowChatHistory(false);
     const isAIPage = IS_AI_FEATURE_ENABLED && activeTab === 'ai';
@@ -352,6 +352,9 @@ export default function TabsLayout() {
                         <Pressable onPress={openNotifications} style={({ pressed }) => [styles.headerNotificationButton, pressed ? styles.pressedFeedback : null]}>
                             <Bell color={colors.textMuted} size={22} />
                         </Pressable>
+                        <Pressable onPress={openProfile} style={({ pressed }) => [styles.headerNotificationButton, activeTab === 'profile' ? styles.headerActionActive : null, pressed ? styles.pressedFeedback : null]}>
+                            <User color={activeTab === 'profile' ? colors.brand : colors.textMuted} size={22} />
+                        </Pressable>
                     </View>
                 </>
             );
@@ -367,6 +370,9 @@ export default function TabsLayout() {
                 <View style={styles.headerActions}>
                     <Pressable onPress={openNotifications} style={({ pressed }) => [styles.headerNotificationButton, pressed ? styles.pressedFeedback : null]}>
                         <Bell color={colors.textMuted} size={22} />
+                    </Pressable>
+                    <Pressable onPress={openProfile} style={({ pressed }) => [styles.headerNotificationButton, activeTab === 'profile' ? styles.headerActionActive : null, pressed ? styles.pressedFeedback : null]}>
+                        <User color={activeTab === 'profile' ? colors.brand : colors.textMuted} size={22} />
                     </Pressable>
                 </View>
             </>

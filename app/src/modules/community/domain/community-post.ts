@@ -1,4 +1,9 @@
-export const COMMUNITY_CATEGORIES = ['BOLSA', 'ENERGIA', 'FILA_RU'] as const;
+export const COMMUNITY_CATEGORIES = [
+    'BOLSA', 'ENERGIA', 'FILA_RU',
+    'COMIDAS', 'ALUGUEIS', 'TROCAS_VENDAS',
+    'EVENTOS', 'PALESTRAS', 'FORMATURAS', 'ACHADOS_PERDIDOS',
+    'EMPREGOS', 'ESTAGIO', 'PESQUISA'
+] as const;
 export type CommunityCategory = (typeof COMMUNITY_CATEGORIES)[number];
 
 export type RuLevel = 'empty' | 'moderate' | 'full';
