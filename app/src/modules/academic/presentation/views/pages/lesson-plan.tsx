@@ -6,7 +6,7 @@ import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Translate } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { EmptyInline, SkeletonBlock } from '@/modules/academic/presentation/views/components';
-import { isApprovedStatus, isFinalExamWaived, parseGrade, toSubjectTitle, useCountUp } from '@/modules/academic/presentation/views/workspace.utils';
+import { formatGrade, isApprovedStatus, isFinalExamWaived, parseGrade, toSubjectTitle, useCountUp } from '@/modules/academic/presentation/views/workspace.utils';
 import { useLessonPlanCourses, type CourseCard } from '@/modules/academic/presentation/hooks/use-lesson-plan-courses';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
@@ -84,12 +84,12 @@ export function LessonPlanListPage({
 
                 <View style={styles.coursesMetaRow}>
                     <View style={styles.coursesMetaChip}>
-                        <CalendarClock color="#003215" size={14} />
+                        <CalendarClock color="#0B6B52" size={14} />
                         <Text style={styles.coursesMetaChipText}>{semesterChipLabel}</Text>
                     </View>
                     {profile?.academic?.enrollment_number ? (
                         <View style={styles.coursesMetaChip}>
-                            <Fingerprint color="#003215" size={14} />
+                            <Fingerprint color="#0B6B52" size={14} />
                             <Text style={styles.coursesMetaChipText}>{t('lesson.enrollment', { enrollment: profile.academic.enrollment_number })}</Text>
                         </View>
                     ) : null}
@@ -170,7 +170,7 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
     // the frequency number turn red/green based on the grade instead of on
     // actual absences (and vice versa).
     const gradeColor = gradeState.color;
-    const frequencyColor = isAbsenceRisk ? '#ba1a1a' : '#003215';
+    const frequencyColor = isAbsenceRisk ? '#ba1a1a' : '#0B6B52';
 
     // gradeState.value is usually a formatted number ("8.50") but can also be
     // a non-numeric fallback ("S/N") — only count up when it's really a number.
@@ -191,11 +191,11 @@ function CourseSubjectCard({ course, onPress, t }: { course: CourseCard; onPress
                 <View style={styles.courseGradeBlock}>
                     {isApproved ? (
                         <View style={styles.courseApprovedBadge}>
-                            <CheckCircle2 color="#003215" size={12} />
+                            <CheckCircle2 color="#0B6B52" size={12} />
                             <Text style={styles.courseApprovedBadgeText}>{t('lesson.approved')}</Text>
                         </View>
                     ) : null}
-                    <Text style={[styles.courseGradeValue, { color: gradeColor }]}>{animatedGrade === null ? gradeState.value : animatedGrade.toFixed(2)}</Text>
+                    <Text style={[styles.courseGradeValue, { color: gradeColor }]}>{animatedGrade === null ? gradeState.value : formatGrade(animatedGrade)}</Text>
                     <Text style={styles.courseGradeLabel}>{gradeState.label}</Text>
                 </View>
             </View>
@@ -237,11 +237,11 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
         <View style={styles.courseDetailsPage}>
             <View style={styles.courseDetailsTopBar}>
                 <Pressable onPress={onBack} style={({ pressed }) => [styles.courseDetailsIconButton, pressed ? styles.pressedFeedback : null]}>
-                    <ArrowLeft color="#003215" size={22} />
+                    <ArrowLeft color="#0B6B52" size={22} />
                 </Pressable>
                 <Text numberOfLines={1} style={styles.courseDetailsHeaderTitle}>{t('lesson.detailsTitle')}</Text>
                 <View style={styles.courseDetailsIconButton}>
-                    <MoreVertical color="#003215" size={22} />
+                    <MoreVertical color="#0B6B52" size={22} />
                 </View>
             </View>
 
@@ -262,7 +262,7 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
                     <Text style={styles.courseDetailsKicker}>{t('lesson.finalAverage')}</Text>
                     <Text style={styles.courseDetailsAverageValue}>{gradeState.value}</Text>
                     <View style={[styles.courseDetailsStatusPill, isApproved ? styles.courseDetailsStatusOk : styles.courseDetailsStatusNeutral]}>
-                        <CheckCircle2 color={isApproved ? '#003215' : '#404941'} size={14} />
+                        <CheckCircle2 color={isApproved ? '#0B6B52' : '#404941'} size={14} />
                         <Text style={styles.courseDetailsStatusText}>{gradeState.label}</Text>
                     </View>
                 </View>
@@ -270,7 +270,7 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
                 <View style={styles.courseDetailsEvaluationsCard}>
                     <View style={styles.courseDetailsSectionHeader}>
                         <View style={styles.courseDetailsSectionTitleRow}>
-                            <BarChart3 color="#003215" size={20} />
+                            <BarChart3 color="#0B6B52" size={20} />
                             <Text style={styles.courseDetailsSectionTitle}>{t('grades.evaluations')}</Text>
                         </View>
                         <Text style={styles.courseDetailsMutedText}>{evaluations.length > 0 ? t('lesson.itemsCount', { count: evaluations.length }) : t('lesson.noGrades')}</Text>
@@ -283,21 +283,21 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
                 </View>
 
                 <AbsenceStatusCard course={course} frequency={frequency ?? null} t={t} />
-                <InfoCard icon={<Clock3 color="#003215" size={20} />} label={t('lesson.schedule')} value={scheduleLabel} />
-                <InfoCard icon={<Timer color="#003215" size={20} />} label={t('lesson.workload')} value={workloadLabel === null ? '-' : t('lesson.workloadHours', { hours: workloadLabel })} />
+                <InfoCard icon={<Clock3 color="#0B6B52" size={20} />} label={t('lesson.schedule')} value={scheduleLabel} />
+                <InfoCard icon={<Timer color="#0B6B52" size={20} />} label={t('lesson.workload')} value={workloadLabel === null ? '-' : t('lesson.workloadHours', { hours: workloadLabel })} />
                 <InfoCard icon={<MapPin color="#7b5800" size={20} />} label={t('lesson.group')} value={course.classIdentifier || '-'} />
             </View>
 
             <View style={styles.courseDetailsTimelineSection}>
                 <View style={styles.courseDetailsSectionHeader}>
                     <View style={styles.courseDetailsSectionTitleRow}>
-                        <ClipboardList color="#003215" size={20} />
+                        <ClipboardList color="#0B6B52" size={20} />
                         <Text style={styles.courseDetailsSectionTitle}>{t('lesson.syllabus')}</Text>
                     </View>
                     {course.available && course.planItems.length > 3 ? (
                         <Pressable onPress={onOpenFullContent} style={({ pressed }) => [styles.courseDetailsSeeAllButton, pressed ? styles.pressedFeedback : null]}>
                             <Text style={styles.courseDetailsSeeAllText}>{t('lesson.seeFull')}</Text>
-                            <ArrowRight color="#003215" size={15} />
+                            <ArrowRight color="#0B6B52" size={15} />
                         </Pressable>
                     ) : course.available && loading ? <Text style={styles.courseDetailsMutedText}>{t('common.loading')}</Text> : null}
                 </View>
@@ -336,11 +336,11 @@ export function CourseContentScreen({ course, loading, onBack, t }: { course: Co
         <View style={styles.courseContentPage}>
             <View style={styles.courseDetailsTopBar}>
                 <Pressable onPress={onBack} style={({ pressed }) => [styles.courseDetailsIconButton, pressed ? styles.pressedFeedback : null]}>
-                    <ArrowLeft color="#003215" size={22} />
+                    <ArrowLeft color="#0B6B52" size={22} />
                 </Pressable>
                 <Text numberOfLines={1} style={styles.courseDetailsHeaderTitle}>{t('lesson.contentTitle')}</Text>
                 <View style={styles.courseDetailsIconButton}>
-                    <Filter color="#003215" size={21} />
+                    <Filter color="#0B6B52" size={21} />
                 </View>
             </View>
 
@@ -480,7 +480,7 @@ function AbsenceStatusCard({ course, frequency, t }: { course: CourseCard; frequ
         <View style={[styles.courseDetailsAbsenceCard, status.tone === 'alert' ? styles.courseDetailsAbsenceCardAlert : status.tone === 'warning' ? styles.courseDetailsAbsenceCardWarning : styles.courseDetailsAbsenceCardOk]}>
             <View style={styles.courseDetailsAbsenceTop}>
                 <View style={[styles.courseDetailsAbsenceIcon, status.tone === 'alert' ? styles.courseDetailsAbsenceIconAlert : status.tone === 'warning' ? styles.courseDetailsAbsenceIconWarning : styles.courseDetailsAbsenceIconOk]}>
-                    <CalendarClock color={status.tone === 'alert' ? '#ba1a1a' : status.tone === 'warning' ? '#7b5800' : '#003215'} size={22} />
+                    <CalendarClock color={status.tone === 'alert' ? '#ba1a1a' : status.tone === 'warning' ? '#7b5800' : '#0B6B52'} size={22} />
                 </View>
                 <View style={styles.courseDetailsAbsenceTitleBlock}>
                     <Text style={styles.courseDetailsAbsenceKicker}>{t('lesson.absenceControl')}</Text>
@@ -538,36 +538,40 @@ function buildGradeState(course: CourseCard, frequency: number | null, t: Transl
     const pf = parseGrade(course.finalExam);
     const providedFinalGrade = parseGrade(course.finalGrade);
     const computedFinalGrade = mee !== null && pf !== null ? ((2 * mee) + pf) / 3 : null;
-    const finalGrade = computedFinalGrade ?? providedFinalGrade;
+    // Prefer eCampus's own final grade so the app shows exactly what the portal
+    // shows; only compute a provisional MF ourselves when eCampus hasn't posted
+    // one yet. (Recomputing over eCampus's value was the source of the ~0.1
+    // discrepancies — eCampus rounds its own intermediates before the formula.)
+    const finalGrade = providedFinalGrade ?? computedFinalGrade;
     const hasEnoughPresence = frequency === null || frequency >= 75;
     const statusApproved = isApprovedStatus(course.status);
     const needsFinalGrade = mee !== null && mee < 8 && pf === null && !statusApproved;
     const requiredFinalExam = mee === null ? null : Math.max(0, 15 - (mee * 2));
     const details: Array<{ label: string; value: string }> = [];
 
-    if (mee !== null) details.push({ label: 'MEE', value: mee.toFixed(2) });
-    if (pf !== null) details.push({ label: 'PF', value: pf.toFixed(2) });
-    if (finalGrade !== null) details.push({ label: 'MF', value: finalGrade.toFixed(2) });
-    if (needsFinalGrade && requiredFinalExam !== null) details.push({ label: t('lesson.finalGradeNeeded'), value: requiredFinalExam > 10 ? '> 10.00' : requiredFinalExam.toFixed(2) });
+    if (mee !== null) details.push({ label: 'MEE', value: formatGrade(mee) });
+    if (pf !== null) details.push({ label: 'PF', value: formatGrade(pf) });
+    if (finalGrade !== null) details.push({ label: 'MF', value: formatGrade(finalGrade) });
+    if (needsFinalGrade && requiredFinalExam !== null) details.push({ label: t('lesson.finalGradeNeeded'), value: requiredFinalExam > 10 ? '> 10.00' : formatGrade(requiredFinalExam) });
 
     if (mee !== null && isFinalExamWaived(mee, pf, hasEnoughPresence)) {
         return {
-            color: '#003215',
+            color: '#0B6B52',
             details,
             label: t('lesson.gradeStatePfWaived'),
             tone: 'success',
-            value: mee.toFixed(2)
+            value: formatGrade(mee)
         };
     }
 
     if (finalGrade !== null) {
         const approved = finalGrade >= 5 && hasEnoughPresence;
         return {
-            color: approved ? '#003215' : '#ba1a1a',
+            color: approved ? '#0B6B52' : '#ba1a1a',
             details,
             label: t('lesson.gradeStateFinalAverage'),
             tone: approved ? 'success' : 'danger',
-            value: finalGrade.toFixed(2)
+            value: formatGrade(finalGrade)
         };
     }
 
@@ -578,7 +582,7 @@ function buildGradeState(course: CourseCard, frequency: number | null, t: Transl
             details,
             label: needsFinalGrade ? t('lesson.gradeStatePartialGrade') : 'MEE',
             tone: impossibleFinal ? 'danger' : 'warning',
-            value: mee.toFixed(2)
+            value: formatGrade(mee)
         };
     }
 

@@ -276,6 +276,25 @@ export function parseGrade(value: string): number | null {
     return Number.isFinite(parsed) ? parsed : null;
 }
 
+// Truncates (does not round) to `decimals` places, matching how eCampus shows
+// grades: 6.995 stays "6.99", never "7.00". The tiny relative nudge only
+// counters binary FP under-representation — so a true 7.00 stored as
+// 6.9999999… isn't chopped down to 6.99 — without being large enough to lift a
+// genuine 6.995 up to 7.00.
+export function truncateToDecimals(value: number, decimals = 2): number {
+    if (!Number.isFinite(value)) return value;
+    const factor = 10 ** decimals;
+    const scaled = Math.abs(value) * factor;
+    const truncated = Math.floor(scaled + scaled * Number.EPSILON * 4);
+    return (Math.sign(value) * truncated) / factor;
+}
+
+// Fixed-decimal string for grades, truncated like eCampus so the app never
+// shows a value a hundredth off from the portal.
+export function formatGrade(value: number, decimals = 2): string {
+    return truncateToDecimals(value, decimals).toFixed(decimals);
+}
+
 export function parseAbsences(value: string): number {
     const parsed = Number(value.replace(/\D/g, ''));
     return Number.isFinite(parsed) ? parsed : 0;

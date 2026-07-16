@@ -7,7 +7,7 @@ import { colors, gradients } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { ProgressRing, SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
-import { buildWeekMap, getNextScheduleClass, groupScheduleByDay, isApprovedStatus, parseAbsences, parseGrade, toSubjectTitle, toTitleName, useCountUp } from '@/modules/academic/presentation/views/workspace.utils';
+import { buildWeekMap, formatGrade, getNextScheduleClass, groupScheduleByDay, isApprovedStatus, parseAbsences, parseGrade, toSubjectTitle, toTitleName, useCountUp } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 
 // A slow, occasional light sweep across the AI CTA — the kind of "premium
@@ -132,7 +132,7 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                         </View>
                         <Text numberOfLines={1} style={styles.homeKpiLabel}>CRA</Text>
                     </View>
-                    <Text style={styles.homeKpiValue}>{animatedAverage === null ? '-' : animatedAverage.toFixed(2)}</Text>
+                    <Text style={styles.homeKpiValue}>{animatedAverage === null ? '-' : formatGrade(animatedAverage)}</Text>
                     <Text numberOfLines={1} style={styles.homeKpiHint}>{t('home.subjectCount', { count: subjectCount })}</Text>
                 </View>
 
