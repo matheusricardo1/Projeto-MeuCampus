@@ -107,3 +107,24 @@ export const shadows = {
         shadowRadius: 20
     }
 } as const;
+
+// Matches the depth language of `shadows.elevated` on text: a soft drop
+// shadow under headline/hero copy so titles read as lifted, not flat,
+// tying the typography to the same "3D" card look everywhere else.
+export const textShadows = {
+    // White hero text over a dark green fill/gradient (profile name, next
+    // class title, AI CTA title, course hero titles) — a darker, closer
+    // shadow that also nudges legibility.
+    heroOnBrand: {
+        textShadowColor: 'rgba(0,15,8,0.35)',
+        textShadowOffset: { width: 0, height: 2 },
+        textShadowRadius: 6
+    },
+    // Dark green headings over a light surface (screen titles, KPI values) —
+    // barely-there so it reads as depth, not a smudge.
+    heading: {
+        textShadowColor: 'rgba(11,61,50,0.18)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 3
+    }
+} as const;
