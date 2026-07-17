@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Line, Polygon, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Polygon, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, GitBranch, List, RefreshCw } from 'lucide-react-native';
 import { colors, gradients, radii, shadows, spacing, textShadows, typography } from '@/shared/design-system';
@@ -192,7 +192,7 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
                         <Svg width={layout.width} height={layout.height}>
                             {/* edges */}
                             {layout.edges.map((e, i) => (
-                                <Edge key={`e${i}`} from={e.from} to={e.to} />
+                                <Edge key={`e${i}`} from={e.from} to={e.to} lane={e.lane} />
                             ))}
                             {/* nodes */}
                             {layout.nodes.map((n) => (
@@ -224,17 +224,24 @@ function GraphNodeView({ node }: { node: GraphNode }) {
     );
 }
 
-function Edge({ from, to }: { from: GraphNode; to: GraphNode }) {
-    // Downward flow: from the pre-requisito's bottom-center to the top-center of
-    // the disciplina that depends on it.
-    const x1 = from.x + NODE_W / 2;
-    const y1 = from.y + NODE_H;
-    const x2 = to.x + NODE_W / 2;
-    const y2 = to.y;
-    const arrow = arrowHead(x1, y1, x2, y2, 9);
+function Edge({ from, to, lane }: { from: GraphNode; to: GraphNode; lane: number }) {
+    // Orthogonal "elbow" route that never crosses a card: drop out of the
+    // pre-requisito, run horizontally in the channel just below it, go straight
+    // down the GUTTER beside the target column (the empty strip between cards,
+    // so the long vertical never enters a card), then into the target's top.
+    const sx = from.x + NODE_W / 2;
+    const sBottom = from.y + NODE_H;
+    const tx = to.x + NODE_W / 2;
+    const ty = to.y;
+    const gutterX = to.x - H_GAP / 2; // free strip immediately left of the target
+    const off = (lane % 6) * 4;
+    const yA = sBottom + 8 + off;      // channel below the source row
+    const yB = ty - 8 - off;           // channel just above the target row
+    const points = `${sx},${sBottom} ${sx},${yA} ${gutterX},${yA} ${gutterX},${yB} ${tx},${yB} ${tx},${ty}`;
+    const arrow = arrowHead(tx, ty - 9, tx, ty, 9);
     return (
         <>
-            <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={colors.brand} strokeWidth={3} />
+            <Polyline points={points} fill="none" stroke={colors.brand} strokeWidth={3} strokeLinejoin="round" />
             <Polygon points={arrow} fill={colors.brand} />
         </>
     );
@@ -242,7 +249,7 @@ function Edge({ from, to }: { from: GraphNode; to: GraphNode }) {
 
 function buildGraphLayout(matriz: MatrizCurricular): {
     nodes: GraphNode[];
-    edges: Array<{ from: GraphNode; to: GraphNode }>;
+    edges: Array<{ from: GraphNode; to: GraphNode; lane: number }>;
     rows: Array<{ periodo: number; y: number }>;
     width: number;
     height: number;
@@ -290,13 +297,17 @@ function buildGraphLayout(matriz: MatrizCurricular): {
         });
     });
 
-    const edges: Array<{ from: GraphNode; to: GraphNode }> = [];
+    const edges: Array<{ from: GraphNode; to: GraphNode; lane: number }> = [];
+    const laneByPeriod = new Map<number, number>();
     for (const d of withPeriod) {
         const target = nodeByCode.get(d.codigo);
         if (!target) continue;
         for (const pre of d.preRequisitos) {
             const source = nodeByCode.get(pre);
-            if (source) edges.push({ from: source, to: target });
+            if (!source) continue;
+            const lane = laneByPeriod.get(source.periodo) ?? 0;
+            laneByPeriod.set(source.periodo, lane + 1);
+            edges.push({ from: source, to: target, lane });
         }
     }
 
