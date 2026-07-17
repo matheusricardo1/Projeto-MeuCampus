@@ -166,10 +166,9 @@ function MiniChip({ text, tone }: { text: string; tone?: 'warn' }) {
 
 const NODE_W = 148;
 const NODE_H = 50;
-const H_GAP = 22; // between disciplinas of the same período (horizontal)
+const H_GAP = 12; // between disciplinas of the same período (kept tight)
 const V_GAP = 50; // between período rows (vertical) — room for the arrows
-const PAD = 20;
-const LABEL_W = 42; // left gutter for the "Nº" período label
+const PAD = 16;
 
 interface GraphNode {
     codigo: string;
@@ -191,12 +190,6 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
                     <Text style={[styles.graphHint, { paddingLeft: 68 }]}>Cada linha é um período (1º no topo); as setas descem do pré-requisito para a disciplina que depende dele.</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ padding: spacing[2] }}>
                         <Svg width={layout.width} height={layout.height}>
-                            {/* período row labels (left gutter) */}
-                            {layout.rows.map((row) => (
-                                <SvgText key={`r${row.periodo}`} x={PAD} y={row.y + NODE_H / 2 + 4} fill={colors.brand} fontSize={13} fontWeight="700" textAnchor="start">
-                                    {`${row.periodo}º`}
-                                </SvgText>
-                            ))}
                             {/* edges */}
                             {layout.edges.map((e, i) => (
                                 <Edge key={`e${i}`} from={e.from} to={e.to} />
@@ -238,10 +231,10 @@ function Edge({ from, to }: { from: GraphNode; to: GraphNode }) {
     const y1 = from.y + NODE_H;
     const x2 = to.x + NODE_W / 2;
     const y2 = to.y;
-    const arrow = arrowHead(x1, y1, x2, y2, 7);
+    const arrow = arrowHead(x1, y1, x2, y2, 9);
     return (
         <>
-            <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={colors.borderStrong} strokeWidth={1.5} />
+            <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={colors.brand} strokeWidth={3} />
             <Polygon points={arrow} fill={colors.brand} />
         </>
     );
@@ -268,15 +261,28 @@ function buildGraphLayout(matriz: MatrizCurricular): {
     const nodeByCode = new Map<string, GraphNode>();
     const nodes: GraphNode[] = [];
     const rows: Array<{ periodo: number; y: number }> = [];
+    const slot = NODE_W + H_GAP;
     periodos.forEach((p, rowIndex) => {
         const y = PAD + rowIndex * (NODE_H + V_GAP);
         rows.push({ periodo: p, y });
-        byPeriod.get(p)!.forEach((d, index) => {
+        // Barycenter ordering: place each disciplina near the average X of its
+        // pre-requisitos (already positioned in the rows above) so the arrows
+        // stay roughly vertical and cross as little as possible.
+        const ordered = byPeriod.get(p)!
+            .map((d, index) => {
+                const preXs = d.preRequisitos
+                    .map((pr) => nodeByCode.get(pr)?.x)
+                    .filter((x): x is number => x != null);
+                const bary = preXs.length ? preXs.reduce((a, b) => a + b, 0) / preXs.length : index * slot;
+                return { d, bary, index };
+            })
+            .sort((a, b) => a.bary - b.bary || a.index - b.index);
+        ordered.forEach(({ d }, index) => {
             const node: GraphNode = {
                 codigo: d.codigo,
                 nome: d.nome,
                 periodo: p,
-                x: PAD + LABEL_W + index * (NODE_W + H_GAP),
+                x: PAD + index * slot,
                 y
             };
             nodes.push(node);
@@ -295,7 +301,7 @@ function buildGraphLayout(matriz: MatrizCurricular): {
     }
 
     const maxRowLen = Math.max(1, ...periodos.map((p) => byPeriod.get(p)!.length));
-    const width = PAD + LABEL_W + maxRowLen * (NODE_W + H_GAP) - H_GAP + PAD;
+    const width = PAD + maxRowLen * (NODE_W + H_GAP) - H_GAP + PAD;
     const height = periodos.length > 0 ? PAD + periodos.length * (NODE_H + V_GAP) - V_GAP + PAD : PAD;
     return { nodes, edges, rows, width, height };
 }
