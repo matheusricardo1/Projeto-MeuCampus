@@ -27,15 +27,25 @@ export function parseMatrizCurricularPdf(pdf: Buffer): MatrizCurricular {
     let lastDisciplina: MatrizDisciplina | null = null;
 
     for (const row of rows) {
-        if (isHeaderOrMetaRow(row)) continue;
-
+        // Category detection runs FIRST: a section header (e.g. OBRIGATÓRIAS)
+        // that starts at the top of a page shares its row with the repeating
+        // column header ("CARGA HORÁRIA / PERÍODO CÓD …"), so isHeaderOrMetaRow
+        // would otherwise skip it and swallow the whole section.
         const category = detectCategory(row);
         if (category) {
-            current = { nome: category, disciplinas: [] };
-            categorias.push(current);
+            // Reuse an existing section of the same name — a section that spans
+            // several pages repeats its header, and we don't want to split it
+            // into duplicate categories.
+            current = categorias.find((c) => c.nome === category) ?? null;
+            if (!current) {
+                current = { nome: category, disciplinas: [] };
+                categorias.push(current);
+            }
             lastDisciplina = null;
             continue;
         }
+
+        if (isHeaderOrMetaRow(row)) continue;
 
         const cells = row.cells;
         const codeCell = cells.find((c) => inBand(c.x, 'COD') && isDisciplineCode(c.text));
@@ -91,25 +101,46 @@ function inBand(x: number, band: keyof typeof BANDS): boolean {
     return x >= min && x < max;
 }
 
-const CODE_RE = /^(?:[A-Z]{2,5}\d{2,4}|ENADE\d+)$/;
+// UFAM discipline codes are letters + digits (ICC001, IEM075, IEC082, ENADE01,
+// IHP123…). Kept broad — code cells are already restricted to the CÓD column,
+// so a loose pattern can't accidentally swallow name/number cells.
+const CODE_RE = /^[A-Z]{2,6}\d{2,5}[A-Z]?$/;
 
 function isDisciplineCode(text: string): boolean {
-    return CODE_RE.test(text.trim());
+    return CODE_RE.test(text.trim().toUpperCase());
 }
 
-const CATEGORY_NAMES = new Set([
-    'ATIVIDADE CURRICULAR DE EXTENSÃO',
-    'ELETIVAS',
-    'OBRIGATÓRIAS',
-    'OPTATIVAS',
-    'COMPLEMENTARES',
-    'ATIVIDADES COMPLEMENTARES'
-]);
+function stripAccents(value: string): string {
+    return value.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
 
+/** True when the row is an actual disciplina line (has a code in the CÓD column). */
+function rowHasDisciplineCode(row: Row): boolean {
+    return row.cells.some((c) => inBand(c.x, 'COD') && isDisciplineCode(c.text));
+}
+
+/**
+ * Detects a section header (OBRIGATÓRIAS / ELETIVAS / OPTATIVAS / EXTENSÃO /
+ * COMPLEMENTARES) from any cell in the row — tolerant to accents, label
+ * variants ("Disciplinas Obrigatórias"), and to the header being merged with a
+ * page-top column header. Skips summary/total cells ("CARGA HORÁRIA DE …",
+ * "CRÉDITOS DE …") and real disciplina rows.
+ */
 function detectCategory(row: Row): string | null {
-    const texts = row.cells.map((c) => c.text.trim()).filter(Boolean);
-    if (texts.length === 1 && CATEGORY_NAMES.has(texts[0]!.toUpperCase())) {
-        return texts[0]!.toUpperCase();
+    if (rowHasDisciplineCode(row)) return null;
+
+    for (const cell of row.cells) {
+        const text = stripAccents(cell.text).toUpperCase().trim();
+        if (!text || text.length > 45) continue;
+        // Ignore the totals/summary block and column headers that also mention
+        // a category word (e.g. "CARGA HORARIA DE OBRIGATORIAS", "CRÉD.").
+        if (/CARGA|CREDITO|CRED\.|=|MINIMO|MAXIMO|LIMITE|\bTOTAL\b|PERIODO|NOME DA DISCIPLINA/.test(text)) continue;
+
+        if (/OBRIGATORI/.test(text)) return 'OBRIGATÓRIAS';
+        if (/OPTATIV/.test(text)) return 'OPTATIVAS';
+        if (/ELETIV/.test(text)) return 'ELETIVAS';
+        if (/EXTENSAO/.test(text)) return 'ATIVIDADE CURRICULAR DE EXTENSÃO';
+        if (/COMPLEMENTAR/.test(text)) return 'ATIVIDADES COMPLEMENTARES';
     }
     return null;
 }

@@ -42,6 +42,18 @@ describeWithFixture('parseMatrizCurricularPdf: categorias', () => {
     it('parses a healthy number of disciplinas', () => {
         expect(matriz.totalDisciplinas).toBeGreaterThan(100);
     });
+
+    it('has no empty or duplicate categories and reads obrigatórias/optativas', () => {
+        const names = matriz.categorias.map((c) => c.nome);
+        expect(new Set(names).size).toBe(names.length); // no duplicates
+        for (const cat of matriz.categorias) {
+            expect(cat.disciplinas.length).toBeGreaterThan(0);
+        }
+        const obrigatorias = matriz.categorias.find((c) => c.nome === 'OBRIGATÓRIAS');
+        const optativas = matriz.categorias.find((c) => c.nome === 'OPTATIVAS');
+        expect(obrigatorias!.disciplinas.length).toBeGreaterThan(20);
+        expect(optativas!.disciplinas.length).toBeGreaterThan(3);
+    });
 });
 
 describeWithFixture('parseMatrizCurricularPdf: column mapping', () => {
