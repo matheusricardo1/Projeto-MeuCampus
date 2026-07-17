@@ -40,9 +40,18 @@ export class GetMatrizCurricularUseCase {
         }
 
         const cursos = await this.repository.listMatrizCursos(credentials, DEFAULT_NIVEL_CURSO);
-        const match = pickBestCourse(cursos, courseName);
+
+        // Match by course CODE first (e.g. "IE17") — the profile course string
+        // carries it (código + nome, like "IE17 - Engenharia de Software"), and
+        // matching the código is exact/reliable. Only fall back to fuzzy name
+        // matching when there's no code (or it isn't in the list).
+        const courseCode = extractCourseCode(courseName);
+        const byCode = courseCode
+            ? cursos.find((c) => normalizeCode(c.codCurso) === courseCode)
+            : undefined;
+        const match = byCode ?? pickBestCourse(cursos, courseName);
         if (!match) {
-            throw new ResourceNotFoundError(`Não encontrei "${courseName}" na lista de cursos da matriz curricular.`);
+            throw new ResourceNotFoundError(`Não encontrei seu curso (${courseCode ?? courseName}) na lista de cursos da matriz curricular.`);
         }
 
         const versoes = await this.repository.listMatrizVersoes(credentials, match.id);
@@ -58,12 +67,33 @@ export class GetMatrizCurricularUseCase {
 
         logger.info('Resolved student course for matriz curricular.', {
             courseName,
+            matchedBy: byCode ? 'code' : 'name',
+            codCurso: match.codCurso,
             cursoId: match.id,
             versaoId: versao.id,
             versao: versao.numVersao
         });
         return { cursoId: match.id, versaoId: versao.id };
     }
+}
+
+function normalizeCode(value: string): string {
+    return value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+/**
+ * Pulls the course code (e.g. "IE17") out of the profile course string. eCampus
+ * shows it as "CODE - Nome" (e.g. "IE17 - Engenharia de Software"); we take the
+ * leading token when it looks like a code, otherwise the first code-shaped token
+ * anywhere. Returns null when there's no code to match on.
+ */
+function extractCourseCode(courseName: string): string | null {
+    const head = courseName.split(/\s*[-–—]\s*/)[0]?.trim() ?? '';
+    if (/^[A-Z]{2,3}\d{2,3}[A-Z]?$/i.test(head)) {
+        return normalizeCode(head);
+    }
+    const match = courseName.match(/\b([A-Z]{2,3}\d{2,3}[A-Z]?)\b/i);
+    return match ? normalizeCode(match[1]!) : null;
 }
 
 /** Normalizes for accent-insensitive, case-insensitive comparison. */
