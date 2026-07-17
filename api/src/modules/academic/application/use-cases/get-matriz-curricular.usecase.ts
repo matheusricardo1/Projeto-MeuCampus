@@ -4,6 +4,7 @@ import type { AcademicCredentials } from '@auth/domain/entities/academic-session
 import { AcademicResourceNotFoundException } from '@academic/domain/exceptions/academic-resource-not-found.exception';
 import type { MatrizCurricular } from '@academic/domain/entities/matriz-curricular.entity';
 import { scrapingJobDedupeKey } from '@academic/application/services/scraping-job-dedupe-key';
+import { pendingScrapeJob, type PendingScrapeJob } from '@/modules/academic/application/services/pending-scrape-job';
 
 /**
  * Returns the student's curriculum matrix (matriz curricular). Reads the cache
@@ -38,5 +39,26 @@ export class GetMatrizCurricularUseCase {
         } catch {
             return null;
         }
+    }
+
+    /**
+     * Cache-or-pending variant for the app: returns the cached matrix instantly,
+     * or enqueues the scrape and returns a pending marker (HTTP 202) so the app
+     * can poll — instead of blocking the request for the whole scrape like
+     * execute() does for the AI/MCP path.
+     */
+    async requestCachedOrPending(credentials: AcademicCredentials): Promise<MatrizCurricular | PendingScrapeJob> {
+        try {
+            return await this.cache.getMatrizCurricular(credentials.cpf);
+        } catch (error) {
+            if (!(error instanceof AcademicResourceNotFoundException)) {
+                throw error;
+            }
+        }
+
+        await this.scrapingJobService.enqueue('matriz-curricular', { credentials }, {
+            dedupeKey: scrapingJobDedupeKey(credentials, 'matriz')
+        });
+        return pendingScrapeJob('matriz');
     }
 }

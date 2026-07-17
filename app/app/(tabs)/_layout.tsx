@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Bell, BookOpen, Calendar, GraduationCap, History, LayoutDashboard, Mic, Send, Sparkles, User, Brain } from 'lucide-react-native';
+import { ArrowLeft, Bell, BookOpen, GraduationCap, History, LayoutDashboard, Mic, Send, Sparkles, User, Brain } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import { colors, gradients } from '@/shared/design-system';
@@ -183,10 +183,10 @@ export default function TabsLayout() {
     const bottomTabs = [
         { id: 'home' as const, label: t('nav.panel'), icon: LayoutDashboard },
         { id: 'lessonPlan' as const, label: t('nav.subjects'), icon: BookOpen },
-        ...(IS_AI_FEATURE_ENABLED ? [{ id: 'ai' as const, label: t('nav.ai'), icon: Brain }] : []),
-        { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar }
-        // Comunidade is not launched in the navbar yet — it opens from the
-        // Profile screen and runs full-screen (no bottom nav). See isCommunityPage.
+        ...(IS_AI_FEATURE_ENABLED ? [{ id: 'ai' as const, label: t('nav.ai'), icon: Brain }] : [])
+        // Comunidade and Horário are not in the navbar — they open from other
+        // screens (Perfil / Matérias) and run full-screen with no bottom nav.
+        // See isCommunityPage / isSchedulePage.
     ];
     const activeTabLabel = tabLabels[activeTab];
     const tabActions: Record<TabId, () => Promise<void>> = {
@@ -257,15 +257,22 @@ export default function TabsLayout() {
     };
     const openProfile = () => navigateToTab('profile');
     const leaveAIChat = () => navigateToTab('home');
+    const leaveSchedule = () => navigateToTab('lessonPlan');
     const closeChatHistory = () => setShowChatHistory(false);
     const isAIPage = IS_AI_FEATURE_ENABLED && activeTab === 'ai';
     // Community runs its own full-height immersive feed (like the AI page) and,
     // while not launched in the navbar, opens full-screen with no bottom nav.
     const isCommunityPage = activeTab === 'community';
+    // Horário left the navbar — it opens from the Matérias screen and runs
+    // full-screen (no bottom nav) with a back button in the header.
+    const isSchedulePage = activeTab === 'schedule';
     // Course details/content pages ship their own top bar with a back button —
     // the shared "Meu Campus" header and bottom nav would just be redundant chrome there.
     const isCourseDetailsPage = pathname.startsWith('/lesson-plan/');
-    const bottomNavInset = isAIPage || isCommunityPage || isCourseDetailsPage ? 0 : layout.isTablet ? 88 : 96;
+    // The curriculum matrix screen runs its own full-height canvas (hero +
+    // internal scroll/graph), like the AI and Community pages.
+    const isMatrizPage = pathname.startsWith('/lesson-plan/matriz');
+    const bottomNavInset = isAIPage || isCommunityPage || isCourseDetailsPage || isSchedulePage ? 0 : layout.isTablet ? 88 : 96;
     const chatTitle = chatHistory[0]?.title || DEFAULT_CHAT_TITLE;
 
     useEffect(() => {
@@ -341,6 +348,17 @@ export default function TabsLayout() {
             );
         }
 
+        if (isSchedulePage) {
+            return (
+                <View style={styles.headerIdentity}>
+                    <Pressable onPress={leaveSchedule} style={({ pressed }) => [styles.headerNotificationButton, pressed ? styles.pressedFeedback : null]}>
+                        <ArrowLeft color={colors.textMuted} size={22} />
+                    </Pressable>
+                    <Text numberOfLines={1} style={styles.headerTitle}>{t('nav.schedule')}</Text>
+                </View>
+            );
+        }
+
         if (layout.isTablet) {
             return (
                 <>
@@ -400,7 +418,7 @@ export default function TabsLayout() {
             outputRange: [0, 1, 1]
         })
     };
-    const sharedBottomNav = isAIPage || isAILaunching || isCourseDetailsPage || isCommunityPage ? null : (
+    const sharedBottomNav = isAIPage || isAILaunching || isCourseDetailsPage || isCommunityPage || isSchedulePage ? null : (
         <View style={styles.bottomNavShell}>
             <View style={[styles.bottomNav, layout.isTablet ? styles.bottomNavDesktop : null]}>
                 {bottomTabs.map((tab) => {
@@ -424,7 +442,7 @@ export default function TabsLayout() {
             </View>
         </View>
     );
-    const pageContent = (isAIPage || isCommunityPage) ? (
+    const pageContent = (isAIPage || isCommunityPage || isMatrizPage) ? (
         <View style={styles.flexScroll}>
             <Slot />
         </View>

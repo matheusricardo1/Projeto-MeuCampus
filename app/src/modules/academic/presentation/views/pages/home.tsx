@@ -65,11 +65,6 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
         .map((grade) => grade.attendance?.presence_percent)
         .filter((frequency): frequency is number => typeof frequency === 'number');
     const frequency = computedFrequencies.length ? Math.round(computedFrequencies.reduce((sum, value) => sum + value, 0) / computedFrequencies.length) : null;
-    const weakestGrades = grades
-        .map((grade) => ({ grade, parsedFinal: parseGrade(grade.final_grade) }))
-        .filter((entry): entry is { grade: Workspace['grades'][number]; parsedFinal: number } => entry.parsedFinal !== null)
-        .sort((a, b) => a.parsedFinal - b.parsedFinal)
-        .slice(0, 3);
 
     // These count up (and the bars/ring grow) whenever their target changes —
     // most visibly right as the skeleton swaps out for real data.
@@ -223,40 +218,6 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                     </View>
                 </LinearGradient>
             </Pressable>
-
-            <View style={styles.homeSection}>
-                <View style={styles.homeInsightHeader}>
-                    <AlertTriangle color={colors.danger} size={18} />
-                    <Text style={styles.homeSectionTitle}>{t('home.attentionPoints')}</Text>
-                </View>
-                <View style={[styles.panel, styles.listStack]}>
-                    {weakestGrades.length === 0 ? <Text style={styles.panelDescription}>{t('home.noGradesLoaded')}</Text> : null}
-                    {weakestGrades.map(({ grade, parsedFinal }) => {
-                        const isDanger = parsedFinal < 5;
-                        const isWarning = !isDanger && parsedFinal < 7;
-                        return (
-                            <View
-                                key={`${grade.code}-${grade.subject}`}
-                                style={[styles.attentionCard, isDanger ? styles.attentionCardDanger : isWarning ? styles.attentionCardWarning : null]}
-                            >
-                                <View style={styles.attentionCardRow}>
-                                    <View style={[styles.attentionBadge, isDanger ? styles.homeKpiToneDanger : isWarning ? styles.homeKpiToneWarning : styles.homeKpiTonePrimary]}>
-                                        <AlertTriangle color={isDanger ? colors.danger : isWarning ? colors.warning : colors.brand} size={16} />
-                                    </View>
-                                    <View style={styles.attentionCardBody}>
-                                        <Text style={styles.smallCaps}>{grade.code}</Text>
-                                        <Text numberOfLines={1} style={styles.attentionTitle}>{toSubjectTitle(grade.subject)}</Text>
-                                    </View>
-                                    <View style={[styles.attentionGradeBadge, isDanger ? styles.homeKpiToneDanger : isWarning ? styles.homeKpiToneWarning : styles.homeKpiTonePrimary]}>
-                                        <Text style={styles.attentionGradeLabel}>MF</Text>
-                                        <Text style={[styles.attentionGradeValue, isDanger ? styles.attentionTextDanger : isWarning ? styles.attentionTextWarning : null]}>{grade.final_grade || '-'}</Text>
-                                    </View>
-                                </View>
-                            </View>
-                        );
-                    })}
-                </View>
-            </View>
         </View>
     );
 }

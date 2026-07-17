@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ClipboardList, Clock3, Filter, Fingerprint, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ClipboardList, Clock3, Filter, Fingerprint, GitBranch, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Translate } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
@@ -127,6 +127,23 @@ export function LessonPlanListPage({
                             </View>
                         ) : null}
                     </View>
+                </View>
+
+                <View style={matrizButtonStyle.row}>
+                    <Pressable
+                        onPress={() => router.push('/schedule')}
+                        style={({ pressed }) => [matrizButtonStyle.button, pressed ? styles.pressedFeedback : null]}
+                    >
+                        <CalendarClock color="#003215" size={16} />
+                        <Text style={matrizButtonStyle.text}>{t('nav.schedule')}</Text>
+                    </Pressable>
+                    <Pressable
+                        onPress={() => router.push('/lesson-plan/matriz')}
+                        style={({ pressed }) => [matrizButtonStyle.button, pressed ? styles.pressedFeedback : null]}
+                    >
+                        <GitBranch color="#003215" size={16} />
+                        <Text style={matrizButtonStyle.text}>Matriz curricular</Text>
+                    </Pressable>
                 </View>
             </View>
 
@@ -857,3 +874,32 @@ function CourseCardsSkeleton() {
         </>
     );
 }
+
+const matrizButtonStyle = StyleSheet.create({
+    row: {
+        flexDirection: 'row',
+        gap: 8,
+        marginTop: 12
+    },
+    button: {
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        elevation: 4,
+        flex: 1,
+        flexDirection: 'row',
+        gap: 8,
+        justifyContent: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        shadowColor: '#0B3D32',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.16,
+        shadowRadius: 10
+    },
+    text: {
+        color: '#0B3D32',
+        fontSize: 13,
+        fontWeight: '800'
+    }
+});

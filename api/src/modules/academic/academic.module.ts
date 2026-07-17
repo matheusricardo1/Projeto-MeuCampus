@@ -12,6 +12,7 @@ import { GetAcademicSubjectsUseCase } from '@academic/application/use-cases/get-
 import { GetGradesUseCase } from '@academic/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@academic/application/use-cases/get-lesson-plan.usecase';
 import { GetLessonPlanSubjectsUseCase } from '@academic/application/use-cases/get-lesson-plan-subjects.usecase';
+import { GetMatrizCurricularUseCase } from '@academic/application/use-cases/get-matriz-curricular.usecase';
 import { GetScheduleUseCase } from '@academic/application/use-cases/get-schedule.usecase';
 import { GetProfileUseCase } from '@academic/application/use-cases/get-profile.usecase';
 import { LoginUseCase } from '@academic/application/use-cases/login.usecase';
@@ -41,6 +42,11 @@ import { ValidateAcademicSessionUseCase } from '@academic/application/use-cases/
         {
             provide: GetLessonPlanSubjectsUseCase,
             useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetLessonPlanSubjectsUseCase(cache, jobs),
+            inject: [AcademicDataRepository, ScrapingJobService]
+        },
+        {
+            provide: GetMatrizCurricularUseCase,
+            useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetMatrizCurricularUseCase(cache, jobs),
             inject: [AcademicDataRepository, ScrapingJobService]
         },
         {

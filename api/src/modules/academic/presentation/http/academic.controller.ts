@@ -4,6 +4,7 @@ import { GetAcademicSubjectsUseCase } from '@academic/application/use-cases/get-
 import { GetGradesUseCase } from '@academic/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@academic/application/use-cases/get-lesson-plan.usecase';
 import { GetLessonPlanSubjectsUseCase } from '@academic/application/use-cases/get-lesson-plan-subjects.usecase';
+import { GetMatrizCurricularUseCase } from '@academic/application/use-cases/get-matriz-curricular.usecase';
 import { GetScheduleUseCase } from '@academic/application/use-cases/get-schedule.usecase';
 import { GetProfileUseCase } from '@academic/application/use-cases/get-profile.usecase';
 import { LoginUseCase } from '@academic/application/use-cases/login.usecase';
@@ -30,6 +31,7 @@ export class AcademicController {
     private readonly getGradesUseCase: GetGradesUseCase,
     private readonly getLessonPlanUseCase: GetLessonPlanUseCase,
     private readonly getLessonPlanSubjectsUseCase: GetLessonPlanSubjectsUseCase,
+    private readonly getMatrizCurricularUseCase: GetMatrizCurricularUseCase,
     private readonly validateAcademicSessionUseCase: ValidateAcademicSessionUseCase,
     private readonly scrapingJobService: ScrapingJobService,
   ) {}
@@ -135,6 +137,12 @@ export class AcademicController {
   @UseGuards(AcademicAuthGuard)
   async getLessonPlanSubjects(@CurrentAcademicCredentials() credentials: AcademicCredentials, @Res({ passthrough: true }) response: Response) {
     return this.respondWithResourceStatus(response, 'lesson-plan-subjects', await this.getLessonPlanSubjectsUseCase.execute(credentials));
+  }
+
+  @Get('matriz-curricular')
+  @UseGuards(AcademicAuthGuard)
+  async getMatrizCurricular(@CurrentAcademicCredentials() credentials: AcademicCredentials, @Res({ passthrough: true }) response: Response) {
+    return this.respondWithResourceStatus(response, 'matriz', await this.getMatrizCurricularUseCase.requestCachedOrPending(credentials));
   }
   // -----------------------------------------------------------------
   // Endpoint para enfileirar jobs manualmente (útil para depuração)
