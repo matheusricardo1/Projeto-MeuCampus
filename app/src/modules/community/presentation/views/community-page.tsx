@@ -20,14 +20,19 @@ import type { CommunityCategory, CommunityPost, RuLevel } from '@/modules/commun
 
 type CreateFn = (input: { category: CommunityCategory; body: string; authorName: string; payload?: Record<string, unknown> | null }) => Promise<CommunityPost>;
 
-const ANNOUNCEMENT_SECTIONS = COMMUNITY_SECTIONS.filter((section) => section.categories.every((cat) => cat.kind === 'form'));
+// Sections kept in the catalog but not yet launched — hidden from the UI
+// (not deleted, so re-enabling later is a one-line change).
+const HIDDEN_SECTION_IDS = new Set(['oportunidades']);
+const VISIBLE_SECTIONS = COMMUNITY_SECTIONS.filter((section) => !HIDDEN_SECTION_IDS.has(section.id));
+
+const ANNOUNCEMENT_SECTIONS = VISIBLE_SECTIONS.filter((section) => section.categories.every((cat) => cat.kind === 'form'));
 
 /** Soft tinted background for a category token on a white card. */
 function softTint(accent: string): string {
     return `${accent}26`;
 }
 
-export function CommunityPage({ authorName, bottomInset = 96 }: { authorName: string; bottomInset?: number }) {
+export function CommunityPage({ authorName, bottomInset = 96, onBack }: { authorName: string; bottomInset?: number; onBack?: () => void }) {
     const community = useCommunity('FILA_RU');
     const [composeCategory, setComposeCategory] = useState<CommunityCategory | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
@@ -64,6 +69,7 @@ export function CommunityPage({ authorName, bottomInset = 96 }: { authorName: st
             authorName={authorName}
             notice={notice}
             bottomInset={bottomInset}
+            onBack={onBack}
             onCompose={(category) => { hapticTap(); setComposeCategory(category); }}
         />
     );
@@ -76,12 +82,14 @@ function Feed({
     authorName,
     notice,
     bottomInset,
+    onBack,
     onCompose
 }: {
     community: ReturnType<typeof useCommunity>;
     authorName: string;
     notice: string | null;
     bottomInset: number;
+    onBack?: () => void;
     onCompose: (category: CommunityCategory) => void;
 }) {
     const [query, setQuery] = useState('');
@@ -106,52 +114,59 @@ function Feed({
         <View style={styles.screen}>
             {/* ---- Brand hero header ---- */}
             <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-                <View style={styles.heroTopRow}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.heroEyebrow}>COMUNIDADE UFAM</Text>
-                        <Text style={styles.heroTitle}>{isRealtime ? 'Agora no campus' : activeSection.label}</Text>
+                <View style={styles.heroInner}>
+                    <View style={styles.heroTopRow}>
+                        {onBack ? (
+                            <Pressable onPress={() => { hapticTap(); onBack(); }} style={({ pressed }) => [styles.heroIconButton, pressed ? styles.pressed : null]}>
+                                <ArrowLeft color={colors.inverseText} size={18} />
+                            </Pressable>
+                        ) : null}
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.heroEyebrow}>COMUNIDADE UFAM</Text>
+                            <Text style={styles.heroTitle}>{isRealtime ? 'Agora no campus' : activeSection.label}</Text>
+                        </View>
+                        <Pressable onPress={() => { hapticTap(); setSearchOpen((v) => !v); }} style={({ pressed }) => [styles.heroIconButton, pressed ? styles.pressed : null]}>
+                            {searchOpen ? <X color={colors.inverseText} size={18} /> : <Search color={colors.inverseText} size={18} />}
+                        </Pressable>
                     </View>
-                    <Pressable onPress={() => { hapticTap(); setSearchOpen((v) => !v); }} style={({ pressed }) => [styles.heroIconButton, pressed ? styles.pressed : null]}>
-                        {searchOpen ? <X color={colors.inverseText} size={18} /> : <Search color={colors.inverseText} size={18} />}
-                    </Pressable>
-                </View>
 
-                {searchOpen ? (
-                    <View style={styles.searchBar}>
-                        <Search color="rgba(255,255,255,0.8)" size={16} />
-                        <TextInput
-                            autoFocus
-                            value={query}
-                            onChangeText={setQuery}
-                            placeholder="Buscar na comunidade..."
-                            placeholderTextColor="rgba(255,255,255,0.65)"
-                            style={styles.searchInput}
-                            returnKeyType="search"
-                        />
-                    </View>
-                ) : (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sectionRow}>
-                        {COMMUNITY_SECTIONS.map((section) => {
-                            const Icon = section.icon;
-                            const active = section.id === activeSection.id;
-                            return (
-                                <Pressable
-                                    key={section.id}
-                                    onPress={() => selectSection(section)}
-                                    style={({ pressed }) => [styles.sectionPill, active ? styles.sectionPillActive : null, pressed ? styles.pressed : null]}
-                                >
-                                    <Icon color={active ? colors.brand : colors.inverseText} size={14} />
-                                    <Text style={[styles.sectionPillText, active ? styles.sectionPillTextActive : null]}>{section.label}</Text>
-                                </Pressable>
-                            );
-                        })}
-                    </ScrollView>
-                )}
+                    {searchOpen ? (
+                        <View style={styles.searchBar}>
+                            <Search color="rgba(255,255,255,0.8)" size={16} />
+                            <TextInput
+                                autoFocus
+                                value={query}
+                                onChangeText={setQuery}
+                                placeholder="Buscar na comunidade..."
+                                placeholderTextColor="rgba(255,255,255,0.65)"
+                                style={styles.searchInput}
+                                returnKeyType="search"
+                            />
+                        </View>
+                    ) : (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sectionRow}>
+                            {VISIBLE_SECTIONS.map((section) => {
+                                const Icon = section.icon;
+                                const active = section.id === activeSection.id;
+                                return (
+                                    <Pressable
+                                        key={section.id}
+                                        onPress={() => selectSection(section)}
+                                        style={({ pressed }) => [styles.sectionPill, active ? styles.sectionPillActive : null, pressed ? styles.pressed : null]}
+                                    >
+                                        <Icon color={active ? colors.brand : colors.inverseText} size={14} />
+                                        <Text style={[styles.sectionPillText, active ? styles.sectionPillTextActive : null]}>{section.label}</Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </ScrollView>
+                    )}
+                </View>
             </LinearGradient>
 
             {/* ---- Category chips ---- */}
             {activeSection.categories.length > 1 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow} style={styles.chipRowWrap}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow} style={[styles.chipRowWrap, styles.contentColumn]}>
                     {activeSection.categories.map((cat) => {
                         const active = cat.id === community.category;
                         const theme = themeOf(cat.id);
@@ -169,7 +184,7 @@ function Feed({
             ) : null}
 
             {notice ? (
-                <View style={styles.noticeCard}>
+                <View style={[styles.noticeCard, styles.contentColumn]}>
                     <CheckCircle2 color={colors.success} size={16} />
                     <Text style={styles.noticeText}>{notice}</Text>
                 </View>
@@ -177,7 +192,7 @@ function Feed({
 
             <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingTop: spacing[4], paddingBottom: bottomInset + spacing[10], paddingHorizontal: spacing[4], gap: spacing[4] }}
+                contentContainerStyle={[{ paddingTop: spacing[4], paddingBottom: bottomInset + spacing[10], paddingHorizontal: spacing[4], gap: spacing[4] }, styles.contentColumn]}
             >
                 {isRealtime ? (
                     <LiveComposer spec={activeCategory} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />
@@ -465,19 +480,21 @@ function ComposeScreen({
     return (
         <View style={styles.screen}>
             <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-                <View style={styles.heroTopRow}>
-                    <Pressable onPress={() => { hapticTap(); onCancel(); }} style={({ pressed }) => [styles.heroIconButton, pressed ? styles.pressed : null]}>
-                        <ArrowLeft color={colors.inverseText} size={18} />
-                    </Pressable>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.heroEyebrow}>NOVO ANÚNCIO</Text>
-                        <Text style={styles.heroTitle}>Divulgar algo</Text>
+                <View style={styles.heroInner}>
+                    <View style={styles.heroTopRow}>
+                        <Pressable onPress={() => { hapticTap(); onCancel(); }} style={({ pressed }) => [styles.heroIconButton, pressed ? styles.pressed : null]}>
+                            <ArrowLeft color={colors.inverseText} size={18} />
+                        </Pressable>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.heroEyebrow}>NOVO ANÚNCIO</Text>
+                            <Text style={styles.heroTitle}>Divulgar algo</Text>
+                        </View>
                     </View>
+                    <Text style={styles.heroSubtitle}>Passa por aprovação de um administrador antes de aparecer para todos.</Text>
                 </View>
-                <Text style={styles.heroSubtitle}>Passa por aprovação de um administrador antes de aparecer para todos.</Text>
             </LinearGradient>
 
-            <ScrollView contentContainerStyle={{ padding: spacing[4], paddingBottom: bottomInset + spacing[10], gap: spacing[5] }}>
+            <ScrollView contentContainerStyle={[{ padding: spacing[4], paddingBottom: bottomInset + spacing[10], gap: spacing[5] }, styles.contentColumn]}>
                 {ANNOUNCEMENT_SECTIONS.map((section) => (
                     <View key={section.id} style={styles.composeSectionBlock}>
                         <Text style={styles.composeSectionLabel}>{section.label}</Text>
@@ -619,6 +636,19 @@ const styles = StyleSheet.create({
     screen: {
         backgroundColor: colors.canvas,
         flex: 1
+    },
+    // Caps content to a centered column on wide screens (web/desktop/tablet);
+    // collapses to full width on phones. Keeps the feed readable everywhere.
+    contentColumn: {
+        alignSelf: 'center',
+        maxWidth: 680,
+        width: '100%'
+    },
+    heroInner: {
+        alignSelf: 'center',
+        gap: spacing[4],
+        maxWidth: 680,
+        width: '100%'
     },
     // ---- Hero header ----
     hero: {

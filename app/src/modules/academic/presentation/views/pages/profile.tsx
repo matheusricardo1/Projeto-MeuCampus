@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CalendarDays, ChevronRight, Clock3, Crown, FileText, Fingerprint, Globe, GraduationCap, LogOut, Mail, Phone, ShieldCheck, UserRound } from 'lucide-react-native';
+import { CalendarDays, ChevronRight, Clock3, Crown, FileText, Fingerprint, Globe, GraduationCap, LogOut, Mail, Phone, ShieldCheck, UserRound, Users } from 'lucide-react-native';
 import { colors, gradients } from '@/shared/design-system';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
 import { DeclarationsModal, EmptyState, LanguageSettingsModal, PlanModal, SkeletonBlock, SkeletonCircle } from '@/modules/academic/presentation/views/components';
@@ -33,6 +34,7 @@ export function ProfilePage({
     profile: Workspace['profile'];
 }) {
     const { t } = useLanguage();
+    const router = useRouter();
     const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
     const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
     const [isDeclarationsModalOpen, setIsDeclarationsModalOpen] = useState(false);
@@ -97,7 +99,20 @@ export function ProfilePage({
                 </View>
 
                 <View style={styles.profileGlassCard}>
-                    <Pressable onPress={() => setIsLanguageModalOpen(true)} style={({ pressed }) => [styles.profileListRow, { marginTop: 0 }, pressed ? styles.pressedFeedback : null]}>
+                    <Pressable onPress={() => router.push('/community')} style={({ pressed }) => [styles.profileListRow, { marginTop: 0 }, pressed ? styles.pressedFeedback : null]}>
+                        <View style={styles.profileListRowBody}>
+                            <View style={styles.profileListIcon}>
+                                <Users color={colors.brand} size={21} />
+                            </View>
+                            <View style={styles.profileListText}>
+                                <Text style={styles.profileListLabel}>{t('nav.community')}</Text>
+                                <Text style={styles.profileListValue}>Veja o que está rolando no campus</Text>
+                            </View>
+                        </View>
+                        <ChevronRight color={colors.textMuted} size={20} />
+                    </Pressable>
+
+                    <Pressable onPress={() => setIsLanguageModalOpen(true)} style={({ pressed }) => [styles.profileListRow, pressed ? styles.pressedFeedback : null]}>
                         <View style={styles.profileListRowBody}>
                             <View style={styles.profileListIcon}>
                                 <Globe color={colors.brand} size={21} />

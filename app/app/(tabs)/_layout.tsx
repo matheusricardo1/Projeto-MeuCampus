@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Bell, BookOpen, Calendar, GraduationCap, History, LayoutDashboard, Mic, Send, Sparkles, User, Users, Brain } from 'lucide-react-native';
+import { ArrowLeft, Bell, BookOpen, Calendar, GraduationCap, History, LayoutDashboard, Mic, Send, Sparkles, User, Brain } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import { colors, gradients } from '@/shared/design-system';
@@ -184,8 +184,9 @@ export default function TabsLayout() {
         { id: 'home' as const, label: t('nav.panel'), icon: LayoutDashboard },
         { id: 'lessonPlan' as const, label: t('nav.subjects'), icon: BookOpen },
         ...(IS_AI_FEATURE_ENABLED ? [{ id: 'ai' as const, label: t('nav.ai'), icon: Brain }] : []),
-        { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar },
-        { id: 'community' as const, label: t('nav.community'), icon: Users }
+        { id: 'schedule' as const, label: t('nav.schedule'), icon: Calendar }
+        // Comunidade is not launched in the navbar yet — it opens from the
+        // Profile screen and runs full-screen (no bottom nav). See isCommunityPage.
     ];
     const activeTabLabel = tabLabels[activeTab];
     const tabActions: Record<TabId, () => Promise<void>> = {
@@ -258,13 +259,13 @@ export default function TabsLayout() {
     const leaveAIChat = () => navigateToTab('home');
     const closeChatHistory = () => setShowChatHistory(false);
     const isAIPage = IS_AI_FEATURE_ENABLED && activeTab === 'ai';
-    // Community runs its own full-height immersive feed, so it opts out of the
-    // shared padded ScrollView (like the AI page) but keeps the header + nav.
+    // Community runs its own full-height immersive feed (like the AI page) and,
+    // while not launched in the navbar, opens full-screen with no bottom nav.
     const isCommunityPage = activeTab === 'community';
     // Course details/content pages ship their own top bar with a back button —
     // the shared "Meu Campus" header and bottom nav would just be redundant chrome there.
     const isCourseDetailsPage = pathname.startsWith('/lesson-plan/');
-    const bottomNavInset = isAIPage || isCourseDetailsPage ? 0 : layout.isTablet ? 88 : 96;
+    const bottomNavInset = isAIPage || isCommunityPage || isCourseDetailsPage ? 0 : layout.isTablet ? 88 : 96;
     const chatTitle = chatHistory[0]?.title || DEFAULT_CHAT_TITLE;
 
     useEffect(() => {
@@ -399,7 +400,7 @@ export default function TabsLayout() {
             outputRange: [0, 1, 1]
         })
     };
-    const sharedBottomNav = isAIPage || isAILaunching || isCourseDetailsPage ? null : (
+    const sharedBottomNav = isAIPage || isAILaunching || isCourseDetailsPage || isCommunityPage ? null : (
         <View style={styles.bottomNavShell}>
             <View style={[styles.bottomNav, layout.isTablet ? styles.bottomNavDesktop : null]}>
                 {bottomTabs.map((tab) => {
