@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Animated, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, CheckCircle2, Clock, ExternalLink, Plus, Search, Send } from 'lucide-react-native';
-import { colors, radii, shadows, spacing, textShadows, typography } from '@/shared/design-system';
+import { ArrowLeft, CheckCircle2, ChevronRight, ExternalLink, Plus, Search, Send, X } from 'lucide-react-native';
+import { colors, gradients, radii, shadows, spacing, textShadows, typography } from '@/shared/design-system';
 import { hapticTap } from '@/shared/haptics';
 import { useCommunity } from '@/modules/community/presentation/hooks/use-community';
 import {
@@ -21,6 +21,11 @@ import type { CommunityCategory, CommunityPost, RuLevel } from '@/modules/commun
 type CreateFn = (input: { category: CommunityCategory; body: string; authorName: string; payload?: Record<string, unknown> | null }) => Promise<CommunityPost>;
 
 const ANNOUNCEMENT_SECTIONS = COMMUNITY_SECTIONS.filter((section) => section.categories.every((cat) => cat.kind === 'form'));
+
+/** Soft tinted background for a category token on a white card. */
+function softTint(accent: string): string {
+    return `${accent}26`;
+}
 
 export function CommunityPage({ authorName, bottomInset = 96 }: { authorName: string; bottomInset?: number }) {
     const community = useCommunity('FILA_RU');
@@ -54,7 +59,7 @@ export function CommunityPage({ authorName, bottomInset = 96 }: { authorName: st
     }
 
     return (
-        <ImmersiveFeed
+        <Feed
             community={community}
             authorName={authorName}
             notice={notice}
@@ -64,9 +69,9 @@ export function CommunityPage({ authorName, bottomInset = 96 }: { authorName: st
     );
 }
 
-// ============================================================ Immersive feed
+// ================================================================= Feed
 
-function ImmersiveFeed({
+function Feed({
     community,
     authorName,
     notice,
@@ -79,17 +84,12 @@ function ImmersiveFeed({
     bottomInset: number;
     onCompose: (category: CommunityCategory) => void;
 }) {
-    const { height } = useWindowDimensions();
     const [query, setQuery] = useState('');
     const [searchOpen, setSearchOpen] = useState(false);
-    const scrollY = useRef(new Animated.Value(0)).current;
 
     const activeSection = getSectionOf(community.category);
     const activeCategory = getCategorySpec(community.category);
     const isRealtime = activeCategory.kind === 'quick';
-
-    const cardHeight = Math.max(380, Math.min(height * 0.56, 540));
-    const itemSize = cardHeight + spacing[4];
 
     const filteredPosts = useMemo(() => filterPosts(community.posts, query), [community.posts, query]);
 
@@ -102,67 +102,66 @@ function ImmersiveFeed({
         }
     };
 
-    const onScroll = Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true });
-
-    // Realtime categories get a report card as the first item; announcements
-    // are view-only in the feed and post via the floating Anunciar button.
-    const leadCards = isRealtime ? 1 : 0;
-
     return (
         <View style={styles.screen}>
-            <View style={styles.topBar}>
+            {/* ---- Brand hero header ---- */}
+            <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+                <View style={styles.heroTopRow}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.heroEyebrow}>COMUNIDADE UFAM</Text>
+                        <Text style={styles.heroTitle}>{isRealtime ? 'Agora no campus' : activeSection.label}</Text>
+                    </View>
+                    <Pressable onPress={() => { hapticTap(); setSearchOpen((v) => !v); }} style={({ pressed }) => [styles.heroIconButton, pressed ? styles.pressed : null]}>
+                        {searchOpen ? <X color={colors.inverseText} size={18} /> : <Search color={colors.inverseText} size={18} />}
+                    </Pressable>
+                </View>
+
                 {searchOpen ? (
                     <View style={styles.searchBar}>
-                        <Search color={colors.textSubtle} size={18} />
+                        <Search color="rgba(255,255,255,0.8)" size={16} />
                         <TextInput
                             autoFocus
                             value={query}
                             onChangeText={setQuery}
-                            placeholder="Buscar..."
-                            placeholderTextColor={colors.textSubtle}
+                            placeholder="Buscar na comunidade..."
+                            placeholderTextColor="rgba(255,255,255,0.65)"
                             style={styles.searchInput}
                             returnKeyType="search"
                         />
-                        <Pressable onPress={() => { setQuery(''); setSearchOpen(false); }} hitSlop={8}>
-                            <Text style={styles.searchCancel}>Cancelar</Text>
-                        </Pressable>
                     </View>
                 ) : (
-                    <>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sectionRow}>
-                            {COMMUNITY_SECTIONS.map((section) => {
-                                const Icon = section.icon;
-                                const active = section.id === activeSection.id;
-                                return (
-                                    <Pressable
-                                        key={section.id}
-                                        onPress={() => selectSection(section)}
-                                        style={({ pressed }) => [styles.sectionPill, active ? styles.sectionPillActive : null, pressed ? styles.pressed : null]}
-                                    >
-                                        <Icon color={active ? colors.inverseText : colors.brand} size={15} />
-                                        <Text style={[styles.sectionPillText, active ? styles.sectionPillTextActive : null]}>{section.label}</Text>
-                                    </Pressable>
-                                );
-                            })}
-                        </ScrollView>
-                        <Pressable onPress={() => setSearchOpen(true)} style={({ pressed }) => [styles.searchButton, pressed ? styles.pressed : null]}>
-                            <Search color={colors.textMuted} size={18} />
-                        </Pressable>
-                    </>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sectionRow}>
+                        {COMMUNITY_SECTIONS.map((section) => {
+                            const Icon = section.icon;
+                            const active = section.id === activeSection.id;
+                            return (
+                                <Pressable
+                                    key={section.id}
+                                    onPress={() => selectSection(section)}
+                                    style={({ pressed }) => [styles.sectionPill, active ? styles.sectionPillActive : null, pressed ? styles.pressed : null]}
+                                >
+                                    <Icon color={active ? colors.brand : colors.inverseText} size={14} />
+                                    <Text style={[styles.sectionPillText, active ? styles.sectionPillTextActive : null]}>{section.label}</Text>
+                                </Pressable>
+                            );
+                        })}
+                    </ScrollView>
                 )}
-            </View>
+            </LinearGradient>
 
+            {/* ---- Category chips ---- */}
             {activeSection.categories.length > 1 ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow} style={styles.chipRowWrap}>
                     {activeSection.categories.map((cat) => {
                         const active = cat.id === community.category;
+                        const theme = themeOf(cat.id);
                         return (
                             <Pressable
                                 key={cat.id}
                                 onPress={() => { hapticTap(); setQuery(''); community.setCategory(cat.id); }}
-                                style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
+                                style={({ pressed }) => [styles.chip, active ? { backgroundColor: theme.gradient[1], borderColor: theme.gradient[1] } : null, pressed ? styles.pressed : null]}
                             >
-                                <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{themeOf(cat.id).emoji} {cat.label}</Text>
+                                <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{theme.emoji}  {cat.label}</Text>
                             </Pressable>
                         );
                     })}
@@ -176,40 +175,33 @@ function ImmersiveFeed({
                 </View>
             ) : null}
 
-            <Animated.ScrollView
+            <ScrollView
                 showsVerticalScrollIndicator={false}
-                onScroll={onScroll}
-                scrollEventThrottle={16}
-                snapToInterval={itemSize}
-                decelerationRate="fast"
-                contentContainerStyle={{ paddingTop: spacing[2], paddingBottom: bottomInset + spacing[6], paddingHorizontal: spacing[1] }}
+                contentContainerStyle={{ paddingTop: spacing[4], paddingBottom: bottomInset + spacing[10], paddingHorizontal: spacing[4], gap: spacing[4] }}
             >
                 {isRealtime ? (
-                    <DepthCard index={0} itemSize={itemSize} scrollY={scrollY} height={cardHeight}>
-                        <LiveComposeCard spec={activeCategory} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />
-                    </DepthCard>
+                    <LiveComposer spec={activeCategory} isPosting={community.isPosting} authorName={authorName} onSubmit={community.createPost} />
+                ) : null}
+
+                {isRealtime && filteredPosts.length > 0 ? (
+                    <Text style={styles.feedHeading}>Relatos recentes</Text>
                 ) : null}
 
                 {community.isLoading ? (
-                    <View style={[styles.stateCard, { height: cardHeight }]}>
-                        <Text style={styles.stateEmoji}>⏳</Text>
-                        <Text style={styles.stateText}>Carregando...</Text>
-                    </View>
+                    <EmptyState emoji="⏳" text="Carregando..." />
                 ) : filteredPosts.length === 0 ? (
-                    <View style={[styles.stateCard, { height: cardHeight }]}>
-                        <Text style={styles.stateEmoji}>{query ? '🔍' : themeOf(community.category).emoji}</Text>
-                        <Text style={styles.stateText}>
-                            {query ? 'Nada encontrado.' : isRealtime ? 'Nenhum relato ainda. Seja o primeiro!' : 'Nenhum anúncio ainda.'}
-                        </Text>
-                    </View>
+                    <EmptyState
+                        emoji={query ? '🔍' : themeOf(community.category).emoji}
+                        text={query ? 'Nada encontrado.' : isRealtime ? 'Nenhum relato ainda. Seja o primeiro acima!' : 'Nenhum anúncio ainda. Toque em Anunciar para começar.'}
+                    />
                 ) : (
                     filteredPosts.map((post, i) => (
-                        <DepthCard key={post.id} index={i + leadCards} itemSize={itemSize} scrollY={scrollY} height={cardHeight}>
+                        <RiseIn key={post.id} index={i}>
                             <FeedCard post={post} onConfirm={() => community.confirmPost(post.id)} />
-                        </DepthCard>
+                        </RiseIn>
                     ))
                 )}
-            </Animated.ScrollView>
+            </ScrollView>
 
             {!isRealtime ? (
                 <Pressable
@@ -224,17 +216,28 @@ function ImmersiveFeed({
     );
 }
 
-/** Wraps a card so it scales/dims as it moves away from the viewport focus. */
-function DepthCard({ index, itemSize, scrollY, height, children }: { index: number; itemSize: number; scrollY: Animated.Value; height: number; children: ReactNode }) {
-    const inputRange = [(index - 1) * itemSize, index * itemSize, (index + 1) * itemSize];
-    const scale = scrollY.interpolate({ inputRange, outputRange: [0.92, 1, 0.92], extrapolate: 'clamp' });
-    const opacity = scrollY.interpolate({ inputRange, outputRange: [0.5, 1, 0.5], extrapolate: 'clamp' });
-
+function EmptyState({ emoji, text }: { emoji: string; text: string }) {
     return (
-        <Animated.View style={{ height, marginBottom: spacing[4], opacity, transform: [{ scale }] }}>
-            {children}
-        </Animated.View>
+        <View style={styles.stateCard}>
+            <Text style={styles.stateEmoji}>{emoji}</Text>
+            <Text style={styles.stateText}>{text}</Text>
+        </View>
     );
+}
+
+/** Subtle fade + rise-in as cards mount — premium feel without scroll gimmicks. */
+function RiseIn({ index, children }: { index: number; children: ReactNode }) {
+    const anim = useRef(new Animated.Value(0)).current;
+    useEffect(() => {
+        Animated.timing(anim, {
+            toValue: 1,
+            duration: 340,
+            delay: Math.min(index, 6) * 55,
+            useNativeDriver: true
+        }).start();
+    }, [anim, index]);
+    const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
+    return <Animated.View style={{ opacity: anim, transform: [{ translateY }] }}>{children}</Animated.View>;
 }
 
 function filterPosts(posts: CommunityPost[], query: string): CommunityPost[] {
@@ -253,6 +256,7 @@ function filterPosts(posts: CommunityPost[], query: string): CommunityPost[] {
 function FeedCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => void }) {
     const spec = getCategorySpec(post.category);
     const theme = themeOf(post.category);
+    const accent = theme.gradient[1];
     const payload = post.payload ?? {};
     const isRealtime = spec.kind === 'quick';
     const description = typeof payload.descricao === 'string' ? payload.descricao : null;
@@ -268,51 +272,55 @@ function FeedCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => v
 
     return (
         <View style={styles.card}>
-            <LinearGradient colors={theme.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-            <View style={styles.cardVignette} />
-            <View style={styles.cardInner}>
+            <View style={[styles.cardAccent, { backgroundColor: accent }]} />
+            <View style={styles.cardBody}>
                 <View style={styles.cardTopRow}>
-                    <View style={styles.glassBadge}>
-                        <Text style={styles.badgeEmoji}>{theme.emoji}</Text>
-                        <Text style={styles.badgeLabel}>{spec.label}</Text>
+                    <View style={[styles.token, { backgroundColor: softTint(theme.accent) }]}>
+                        <Text style={styles.tokenEmoji}>{theme.emoji}</Text>
                     </View>
-                    <View style={styles.glassChip}>
-                        {isRealtime ? <LiveDot /> : <Clock color="rgba(255,255,255,0.85)" size={12} />}
-                        <Text style={styles.timeText}>{isRealtime ? 'AO VIVO · ' : ''}{formatRelativeTime(post.createdAt)}</Text>
-                    </View>
-                </View>
-
-                <View style={styles.cardCenter}>
-                    {isRealtime ? <HeroStatus post={post} accent={theme.accent} /> : null}
-                    <Text style={[styles.cardTitle, isRealtime ? styles.cardTitleSmall : null]} numberOfLines={isRealtime ? 2 : 3}>{post.body}</Text>
-                    {description ? <Text style={styles.cardDescription} numberOfLines={3}>{description}</Text> : null}
-                    {chips.length > 0 ? (
-                        <View style={styles.chipsWrap}>
-                            {chips.map(([key, val]) => (
-                                <View key={key} style={styles.detailChip}>
-                                    <Text style={styles.detailChipText}>
-                                        {FIELD_LABELS[key] ? `${FIELD_LABELS[key]} · ` : ''}{String(val)}
-                                    </Text>
-                                </View>
-                            ))}
+                    <View style={{ flex: 1 }}>
+                        <Text style={[styles.cardCategory, { color: accent }]}>{spec.label}</Text>
+                        <View style={styles.metaRow}>
+                            {isRealtime ? <LiveDot color={accent} /> : null}
+                            <Text style={styles.cardTime}>{isRealtime ? 'ao vivo · ' : ''}{formatRelativeTime(post.createdAt)}</Text>
                         </View>
-                    ) : null}
-                    {link ? (
-                        <Pressable onPress={() => openLink(link)} style={({ pressed }) => [styles.linkChip, pressed ? styles.pressed : null]}>
-                            <ExternalLink color={colors.text} size={14} />
-                            <Text numberOfLines={1} style={styles.linkChipText}>Abrir link</Text>
-                        </Pressable>
-                    ) : null}
+                    </View>
                 </View>
 
-                <View style={styles.cardBottomRow}>
+                {isRealtime ? <StatusBadge post={post} accent={accent} /> : null}
+
+                <Text style={styles.cardTitle} numberOfLines={4}>{post.body}</Text>
+                {description ? <Text style={styles.cardDescription} numberOfLines={4}>{description}</Text> : null}
+
+                {chips.length > 0 ? (
+                    <View style={styles.chipsWrap}>
+                        {chips.map(([key, val]) => (
+                            <View key={key} style={styles.detailChip}>
+                                {FIELD_LABELS[key] ? <Text style={styles.detailChipLabel}>{FIELD_LABELS[key]}</Text> : null}
+                                <Text style={styles.detailChipValue}>{String(val)}</Text>
+                            </View>
+                        ))}
+                    </View>
+                ) : null}
+
+                {link ? (
+                    <Pressable onPress={() => openLink(link)} style={({ pressed }) => [styles.linkButton, pressed ? styles.pressed : null]}>
+                        <ExternalLink color={colors.brand} size={15} />
+                        <Text style={styles.linkButtonText}>Abrir link</Text>
+                        <ChevronRight color={colors.brand} size={15} />
+                    </Pressable>
+                ) : null}
+
+                <View style={styles.cardFooter}>
                     <View style={styles.authorChip}>
-                        <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(post.authorName)}</Text></View>
+                        <View style={[styles.avatar, { backgroundColor: softTint(theme.accent) }]}>
+                            <Text style={[styles.avatarText, { color: accent }]}>{initialsOf(post.authorName)}</Text>
+                        </View>
                         <Text numberOfLines={1} style={styles.authorName}>{post.authorName}</Text>
                     </View>
                     {isRealtime ? (
                         <Pressable onPress={() => { hapticTap(); onConfirm(); }} style={({ pressed }) => [styles.confirmPill, pressed ? styles.pressed : null]}>
-                            <CheckCircle2 color={colors.text} size={15} />
+                            <CheckCircle2 color={colors.brand} size={15} />
                             <Text style={styles.confirmPillText}>Confirmar{post.confirmCount > 0 ? ` · ${post.confirmCount}` : ''}</Text>
                         </Pressable>
                     ) : null}
@@ -322,15 +330,15 @@ function FeedCard({ post, onConfirm }: { post: CommunityPost; onConfirm: () => v
     );
 }
 
-function HeroStatus({ post, accent }: { post: CommunityPost; accent: string }) {
+function StatusBadge({ post, accent }: { post: CommunityPost; accent: string }) {
     const payload = post.payload ?? {};
     const level = typeof payload.level === 'string' ? (payload.level as RuLevel) : null;
 
     if (level) {
         const fill = level === 'empty' ? 1 : level === 'moderate' ? 2 : 3;
         return (
-            <View style={styles.hero}>
-                <Text style={[styles.heroWord, { color: accent }]}>{RU_LEVEL_LABEL[level].toUpperCase()}</Text>
+            <View style={styles.statusBlock}>
+                <Text style={[styles.statusWord, { color: accent }]}>{RU_LEVEL_LABEL[level]}</Text>
                 <View style={styles.meter}>
                     {[1, 2, 3].map((seg) => (
                         <View key={seg} style={[styles.meterSeg, seg <= fill ? { backgroundColor: accent } : null]} />
@@ -339,17 +347,16 @@ function HeroStatus({ post, accent }: { post: CommunityPost; accent: string }) {
             </View>
         );
     }
-
     if (typeof payload.dropped === 'boolean') {
-        return <Text style={[styles.heroWord, { color: accent }]}>{payload.dropped ? 'CAIU ✓' : 'AINDA NÃO'}</Text>;
+        return <Text style={[styles.statusWord, { color: accent }]}>{payload.dropped ? 'Caiu ✓' : 'Ainda não caiu'}</Text>;
     }
     if (typeof payload.hasPower === 'boolean') {
-        return <Text style={[styles.heroWord, { color: accent }]}>{payload.hasPower ? 'VOLTOU ✓' : 'SEM LUZ'}</Text>;
+        return <Text style={[styles.statusWord, { color: accent }]}>{payload.hasPower ? 'Energia voltou ✓' : 'Sem energia'}</Text>;
     }
     return null;
 }
 
-function LiveDot() {
+function LiveDot({ color }: { color: string }) {
     const pulse = useRef(new Animated.Value(0)).current;
     useEffect(() => {
         const loop = Animated.loop(Animated.sequence([
@@ -359,13 +366,13 @@ function LiveDot() {
         loop.start();
         return () => loop.stop();
     }, [pulse]);
-    const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
-    return <Animated.View style={[styles.liveDot, { opacity }]} />;
+    const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });
+    return <Animated.View style={[styles.liveDot, { backgroundColor: color, opacity }]} />;
 }
 
-// ============================================================ Live report card
+// ==================================================== Live report composer
 
-function LiveComposeCard({ spec, isPosting, authorName, onSubmit }: { spec: CategorySpec; isPosting: boolean; authorName: string; onSubmit: CreateFn }) {
+function LiveComposer({ spec, isPosting, authorName, onSubmit }: { spec: CategorySpec; isPosting: boolean; authorName: string; onSubmit: CreateFn }) {
     const [value, setValue] = useState('');
     const theme = themeOf(spec.id);
     const quick = spec.quick;
@@ -386,46 +393,50 @@ function LiveComposeCard({ spec, isPosting, authorName, onSubmit }: { spec: Cate
     };
 
     return (
-        <View style={styles.card}>
-            <LinearGradient colors={theme.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-            <View style={styles.cardVignette} />
-            <View style={styles.cardInner}>
-                <View style={styles.glassBadge}>
-                    <Text style={styles.badgeEmoji}>{theme.emoji}</Text>
-                    <Text style={styles.badgeLabel}>Reportar agora</Text>
+        <View style={styles.composerCard}>
+            <View style={styles.composerHeader}>
+                <View style={[styles.token, { backgroundColor: softTint(theme.accent) }]}>
+                    <Text style={styles.tokenEmoji}>{theme.emoji}</Text>
                 </View>
-                <View style={styles.cardCenter}>
-                    <Text style={styles.composePrompt}>{quick.prompt}</Text>
-                    {needsValue ? (
-                        <TextInput
-                            value={value}
-                            onChangeText={setValue}
-                            placeholder={quick.needsFieldLabel}
-                            placeholderTextColor="rgba(255,255,255,0.6)"
-                            style={styles.glassInput}
-                            maxLength={80}
-                        />
-                    ) : null}
-                    <View style={styles.quickRow}>
-                        {quick.options(trimmed).map((option) => (
-                            <Pressable
-                                key={option.label}
-                                disabled={disabled}
-                                onPress={() => void submit(option.body, option.payload)}
-                                style={({ pressed }) => [styles.quickButton, pressed ? styles.pressed : null, disabled ? styles.disabled : null]}
-                            >
-                                <Text style={styles.quickButtonText}>{option.label}</Text>
-                            </Pressable>
-                        ))}
-                    </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.composerEyebrow}>REPORTE AGORA</Text>
+                    <Text style={styles.composerPrompt}>{quick.prompt}</Text>
                 </View>
-                <Text style={styles.composeFootnote}>Seu relato aparece na hora para a comunidade.</Text>
             </View>
+
+            {needsValue ? (
+                <TextInput
+                    value={value}
+                    onChangeText={setValue}
+                    placeholder={quick.needsFieldLabel}
+                    placeholderTextColor={colors.textSubtle}
+                    style={styles.composerInput}
+                    maxLength={80}
+                />
+            ) : null}
+
+            <View style={styles.quickRow}>
+                {quick.options(trimmed).map((option) => {
+                    const tone = option.tone;
+                    const toneStyle = tone === 'positive' ? styles.quickPositive : tone === 'negative' ? styles.quickNegative : styles.quickNeutral;
+                    return (
+                        <Pressable
+                            key={option.label}
+                            disabled={disabled}
+                            onPress={() => void submit(option.body, option.payload)}
+                            style={({ pressed }) => [styles.quickButton, toneStyle, pressed ? styles.pressed : null, disabled ? styles.disabled : null]}
+                        >
+                            <Text style={[styles.quickButtonText, tone === 'neutral' ? styles.quickButtonTextNeutral : null]}>{option.label}</Text>
+                        </Pressable>
+                    );
+                })}
+            </View>
+            <Text style={styles.composerFootnote}>Aparece na hora para toda a comunidade.</Text>
         </View>
     );
 }
 
-// ============================================================ Compose (announcements)
+// ================================================= Compose (announcements)
 
 function ComposeScreen({
     initialCategory,
@@ -449,48 +460,57 @@ function ComposeScreen({
     const [category, setCategory] = useState<CommunityCategory>(initialCategory);
     const activeSection = getSectionOf(category);
     const spec = getCategorySpec(category);
+    const theme = themeOf(category);
 
     return (
-        <ScrollView style={styles.screen} contentContainerStyle={{ padding: spacing[4], paddingBottom: bottomInset + spacing[6], gap: spacing[4] }}>
-            <View style={styles.composeHeader}>
-                <Pressable onPress={() => { hapticTap(); onCancel(); }} style={({ pressed }) => [styles.backButton, pressed ? styles.pressed : null]}>
-                    <ArrowLeft color={colors.text} size={20} />
-                </Pressable>
-                <Text style={styles.composeTitle}>Novo anúncio</Text>
-            </View>
-            <Text style={styles.composeHint}>Escolha a categoria e preencha os detalhes. Seu anúncio passa por aprovação antes de aparecer para todos.</Text>
-
-            {ANNOUNCEMENT_SECTIONS.map((section) => (
-                <View key={section.id} style={styles.composeSectionBlock}>
-                    <Text style={styles.composeSectionLabel}>{section.label}</Text>
-                    <View style={styles.wrapRow}>
-                        {section.categories.map((cat) => {
-                            const active = cat.id === category;
-                            return (
-                                <Pressable
-                                    key={cat.id}
-                                    onPress={() => { hapticTap(); setCategory(cat.id); }}
-                                    style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
-                                >
-                                    <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{themeOf(cat.id).emoji} {cat.label}</Text>
-                                </Pressable>
-                            );
-                        })}
+        <View style={styles.screen}>
+            <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+                <View style={styles.heroTopRow}>
+                    <Pressable onPress={() => { hapticTap(); onCancel(); }} style={({ pressed }) => [styles.heroIconButton, pressed ? styles.pressed : null]}>
+                        <ArrowLeft color={colors.inverseText} size={18} />
+                    </Pressable>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.heroEyebrow}>NOVO ANÚNCIO</Text>
+                        <Text style={styles.heroTitle}>Divulgar algo</Text>
                     </View>
                 </View>
-            ))}
+                <Text style={styles.heroSubtitle}>Passa por aprovação de um administrador antes de aparecer para todos.</Text>
+            </LinearGradient>
 
-            <FormComposer key={spec.id} spec={spec} sectionLabel={activeSection.label} isPosting={isPosting} authorName={authorName} onSubmit={onSubmit} onDone={onDone} />
+            <ScrollView contentContainerStyle={{ padding: spacing[4], paddingBottom: bottomInset + spacing[10], gap: spacing[5] }}>
+                {ANNOUNCEMENT_SECTIONS.map((section) => (
+                    <View key={section.id} style={styles.composeSectionBlock}>
+                        <Text style={styles.composeSectionLabel}>{section.label}</Text>
+                        <View style={styles.wrapRow}>
+                            {section.categories.map((cat) => {
+                                const active = cat.id === category;
+                                const catTheme = themeOf(cat.id);
+                                return (
+                                    <Pressable
+                                        key={cat.id}
+                                        onPress={() => { hapticTap(); setCategory(cat.id); }}
+                                        style={({ pressed }) => [styles.chip, active ? { backgroundColor: catTheme.gradient[1], borderColor: catTheme.gradient[1] } : null, pressed ? styles.pressed : null]}
+                                    >
+                                        <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{catTheme.emoji}  {cat.label}</Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
+                    </View>
+                ))}
 
-            {error ? <View style={styles.errorBanner}><Text style={styles.errorText}>{error}</Text></View> : null}
-        </ScrollView>
+                <FormComposer key={spec.id} spec={spec} sectionLabel={activeSection.label} accent={theme.gradient[1]} emoji={theme.emoji} isPosting={isPosting} authorName={authorName} onSubmit={onSubmit} onDone={onDone} />
+
+                {error ? <View style={styles.errorBanner}><Text style={styles.errorText}>{error}</Text></View> : null}
+            </ScrollView>
+        </View>
     );
 }
 
 function FormComposer({
-    spec, sectionLabel, isPosting, authorName, onSubmit, onDone
+    spec, sectionLabel, accent, emoji, isPosting, authorName, onSubmit, onDone
 }: {
-    spec: CategorySpec; sectionLabel: string; isPosting: boolean; authorName: string; onSubmit: CreateFn; onDone: (status: CommunityPost['status']) => void;
+    spec: CategorySpec; sectionLabel: string; accent: string; emoji: string; isPosting: boolean; authorName: string; onSubmit: CreateFn; onDone: (status: CommunityPost['status']) => void;
 }) {
     const fields = spec.fields ?? [];
     const [values, setValues] = useState<Record<string, string>>({});
@@ -519,9 +539,15 @@ function FormComposer({
 
     return (
         <View style={styles.composer}>
-            <Text style={styles.composerTitle}>{themeOf(spec.id).emoji} {spec.label} · {sectionLabel}</Text>
+            <View style={styles.composerTitleRow}>
+                <Text style={[styles.composerBadgeEmoji, { color: accent }]}>{emoji}</Text>
+                <Text style={styles.composerTitle}>{spec.label} · {sectionLabel}</Text>
+            </View>
             {fields.map((field) => (
-                <FieldInput key={field.key} field={field} value={values[field.key] ?? ''} onChange={(val) => setField(field.key, val)} />
+                <View key={field.key} style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>{field.label}{field.required ? ' *' : ''}</Text>
+                    <FieldInput field={field} accent={accent} value={values[field.key] ?? ''} onChange={(val) => setField(field.key, val)} />
+                </View>
             ))}
             <Pressable disabled={disabled} onPress={() => void submit()} style={({ pressed }) => [styles.submitButton, pressed ? styles.pressed : null, disabled ? styles.disabled : null]}>
                 <Send color={colors.inverseText} size={16} />
@@ -531,14 +557,14 @@ function FormComposer({
     );
 }
 
-function FieldInput({ field, value, onChange }: { field: FieldSpec; value: string; onChange: (value: string) => void }) {
+function FieldInput({ field, accent, value, onChange }: { field: FieldSpec; accent: string; value: string; onChange: (value: string) => void }) {
     if (field.type === 'select') {
         return (
             <View style={styles.selectRow}>
                 {(field.options ?? []).map((option) => {
                     const active = value === option;
                     return (
-                        <Pressable key={option} onPress={() => { hapticTap(); onChange(option); }} style={({ pressed }) => [styles.selectChip, active ? styles.selectChipActive : null, pressed ? styles.pressed : null]}>
+                        <Pressable key={option} onPress={() => { hapticTap(); onChange(option); }} style={({ pressed }) => [styles.selectChip, active ? { backgroundColor: accent, borderColor: accent } : null, pressed ? styles.pressed : null]}>
                             <Text style={[styles.selectChipText, active ? styles.selectChipTextActive : null]}>{option}</Text>
                         </Pressable>
                     );
@@ -563,7 +589,7 @@ function FieldInput({ field, value, onChange }: { field: FieldSpec; value: strin
     );
 }
 
-// ============================================================ helpers
+// ==================================================================== helpers
 
 function initialsOf(name: string): string {
     const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -589,19 +615,74 @@ function formatRelativeTime(iso: string): string {
     return `há ${Math.floor(hours / 24)} d`;
 }
 
-const GLASS = 'rgba(255,255,255,0.16)';
-const GLASS_BORDER = 'rgba(255,255,255,0.28)';
-
 const styles = StyleSheet.create({
     screen: {
+        backgroundColor: colors.canvas,
         flex: 1
     },
-    topBar: {
+    // ---- Hero header ----
+    hero: {
+        borderBottomLeftRadius: radii.lg + 14,
+        borderBottomRightRadius: radii.lg + 14,
+        gap: spacing[4],
+        paddingBottom: spacing[5],
+        paddingHorizontal: spacing[4],
+        paddingTop: spacing[5],
+        ...shadows.elevated
+    },
+    heroTopRow: {
         alignItems: 'center',
         flexDirection: 'row',
+        gap: spacing[3]
+    },
+    heroEyebrow: {
+        color: 'rgba(255,255,255,0.75)',
+        fontFamily: typography.eyebrow.fontFamily,
+        fontSize: 11,
+        fontWeight: '800',
+        letterSpacing: 1.2
+    },
+    heroTitle: {
+        color: colors.inverseText,
+        fontFamily: typography.title.fontFamily,
+        fontSize: 27,
+        fontWeight: '800',
+        letterSpacing: -0.5,
+        marginTop: 2,
+        ...textShadows.heroOnBrand
+    },
+    heroSubtitle: {
+        color: 'rgba(255,255,255,0.85)',
+        fontFamily: typography.body.fontFamily,
+        fontSize: 13,
+        lineHeight: 18
+    },
+    heroIconButton: {
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.16)',
+        borderColor: 'rgba(255,255,255,0.24)',
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        height: 40,
+        justifyContent: 'center',
+        width: 40
+    },
+    searchBar: {
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.16)',
+        borderColor: 'rgba(255,255,255,0.24)',
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        flexDirection: 'row',
         gap: spacing[2],
-        paddingHorizontal: spacing[4],
-        paddingVertical: spacing[2]
+        paddingHorizontal: spacing[4]
+    },
+    searchInput: {
+        color: colors.inverseText,
+        flex: 1,
+        fontFamily: typography.body.fontFamily,
+        fontSize: 15,
+        paddingVertical: spacing[3]
     },
     sectionRow: {
         gap: spacing[2],
@@ -609,8 +690,8 @@ const styles = StyleSheet.create({
     },
     sectionPill: {
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderColor: colors.border,
+        backgroundColor: 'rgba(255,255,255,0.14)',
+        borderColor: 'rgba(255,255,255,0.22)',
         borderRadius: radii.pill,
         borderWidth: 1,
         flexDirection: 'row',
@@ -619,81 +700,50 @@ const styles = StyleSheet.create({
         paddingVertical: spacing[2]
     },
     sectionPillActive: {
-        backgroundColor: colors.brand,
-        borderColor: colors.brand
+        backgroundColor: colors.inverseText,
+        borderColor: colors.inverseText
     },
     sectionPillText: {
-        ...typography.label,
-        color: colors.brand
+        color: colors.inverseText,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 12,
+        fontWeight: '700'
     },
     sectionPillTextActive: {
-        color: colors.inverseText
-    },
-    searchButton: {
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderColor: colors.border,
-        borderRadius: radii.pill,
-        borderWidth: 1,
-        height: 38,
-        justifyContent: 'center',
-        width: 38
-    },
-    searchBar: {
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderColor: colors.border,
-        borderRadius: radii.pill,
-        borderWidth: 1,
-        flex: 1,
-        flexDirection: 'row',
-        gap: spacing[2],
-        paddingHorizontal: spacing[4]
-    },
-    searchInput: {
-        ...typography.body,
-        color: colors.text,
-        flex: 1,
-        paddingVertical: spacing[2]
-    },
-    searchCancel: {
-        ...typography.label,
         color: colors.brand
     },
+    // ---- Category chips ----
     chipRowWrap: {
-        flexGrow: 0
+        flexGrow: 0,
+        marginTop: spacing[3]
     },
     chipRow: {
         gap: spacing[2],
-        paddingHorizontal: spacing[4],
-        paddingBottom: spacing[2]
+        paddingHorizontal: spacing[4]
     },
     chip: {
         backgroundColor: colors.surface,
         borderColor: colors.border,
         borderRadius: radii.pill,
         borderWidth: 1,
-        paddingHorizontal: spacing[3],
+        paddingHorizontal: spacing[4],
         paddingVertical: spacing[2]
     },
-    chipActive: {
-        backgroundColor: colors.brandSubtle,
-        borderColor: colors.brand
-    },
     chipText: {
-        ...typography.body,
         color: colors.textMuted,
-        fontSize: 13
+        fontFamily: typography.label.fontFamily,
+        fontSize: 13,
+        fontWeight: '700'
     },
     chipTextActive: {
-        color: colors.brand,
-        fontWeight: '700'
+        color: colors.inverseText
     },
     wrapRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: spacing[2]
     },
+    // ---- Notice ----
     noticeCard: {
         alignItems: 'center',
         backgroundColor: colors.successSubtle,
@@ -703,117 +753,107 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: spacing[2],
         marginHorizontal: spacing[4],
-        marginBottom: spacing[1],
+        marginTop: spacing[3],
         padding: spacing[3]
     },
     noticeText: {
-        ...typography.label,
         color: colors.success,
-        flex: 1
-    },
-    // Immersive card
-    card: {
-        borderRadius: radii.lg + 8,
         flex: 1,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 13,
+        fontWeight: '700'
+    },
+    feedHeading: {
+        color: colors.textMuted,
+        fontFamily: typography.eyebrow.fontFamily,
+        fontSize: 12,
+        fontWeight: '800',
+        letterSpacing: 0.6,
+        marginBottom: -spacing[1],
+        textTransform: 'uppercase'
+    },
+    // ---- Feed card ----
+    card: {
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.lg + 4,
+        borderWidth: 1,
+        flexDirection: 'row',
         overflow: 'hidden',
         ...shadows.elevated
     },
-    cardVignette: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.12)'
+    cardAccent: {
+        width: 5
     },
-    cardInner: {
+    cardBody: {
         flex: 1,
-        justifyContent: 'space-between',
-        padding: spacing[5]
+        gap: spacing[3],
+        padding: spacing[4]
     },
     cardTopRow: {
         alignItems: 'center',
         flexDirection: 'row',
-        justifyContent: 'space-between'
+        gap: spacing[3]
     },
-    glassBadge: {
+    token: {
         alignItems: 'center',
-        alignSelf: 'flex-start',
-        backgroundColor: GLASS,
-        borderColor: GLASS_BORDER,
-        borderRadius: radii.pill,
-        borderWidth: 1,
+        borderRadius: radii.md + 4,
+        height: 44,
+        justifyContent: 'center',
+        width: 44
+    },
+    tokenEmoji: {
+        fontSize: 22
+    },
+    cardCategory: {
+        fontFamily: typography.label.fontFamily,
+        fontSize: 14,
+        fontWeight: '800'
+    },
+    metaRow: {
+        alignItems: 'center',
         flexDirection: 'row',
         gap: spacing[2],
-        paddingHorizontal: spacing[3],
-        paddingVertical: spacing[2]
+        marginTop: 1
     },
-    badgeEmoji: {
-        fontSize: 16
-    },
-    badgeLabel: {
-        ...typography.label,
-        color: colors.inverseText,
+    cardTime: {
+        color: colors.textSubtle,
+        fontFamily: typography.body.fontFamily,
         fontSize: 12
     },
-    glassChip: {
-        alignItems: 'center',
-        backgroundColor: GLASS,
-        borderColor: GLASS_BORDER,
-        borderRadius: radii.pill,
-        borderWidth: 1,
-        flexDirection: 'row',
-        gap: spacing[2],
-        paddingHorizontal: spacing[3],
-        paddingVertical: spacing[1]
-    },
-    timeText: {
-        color: 'rgba(255,255,255,0.9)',
-        fontFamily: typography.label.fontFamily,
-        fontSize: 11,
-        fontWeight: '700'
-    },
     liveDot: {
-        backgroundColor: '#FFFFFF',
         borderRadius: radii.pill,
         height: 7,
         width: 7
     },
-    cardCenter: {
-        flex: 1,
-        gap: spacing[3],
-        justifyContent: 'center'
+    statusBlock: {
+        gap: spacing[2]
     },
-    hero: {
-        gap: spacing[3]
-    },
-    heroWord: {
+    statusWord: {
         fontFamily: typography.title.fontFamily,
-        fontSize: 46,
+        fontSize: 30,
         fontWeight: '900',
-        letterSpacing: -1,
-        ...textShadows.heroOnBrand
+        letterSpacing: -0.5
     },
     meter: {
         flexDirection: 'row',
         gap: spacing[2]
     },
     meterSeg: {
-        backgroundColor: 'rgba(255,255,255,0.25)',
+        backgroundColor: colors.brandMuted,
         borderRadius: radii.pill,
         flex: 1,
-        height: 8
+        height: 7
     },
     cardTitle: {
-        color: colors.inverseText,
+        color: colors.text,
         fontFamily: typography.title.fontFamily,
-        fontSize: 26,
-        fontWeight: '800',
-        lineHeight: 32,
-        ...textShadows.heroOnBrand
-    },
-    cardTitleSmall: {
-        fontSize: 19,
+        fontSize: 18,
+        fontWeight: '700',
         lineHeight: 24
     },
     cardDescription: {
-        color: 'rgba(255,255,255,0.92)',
+        color: colors.textMuted,
         fontFamily: typography.body.fontFamily,
         fontSize: 14,
         lineHeight: 20
@@ -824,37 +864,48 @@ const styles = StyleSheet.create({
         gap: spacing[2]
     },
     detailChip: {
-        backgroundColor: GLASS,
-        borderColor: GLASS_BORDER,
-        borderRadius: radii.md,
-        borderWidth: 1,
+        backgroundColor: colors.brandSubtle,
+        borderRadius: radii.sm,
+        flexDirection: 'row',
+        gap: spacing[1],
         paddingHorizontal: spacing[3],
-        paddingVertical: spacing[1]
+        paddingVertical: spacing[2]
     },
-    detailChipText: {
-        color: colors.inverseText,
-        fontFamily: typography.body.fontFamily,
-        fontSize: 12.5,
-        fontWeight: '600'
+    detailChipLabel: {
+        color: colors.textSubtle,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 12,
+        fontWeight: '700'
     },
-    linkChip: {
+    detailChipValue: {
+        color: colors.brandDark,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 12,
+        fontWeight: '700'
+    },
+    linkButton: {
         alignItems: 'center',
         alignSelf: 'flex-start',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.brandSubtle,
         borderRadius: radii.pill,
         flexDirection: 'row',
         gap: spacing[2],
         paddingHorizontal: spacing[4],
         paddingVertical: spacing[2]
     },
-    linkChipText: {
-        ...typography.label,
-        color: colors.text
+    linkButtonText: {
+        color: colors.brand,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 13,
+        fontWeight: '700'
     },
-    cardBottomRow: {
+    cardFooter: {
         alignItems: 'center',
+        borderTopColor: colors.border,
+        borderTopWidth: 1,
         flexDirection: 'row',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        paddingTop: spacing[3]
     },
     authorChip: {
         alignItems: 'center',
@@ -864,22 +915,18 @@ const styles = StyleSheet.create({
     },
     avatar: {
         alignItems: 'center',
-        backgroundColor: GLASS,
-        borderColor: GLASS_BORDER,
         borderRadius: radii.pill,
-        borderWidth: 1,
         height: 30,
         justifyContent: 'center',
         width: 30
     },
     avatarText: {
-        color: colors.inverseText,
         fontFamily: typography.label.fontFamily,
         fontSize: 11,
         fontWeight: '800'
     },
     authorName: {
-        color: 'rgba(255,255,255,0.95)',
+        color: colors.textMuted,
         flexShrink: 1,
         fontFamily: typography.label.fontFamily,
         fontSize: 13,
@@ -887,7 +934,7 @@ const styles = StyleSheet.create({
     },
     confirmPill: {
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.brandSubtle,
         borderRadius: radii.pill,
         flexDirection: 'row',
         gap: spacing[2],
@@ -895,24 +942,47 @@ const styles = StyleSheet.create({
         paddingVertical: spacing[2]
     },
     confirmPillText: {
-        ...typography.label,
-        color: colors.text
+        color: colors.brand,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 13,
+        fontWeight: '700'
     },
-    // Live compose card
-    composePrompt: {
-        color: colors.inverseText,
-        fontFamily: typography.title.fontFamily,
-        fontSize: 24,
+    // ---- Live composer ----
+    composerCard: {
+        backgroundColor: colors.surface,
+        borderColor: colors.brandMuted,
+        borderRadius: radii.lg + 4,
+        borderWidth: 1.5,
+        gap: spacing[4],
+        padding: spacing[4],
+        ...shadows.elevated
+    },
+    composerHeader: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing[3]
+    },
+    composerEyebrow: {
+        color: colors.brand,
+        fontFamily: typography.eyebrow.fontFamily,
+        fontSize: 11,
         fontWeight: '800',
-        lineHeight: 30,
-        ...textShadows.heroOnBrand
+        letterSpacing: 1
     },
-    glassInput: {
-        backgroundColor: GLASS,
-        borderColor: GLASS_BORDER,
+    composerPrompt: {
+        color: colors.text,
+        fontFamily: typography.title.fontFamily,
+        fontSize: 18,
+        fontWeight: '800',
+        lineHeight: 23,
+        marginTop: 2
+    },
+    composerInput: {
+        backgroundColor: colors.canvas,
+        borderColor: colors.borderStrong,
         borderRadius: radii.md,
         borderWidth: 1,
-        color: colors.inverseText,
+        color: colors.text,
         fontFamily: typography.body.fontFamily,
         fontSize: 15,
         paddingHorizontal: spacing[3],
@@ -920,47 +990,65 @@ const styles = StyleSheet.create({
     },
     quickRow: {
         flexDirection: 'row',
-        gap: spacing[2]
+        gap: spacing[3]
     },
     quickButton: {
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
-        borderRadius: radii.md,
+        borderRadius: radii.md + 2,
         flex: 1,
         justifyContent: 'center',
-        paddingVertical: spacing[3]
+        paddingVertical: spacing[4]
+    },
+    quickPositive: {
+        backgroundColor: colors.success
+    },
+    quickNegative: {
+        backgroundColor: colors.danger
+    },
+    quickNeutral: {
+        backgroundColor: colors.brandSubtle,
+        borderColor: colors.brandMuted,
+        borderWidth: 1
     },
     quickButtonText: {
-        ...typography.label,
-        color: colors.text,
-        fontSize: 13
+        color: colors.inverseText,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 15,
+        fontWeight: '800'
     },
-    composeFootnote: {
-        color: 'rgba(255,255,255,0.85)',
+    quickButtonTextNeutral: {
+        color: colors.brand
+    },
+    composerFootnote: {
+        color: colors.textSubtle,
         fontFamily: typography.body.fontFamily,
-        fontSize: 12
+        fontSize: 12,
+        marginTop: -spacing[2]
     },
-    // State cards
+    // ---- State ----
     stateCard: {
         alignItems: 'center',
         backgroundColor: colors.surface,
         borderColor: colors.border,
-        borderRadius: radii.lg + 8,
+        borderRadius: radii.lg + 4,
         borderWidth: 1,
         gap: spacing[3],
         justifyContent: 'center',
-        marginBottom: spacing[4],
-        padding: spacing[6]
+        marginTop: spacing[4],
+        paddingHorizontal: spacing[6],
+        paddingVertical: spacing[8]
     },
     stateEmoji: {
-        fontSize: 40
+        fontSize: 44
     },
     stateText: {
-        ...typography.body,
         color: colors.textMuted,
+        fontFamily: typography.body.fontFamily,
+        fontSize: 14,
+        lineHeight: 20,
         textAlign: 'center'
     },
-    // FAB
+    // ---- FAB ----
     fab: {
         ...shadows.elevated,
         alignItems: 'center',
@@ -970,78 +1058,75 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: spacing[2],
         paddingHorizontal: spacing[6],
-        paddingVertical: spacing[3],
+        paddingVertical: spacing[4],
         position: 'absolute'
     },
     fabPressed: {
         opacity: 0.85
     },
     fabText: {
-        ...typography.label,
         color: colors.inverseText,
-        fontSize: 14
+        fontFamily: typography.label.fontFamily,
+        fontSize: 15,
+        fontWeight: '800'
     },
-    // Compose screen
-    composeHeader: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        gap: spacing[3]
-    },
-    backButton: {
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderColor: colors.border,
-        borderRadius: radii.pill,
-        borderWidth: 1,
-        height: 40,
-        justifyContent: 'center',
-        width: 40
-    },
-    composeTitle: {
-        ...typography.title,
-        ...textShadows.heading,
-        color: colors.brandDark
-    },
-    composeHint: {
-        ...typography.body,
-        color: colors.textMuted,
-        fontSize: 13
-    },
+    // ---- Compose screen ----
     composeSectionBlock: {
         gap: spacing[2]
     },
     composeSectionLabel: {
-        ...typography.eyebrow,
         color: colors.textSubtle,
+        fontFamily: typography.eyebrow.fontFamily,
+        fontSize: 12,
+        fontWeight: '800',
+        letterSpacing: 0.6,
         textTransform: 'uppercase'
     },
     composer: {
         ...shadows.elevated,
         backgroundColor: colors.surface,
         borderColor: colors.border,
-        borderRadius: radii.md,
+        borderRadius: radii.lg + 4,
         borderWidth: 1,
-        gap: spacing[3],
+        gap: spacing[4],
         padding: spacing[5]
     },
+    composerTitleRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing[2]
+    },
+    composerBadgeEmoji: {
+        fontSize: 20
+    },
     composerTitle: {
-        ...typography.title,
-        ...textShadows.heading,
         color: colors.brandDark,
-        fontSize: 16
+        fontFamily: typography.title.fontFamily,
+        fontSize: 17,
+        fontWeight: '800'
+    },
+    fieldBlock: {
+        gap: spacing[2]
+    },
+    fieldLabel: {
+        color: colors.textMuted,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 13,
+        fontWeight: '700'
     },
     input: {
-        ...typography.body,
-        backgroundColor: colors.surface,
+        backgroundColor: colors.canvas,
         borderColor: colors.borderStrong,
         borderRadius: radii.md,
         borderWidth: 1,
         color: colors.text,
+        fontFamily: typography.body.fontFamily,
+        fontSize: 15,
         paddingHorizontal: spacing[3],
         paddingVertical: spacing[3]
     },
     inputMultiline: {
-        minHeight: 72,
+        minHeight: 84,
         textAlignVertical: 'top'
     },
     selectRow: {
@@ -1054,15 +1139,13 @@ const styles = StyleSheet.create({
         borderRadius: radii.md,
         borderWidth: 1,
         paddingHorizontal: spacing[4],
-        paddingVertical: spacing[2]
-    },
-    selectChipActive: {
-        backgroundColor: colors.brand,
-        borderColor: colors.brand
+        paddingVertical: spacing[3]
     },
     selectChipText: {
-        ...typography.label,
-        color: colors.brand
+        color: colors.textMuted,
+        fontFamily: typography.label.fontFamily,
+        fontSize: 13,
+        fontWeight: '700'
     },
     selectChipTextActive: {
         color: colors.inverseText
@@ -1070,16 +1153,17 @@ const styles = StyleSheet.create({
     submitButton: {
         alignItems: 'center',
         backgroundColor: colors.brand,
-        borderRadius: radii.md,
+        borderRadius: radii.md + 2,
         flexDirection: 'row',
         gap: spacing[2],
         justifyContent: 'center',
         paddingVertical: spacing[4]
     },
     submitButtonText: {
-        ...typography.label,
         color: colors.inverseText,
-        fontSize: 14
+        fontFamily: typography.label.fontFamily,
+        fontSize: 15,
+        fontWeight: '800'
     },
     errorBanner: {
         backgroundColor: colors.dangerSubtle,
@@ -1089,8 +1173,9 @@ const styles = StyleSheet.create({
         padding: spacing[3]
     },
     errorText: {
-        ...typography.body,
-        color: colors.danger
+        color: colors.danger,
+        fontFamily: typography.body.fontFamily,
+        fontSize: 14
     },
     pressed: {
         opacity: 0.7
