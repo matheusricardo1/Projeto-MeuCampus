@@ -16,6 +16,12 @@ export function MatrizPage({ bottomInset = 24 }: { bottomInset?: number }) {
     const { matriz, isLoading, error, reload } = useMatrizCurricular();
     const [mode, setMode] = useState<ViewMode>('list');
 
+    // The graph is a full-screen drill-down (its own back button returns to the
+    // matriz overview), so it gets the whole canvas — no hero/toggle above it.
+    if (matriz && mode === 'graph') {
+        return <MatrizGraphView matriz={matriz} bottomInset={bottomInset} onBack={() => setMode('list')} />;
+    }
+
     return (
         <View style={styles.screen}>
             <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
@@ -52,10 +58,8 @@ export function MatrizPage({ bottomInset = 24 }: { bottomInset?: number }) {
                 <StateView emoji="⚠️" title="Não deu para carregar" subtitle={error} onRetry={reload} />
             ) : !matriz ? (
                 <StateView emoji="📚" title="Matriz indisponível" subtitle="Não encontramos a matriz do seu curso agora." onRetry={reload} />
-            ) : mode === 'list' ? (
-                <MatrizListView matriz={matriz} bottomInset={bottomInset} />
             ) : (
-                <MatrizGraphView matriz={matriz} bottomInset={bottomInset} />
+                <MatrizListView matriz={matriz} bottomInset={bottomInset} />
             )}
         </View>
     );
@@ -157,13 +161,15 @@ function MiniChip({ text, tone }: { text: string; tone?: 'warn' }) {
 }
 
 // =============================================================== Graph view
+// Layered top-down DAG: each período is a horizontal ROW (1º at the top), and
+// pre-requisito arrows flow downward into the disciplinas that depend on them.
 
-const COL_W = 168;
-const NODE_W = 140;
-const NODE_H = 48;
-const ROW_GAP = 18;
-const TOP_LABEL_H = 34;
+const NODE_W = 148;
+const NODE_H = 50;
+const H_GAP = 22; // between disciplinas of the same período (horizontal)
+const V_GAP = 50; // between período rows (vertical) — room for the arrows
 const PAD = 20;
+const LABEL_W = 42; // left gutter for the "Nº" período label
 
 interface GraphNode {
     codigo: string;
@@ -173,35 +179,41 @@ interface GraphNode {
     y: number;
 }
 
-function MatrizGraphView({ matriz, bottomInset }: { matriz: MatrizCurricular; bottomInset: number }) {
+function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurricular; bottomInset: number; onBack: () => void }) {
     const layout = useMemo(() => buildGraphLayout(matriz), [matriz]);
 
-    if (layout.nodes.length === 0) {
-        return <StateView emoji="🗺️" title="Sem grafo" subtitle="Não há disciplinas obrigatórias com período para montar o grafo." />;
-    }
-
     return (
-        <ScrollView contentContainerStyle={{ paddingBottom: bottomInset + spacing[8] }}>
-            <Text style={styles.graphHint}>Setas apontam do pré-requisito para a disciplina. Deslize para os lados para ver todos os períodos.</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ padding: spacing[2] }}>
-                <Svg width={layout.width} height={layout.height}>
-                    {/* period column headers */}
-                    {layout.periodos.map((p) => (
-                        <SvgText key={`h${p}`} x={colX(p) + NODE_W / 2} y={PAD + 16} fill={colors.brand} fontSize={13} fontWeight="700" textAnchor="middle">
-                            {`${p}º período`}
-                        </SvgText>
-                    ))}
-                    {/* edges */}
-                    {layout.edges.map((e, i) => (
-                        <Edge key={`e${i}`} from={e.from} to={e.to} />
-                    ))}
-                    {/* nodes */}
-                    {layout.nodes.map((n) => (
-                        <GraphNodeView key={n.codigo} node={n} />
-                    ))}
-                </Svg>
-            </ScrollView>
-        </ScrollView>
+        <View style={styles.screen}>
+            {layout.nodes.length === 0 ? (
+                <StateView emoji="🗺️" title="Sem grafo" subtitle="Não há disciplinas obrigatórias com período para montar o grafo." />
+            ) : (
+                <ScrollView contentContainerStyle={{ paddingTop: 64, paddingBottom: bottomInset + spacing[8] }}>
+                    <Text style={[styles.graphHint, { paddingLeft: 68 }]}>Cada linha é um período (1º no topo); as setas descem do pré-requisito para a disciplina que depende dele.</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ padding: spacing[2] }}>
+                        <Svg width={layout.width} height={layout.height}>
+                            {/* período row labels (left gutter) */}
+                            {layout.rows.map((row) => (
+                                <SvgText key={`r${row.periodo}`} x={PAD} y={row.y + NODE_H / 2 + 4} fill={colors.brand} fontSize={13} fontWeight="700" textAnchor="start">
+                                    {`${row.periodo}º`}
+                                </SvgText>
+                            ))}
+                            {/* edges */}
+                            {layout.edges.map((e, i) => (
+                                <Edge key={`e${i}`} from={e.from} to={e.to} />
+                            ))}
+                            {/* nodes */}
+                            {layout.nodes.map((n) => (
+                                <GraphNodeView key={n.codigo} node={n} />
+                            ))}
+                        </Svg>
+                    </ScrollView>
+                </ScrollView>
+            )}
+
+            <Pressable onPress={() => { hapticTap(); onBack(); }} style={({ pressed }) => [styles.graphBackButton, pressed ? styles.pressed : null]}>
+                <ArrowLeft color={colors.brandDark} size={20} />
+            </Pressable>
+        </View>
     );
 }
 
@@ -209,22 +221,23 @@ function GraphNodeView({ node }: { node: GraphNode }) {
     return (
         <>
             <Rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} rx={10} fill={colors.brandSubtle} stroke={colors.brand} strokeWidth={1.5} />
-            <SvgText x={node.x + NODE_W / 2} y={node.y + 19} fill={colors.brandDark} fontSize={12.5} fontWeight="800" textAnchor="middle">
+            <SvgText x={node.x + NODE_W / 2} y={node.y + 20} fill={colors.brandDark} fontSize={12.5} fontWeight="800" textAnchor="middle">
                 {node.codigo}
             </SvgText>
-            <SvgText x={node.x + NODE_W / 2} y={node.y + 35} fill={colors.textMuted} fontSize={9} textAnchor="middle">
-                {truncate(node.nome, 22)}
+            <SvgText x={node.x + NODE_W / 2} y={node.y + 36} fill={colors.textMuted} fontSize={9} textAnchor="middle">
+                {truncate(node.nome, 24)}
             </SvgText>
         </>
     );
 }
 
 function Edge({ from, to }: { from: GraphNode; to: GraphNode }) {
-    // From prereq's right-center to dependent's left-center.
-    const x1 = from.x + NODE_W;
-    const y1 = from.y + NODE_H / 2;
-    const x2 = to.x;
-    const y2 = to.y + NODE_H / 2;
+    // Downward flow: from the pre-requisito's bottom-center to the top-center of
+    // the disciplina that depends on it.
+    const x1 = from.x + NODE_W / 2;
+    const y1 = from.y + NODE_H;
+    const x2 = to.x + NODE_W / 2;
+    const y2 = to.y;
     const arrow = arrowHead(x1, y1, x2, y2, 7);
     return (
         <>
@@ -234,7 +247,13 @@ function Edge({ from, to }: { from: GraphNode; to: GraphNode }) {
     );
 }
 
-function buildGraphLayout(matriz: MatrizCurricular): { nodes: GraphNode[]; edges: Array<{ from: GraphNode; to: GraphNode }>; periodos: number[]; width: number; height: number } {
+function buildGraphLayout(matriz: MatrizCurricular): {
+    nodes: GraphNode[];
+    edges: Array<{ from: GraphNode; to: GraphNode }>;
+    rows: Array<{ periodo: number; y: number }>;
+    width: number;
+    height: number;
+} {
     const obrigatorias = matriz.categorias.find((c) => c.nome.toUpperCase().includes('OBRIGAT'))?.disciplinas ?? [];
     const withPeriod = obrigatorias.filter((d) => d.periodo != null) as Array<MatrizDisciplina & { periodo: number }>;
 
@@ -248,20 +267,22 @@ function buildGraphLayout(matriz: MatrizCurricular): { nodes: GraphNode[]; edges
 
     const nodeByCode = new Map<string, GraphNode>();
     const nodes: GraphNode[] = [];
-    for (const p of periodos) {
-        const list = byPeriod.get(p)!;
-        list.forEach((d, index) => {
+    const rows: Array<{ periodo: number; y: number }> = [];
+    periodos.forEach((p, rowIndex) => {
+        const y = PAD + rowIndex * (NODE_H + V_GAP);
+        rows.push({ periodo: p, y });
+        byPeriod.get(p)!.forEach((d, index) => {
             const node: GraphNode = {
                 codigo: d.codigo,
                 nome: d.nome,
                 periodo: p,
-                x: colX(p),
-                y: TOP_LABEL_H + PAD + index * (NODE_H + ROW_GAP)
+                x: PAD + LABEL_W + index * (NODE_W + H_GAP),
+                y
             };
             nodes.push(node);
             nodeByCode.set(d.codigo, node);
         });
-    }
+    });
 
     const edges: Array<{ from: GraphNode; to: GraphNode }> = [];
     for (const d of withPeriod) {
@@ -273,14 +294,10 @@ function buildGraphLayout(matriz: MatrizCurricular): { nodes: GraphNode[]; edges
         }
     }
 
-    const maxRows = Math.max(1, ...periodos.map((p) => byPeriod.get(p)!.length));
-    const width = periodos.length > 0 ? colX(periodos[periodos.length - 1]!) + NODE_W + PAD : PAD;
-    const height = TOP_LABEL_H + PAD + maxRows * (NODE_H + ROW_GAP) + PAD;
-    return { nodes, edges, periodos, width, height };
-}
-
-function colX(periodo: number): number {
-    return PAD + (periodo - 1) * COL_W;
+    const maxRowLen = Math.max(1, ...periodos.map((p) => byPeriod.get(p)!.length));
+    const width = PAD + LABEL_W + maxRowLen * (NODE_W + H_GAP) - H_GAP + PAD;
+    const height = periodos.length > 0 ? PAD + periodos.length * (NODE_H + V_GAP) - V_GAP + PAD : PAD;
+    return { nodes, edges, rows, width, height };
 }
 
 function arrowHead(x1: number, y1: number, x2: number, y2: number, size: number): string {
@@ -378,6 +395,25 @@ const styles = StyleSheet.create({
     miniChipWarnText: { color: colors.warning },
     // graph
     graphHint: { color: colors.textMuted, fontFamily: typography.body.fontFamily, fontSize: 12.5, paddingHorizontal: spacing[4], paddingTop: spacing[1], paddingBottom: spacing[2] },
+    graphBackButton: {
+        alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        elevation: 6,
+        height: 44,
+        justifyContent: 'center',
+        left: spacing[4],
+        position: 'absolute',
+        shadowColor: '#0B3D32',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.18,
+        shadowRadius: 10,
+        top: spacing[3],
+        width: 44,
+        zIndex: 10
+    },
     // states
     stateWrap: { alignItems: 'center', gap: spacing[3], justifyContent: 'center', padding: spacing[8] },
     stateEmoji: { fontSize: 46 },
