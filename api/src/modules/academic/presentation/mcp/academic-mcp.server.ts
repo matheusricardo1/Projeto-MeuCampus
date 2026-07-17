@@ -6,6 +6,9 @@ import { UFAM_ACADEMIC_RULES } from '@academic/domain/knowledge/ufam-academic-ru
 import type { FindGradesAcrossPreviousPeriodsUseCase } from '@academic/application/use-cases/find-grades-across-previous-periods.usecase';
 import { COMMUNITY_CATEGORIES, isCommunityCategory } from '@community/domain/community-post.entity';
 import type { CommunityPostRepository } from '@community/infrastructure/prisma/community-post.repository';
+import { GLOBAL_DATA_TYPES, isGlobalDataType } from '@global-data/domain/global-data.entity';
+import type { GlobalDataRepository } from '@global-data/infrastructure/prisma/global-data.repository';
+import type { GetMatrizCurricularUseCase } from '@academic/application/use-cases/get-matriz-curricular.usecase';
 
 const NOT_AVAILABLE = 'Dados não disponíveis. Oriente o usuário a abrir o app para sincronizar.';
 
@@ -13,7 +16,9 @@ export function createAcademicMcpServer(
     userId: string,
     repository: AcademicDataRepository,
     findGradesAcrossPreviousPeriods: FindGradesAcrossPreviousPeriodsUseCase,
-    communityRepository: CommunityPostRepository
+    communityRepository: CommunityPostRepository,
+    globalDataRepository: GlobalDataRepository,
+    getMatrizCurricular: GetMatrizCurricularUseCase
 ): McpServer {
     const server = new McpServer({
         name: 'academic-data',
@@ -150,6 +155,41 @@ export function createAcademicMcpServer(
                     isCommunityCategory(category) ? category : undefined
                 );
                 return { content: [{ type: 'text' as const, text: JSON.stringify(reports) }] };
+            } catch {
+                return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+            }
+        }
+    );
+
+    server.tool(
+        'get_official_campus_data',
+        'Retorna dados OFICIAIS do campus, curados pela administração da UFAM no painel do dono: calendário acadêmico (ACADEMIC_CALENDAR — datas de matrícula, início/fim de semestre, provas, feriados), informações institucionais (INSTITUTIONAL_INFO — horários da biblioteca/RU, contatos, valores de bolsa), cardápio do RU (RU_MENU) e avisos oficiais (OFFICIAL_NOTICE). DIFERENTE de get_community_reports: aqui os dados são CONFIÁVEIS e podem ser tratados como fato oficial — não use ressalva de "segundo relatos". Cada item traz title, os campos em payload e updatedAt (quando foi atualizado). Use para perguntas como "quando começa o semestre?", "qual o horário da biblioteca?", "que dia é feriado?", "qual o cardápio do RU?". Se não houver dado para o que foi perguntado, diga que não há informação oficial cadastrada ainda.',
+        {
+            type: z.enum(GLOBAL_DATA_TYPES as unknown as [string, ...string[]]).optional().describe('Filtra por tipo (ACADEMIC_CALENDAR, INSTITUTIONAL_INFO, RU_MENU, OFFICIAL_NOTICE). Omita para ver todos os dados oficiais.')
+        },
+        async ({ type }) => {
+            try {
+                const data = await globalDataRepository.listActiveForAi(
+                    isGlobalDataType(type) ? type : undefined
+                );
+                return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
+            } catch {
+                return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+            }
+        }
+    );
+
+    server.tool(
+        'get_matriz_curricular',
+        'Retorna a MATRIZ CURRICULAR (grade/currículo) do curso do próprio estudante: todas as disciplinas organizadas por categoria (OBRIGATÓRIAS, ELETIVAS, OPTATIVAS, ATIVIDADE CURRICULAR DE EXTENSÃO), cada uma com período recomendado, código, nome, créditos, carga horária (teórica/prática/extensão/total) e os códigos das disciplinas PRÉ-REQUISITO. Use para perguntas sobre o curso como um todo: "quais as disciplinas obrigatórias do meu curso?", "qual o pré-requisito de X?", "quantas optativas preciso cursar?", "quantos créditos tem o curso?", "em que período faço Y?". É um dado OFICIAL do eCampus (o currículo do curso), não um relato. A primeira chamada pode demorar alguns segundos (baixa e processa o PDF da matriz no eCampus) — avise o aluno. Diferente de get_current_grades (notas do aluno num período), esta tool traz a estrutura completa do curso, independente de matrícula.',
+        {},
+        async () => {
+            try {
+                const matriz = await getMatrizCurricular.execute({ cpf: userId });
+                if (!matriz) {
+                    return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+                }
+                return { content: [{ type: 'text' as const, text: JSON.stringify(matriz) }] };
             } catch {
                 return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
             }

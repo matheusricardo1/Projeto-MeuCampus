@@ -52,6 +52,17 @@ enum CommunityPostStatus {
   REJECTED
 }
 
+/// Admin-curated "global data": official facts that change rarely over the
+/// year/months (academic calendar, institutional info, RU menu, official
+/// notices). Unlike CommunityPost (unverified student crowdsourcing), this is
+/// authoritative — the AI may treat it as fact. See global-data module.
+enum GlobalDataType {
+  ACADEMIC_CALENDAR
+  INSTITUTIONAL_INFO
+  RU_MENU
+  OFFICIAL_NOTICE
+}
+
 /// id is never the raw CPF - it is HMAC-SHA256(CPF) via pseudonymousUserId(),
 /// a one-way derivation. You can look up a user from a CPF, never a CPF from
 /// a user id (LGPD-friendly pseudonymization, see pseudonymous-user-id.ts).
@@ -125,6 +136,21 @@ model CommunityConfirmation {
   createdAt DateTime      @default(now())
 
   @@unique([postId, userId])
+}
+
+/// Admin-curated official campus data (see GlobalDataType). `payload` holds the
+/// type-specific fields; `active` lets the owner retire an entry without
+/// deleting it. Only active entries are exposed to the AI.
+model GlobalData {
+  id        String         @id @default(uuid())
+  type      GlobalDataType
+  title     String
+  payload   Json?
+  active    Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([type, active])
 }
 
 /// Browser Web Push subscriptions for the owner's admin dashboard. Not tied

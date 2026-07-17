@@ -20,6 +20,7 @@ import { GetScheduleUseCase } from '@/application/use-cases/get-schedule.usecase
 import { GetGradesUseCase } from '@/application/use-cases/get-grades.usecase';
 import { GetLessonPlanSubjectsUseCase } from '@/application/use-cases/get-lesson-plan-subjects.usecase';
 import { GetLessonPlanUseCase } from '@/application/use-cases/get-lesson-plan.usecase';
+import { GetMatrizCurricularUseCase } from '@/application/use-cases/get-matriz-curricular.usecase';
 import { ReportEcampusScrapeFailureUseCase } from '@/application/use-cases/report-ecampus-scrape-failure.usecase';
 import { CacheAndPublishScrapedResource } from '@/application/services/cache-and-publish-scraped-resource.service';
 import { RedisEcampusCacheStore } from '@/infrastructure/redis/redis-ecampus-cache.store';
@@ -61,6 +62,7 @@ export class EcampusScrapingWorker {
             new GetGradesUseCase(repository, sessions, cacheAndPublish),
             new GetLessonPlanSubjectsUseCase(repository, sessions, cacheAndPublish),
             new GetLessonPlanUseCase(repository, sessions, cacheAndPublish),
+            new GetMatrizCurricularUseCase(repository, sessions, cacheAndPublish),
             new ReportEcampusScrapeFailureUseCase(cache, sessions, events)
         );
 

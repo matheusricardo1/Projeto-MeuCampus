@@ -3,4 +3,5 @@ export type AcademicResource =
   | 'schedule'
   | 'grades'
   | 'lesson-plan-subjects'
-  | 'lesson-plan';
+  | 'lesson-plan'
+  | 'matriz';

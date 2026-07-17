@@ -10,6 +10,7 @@ import type { AcademicSubject } from '@academic/domain/entities/academic-subject
 import type { AttendanceSummary, Grade, GradeEvaluation } from '@academic/domain/entities/grade.entity';
 import type { LessonPlanItem } from '@academic/domain/value-objects/lesson-plan-item.value-object';
 import type { LessonPlanSubject } from '@academic/domain/entities/lesson-plan-subject.entity';
+import type { MatrizCurricular } from '@academic/domain/entities/matriz-curricular.entity';
 import type { ScheduleClass } from '@academic/domain/value-objects/schedule-class.value-object';
 import type { StudentProfile } from '@academic/domain/entities/student-profile.entity';
 import { isSameSubject } from '@academic/domain/services/academic-subject-identity';
@@ -85,6 +86,12 @@ export class EcampusRedisRepository extends AcademicDataRepository {
 
   async getLessonPlan(cpf: string, planId: string): Promise<LessonPlanItem[]> {
     return this.getRequired<LessonPlanItem[]>('lesson-plan', cpf, planId);
+  }
+
+  async getMatrizCurricular(cpf: string): Promise<MatrizCurricular> {
+    // Written by the worker as already-structured JSON (see workers/ecampus's
+    // matriz-curricular-pdf parser), so it's read back as-is like the profile.
+    return this.getRequired<MatrizCurricular>('matriz', cpf);
   }
 
   async getAcademicSubjects(cpf: string, year: string, period: string): Promise<AcademicSubject[]> {

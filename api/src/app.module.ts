@@ -6,6 +6,7 @@ import { AuthModule } from '@auth/auth.module';
 import { BillingModule } from '@billing/billing.module';
 import { CommunityModule } from '@community/community.module';
 import { EcampusModule } from '@ecampus/ecampus.module';
+import { GlobalDataModule } from '@global-data/global-data.module';
 import { HealthModule } from '@health/health.module';
 import { McpModule } from '@composition/mcp/mcp.module';
 import { RealtimeModule } from '@composition/realtime/realtime.module';
@@ -20,6 +21,7 @@ import { RealtimeModule } from '@composition/realtime/realtime.module';
         AiModule,
         BillingModule,
         CommunityModule,
+        GlobalDataModule,
         AdminModule,
         McpModule
     ]

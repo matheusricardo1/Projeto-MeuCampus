@@ -18,6 +18,7 @@
       "@ai/*": ["src/modules/ai/*"],
       "@billing/*": ["src/modules/billing/*"],
       "@community/*": ["src/modules/community/*"],
+      "@global-data/*": ["src/modules/global-data/*"],
       "@academic/*": ["src/modules/academic/*"],
       "@auth/*": ["src/modules/auth/*"],
       "@ecampus/*": ["src/modules/ecampus/*"],

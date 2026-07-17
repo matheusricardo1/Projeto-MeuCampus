@@ -7,10 +7,15 @@ import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
 import { ResourceNotFoundError } from '@/domain/exceptions/resource-not-found.error';
 import type { ScheduleClass } from '@/domain/value-objects/schedule-class';
 import type { StudentProfile } from '@/domain/entities/student-profile';
-import type { CurrentAcademicPeriod, EcampusRepository } from '@/domain/repositories/ecampus.repository';
+import type { CurrentAcademicPeriod, EcampusRepository, MatrizCurricularQuery } from '@/domain/repositories/ecampus.repository';
+import type { MatrizCurricular, MatrizCursoOption, MatrizVersaoOption } from '@/domain/entities/matriz-curricular';
 import { AcademicPeriod } from '@/domain/value-objects/academic-period.value-object';
 import { EcampusAuthService } from '@/infrastructure/ecampus-portal/ecampus-auth-service';
+import { parseMatrizCurricularPdf } from '@/infrastructure/ecampus-portal/matriz-curricular-pdf';
 import { appLogger as logger } from '@/infrastructure/logging/app-logger';
+
+/** Ensino Superior - Graduação Regular. Default nível for the matriz report. */
+const DEFAULT_NIVEL_CURSO = '3';
 
 export class EcampusHttpRepository implements EcampusRepository {
     constructor(private readonly authService: EcampusAuthService) {}
@@ -502,6 +507,94 @@ export class EcampusHttpRepository implements EcampusRepository {
     private getInputValue(tree: HTMLElement, elementId: string): string {
         const node = tree.querySelector(`input[id="${elementId}"]`);
         return node?.getAttribute('value')?.trim() || "";
+    }
+
+    // --- Matriz Curricular (report "Matriz de Curso") -------------------------
+    // Flow mirrors the portal's own AJAX chain (reportMatrizCurso.js):
+    //   loadCursos(nivel) -> loadVersoes(curso) -> POST index -> PDF document.
+
+    async listMatrizCursos(credentials: EcampusCredentials, nivelCurso: string): Promise<MatrizCursoOption[]> {
+        return this.runExclusive(credentials.cpf, async () => {
+            const client = await this.authService.getAuthenticatedClient(credentials);
+            const params = new URLSearchParams({ nivel_curso: nivelCurso });
+            const response = await client.post<unknown>('/reportMatrizCurso/loadCursos', params, { timeout: 15000 });
+            const rows = this.asArray(response.data);
+            return rows
+                .map((row) => ({
+                    id: this.numField(row, 'id'),
+                    codCurso: this.strField(row, 'codCurso'),
+                    nome: this.strField(row, 'nomeCursoDiploma')
+                }))
+                .filter((curso): curso is MatrizCursoOption => curso.id > 0);
+        });
+    }
+
+    async listMatrizVersoes(credentials: EcampusCredentials, cursoId: number): Promise<MatrizVersaoOption[]> {
+        return this.runExclusive(credentials.cpf, async () => {
+            const client = await this.authService.getAuthenticatedClient(credentials);
+            const params = new URLSearchParams({ curso: String(cursoId) });
+            const response = await client.post<unknown>('/reportMatrizCurso/loadVersoes', params, { timeout: 15000 });
+            const rows = this.asArray(response.data);
+            return rows
+                .map((row) => ({
+                    id: this.numField(row, 'id'),
+                    numVersao: this.strField(row, 'numVersao'),
+                    situacao: this.strField(row, 'situacaoVersao')
+                }))
+                .filter((versao): versao is MatrizVersaoOption => versao.id > 0);
+        });
+    }
+
+    async getMatrizCurricular(credentials: EcampusCredentials, query: MatrizCurricularQuery): Promise<MatrizCurricular> {
+        return this.runExclusive(credentials.cpf, async () => {
+            const client = await this.authService.getAuthenticatedClient(credentials);
+            logger.info("Fetching curriculum matrix PDF...", { cursoId: query.cursoId, versaoId: query.versaoId });
+
+            const params = new URLSearchParams({
+                nivel_curso: query.nivelCurso ?? DEFAULT_NIVEL_CURSO,
+                curso: String(query.cursoId),
+                versao: String(query.versaoId),
+                _action_report: 'Emitir Documento'
+            });
+
+            const response = await client.post<ArrayBuffer>('/reportMatrizCurso/index', params, {
+                timeout: 30000,
+                responseType: 'arraybuffer',
+                headers: { Accept: 'application/pdf,*/*' }
+            });
+
+            const pdf = Buffer.from(response.data);
+            if (pdf.subarray(0, 4).toString('latin1') !== '%PDF') {
+                throw new ResourceNotFoundError('A matriz curricular não retornou um PDF. Verifique curso e versão.');
+            }
+
+            const matriz = parseMatrizCurricularPdf(pdf);
+            logger.info("Curriculum matrix parsed.", { disciplinas: matriz.totalDisciplinas, categorias: matriz.categorias.length });
+            return matriz;
+        });
+    }
+
+    private asArray(data: unknown): Array<Record<string, unknown>> {
+        if (Array.isArray(data)) return data as Array<Record<string, unknown>>;
+        if (typeof data === 'string') {
+            try {
+                const parsed = JSON.parse(data);
+                return Array.isArray(parsed) ? parsed as Array<Record<string, unknown>> : [];
+            } catch {
+                return [];
+            }
+        }
+        return [];
+    }
+
+    private numField(row: Record<string, unknown>, key: string): number {
+        const value = row[key];
+        return typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10) || 0;
+    }
+
+    private strField(row: Record<string, unknown>, key: string): string {
+        const value = row[key];
+        return value == null ? '' : String(value).trim();
     }
 
 }

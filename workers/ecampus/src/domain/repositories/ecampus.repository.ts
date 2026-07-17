@@ -2,12 +2,20 @@ import type { EcampusCredentials } from '@/domain/value-objects/ecampus-credenti
 import type { Grade } from '@/domain/entities/grade';
 import type { LessonPlanItem } from '@/domain/value-objects/lesson-plan-item';
 import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
+import type { MatrizCurricular, MatrizCursoOption, MatrizVersaoOption } from '@/domain/entities/matriz-curricular';
 import type { ScheduleClass } from '@/domain/value-objects/schedule-class';
 import type { StudentProfile } from '@/domain/entities/student-profile';
 
 export interface CurrentAcademicPeriod {
     year: string;
     period: string;
+}
+
+export interface MatrizCurricularQuery {
+    /** Nível do curso (default '3' = Ensino Superior - Graduação Regular). */
+    nivelCurso?: string;
+    cursoId: number;
+    versaoId: number;
 }
 
 export interface EcampusRepository {
@@ -23,4 +31,10 @@ export interface EcampusRepository {
     getSchedule(credentials: EcampusCredentials): Promise<ScheduleClass[]>;
     getLessonPlanSubjects(credentials: EcampusCredentials): Promise<LessonPlanSubject[]>;
     getLessonPlan(credentials: EcampusCredentials, planId: string): Promise<LessonPlanItem[]>;
+    /** Cursos available for a given nível (report "Matriz de Curso" selector). */
+    listMatrizCursos(credentials: EcampusCredentials, nivelCurso: string): Promise<MatrizCursoOption[]>;
+    /** Versões (currículos) available for a course. */
+    listMatrizVersoes(credentials: EcampusCredentials, cursoId: number): Promise<MatrizVersaoOption[]>;
+    /** Downloads and parses the curriculum matrix PDF into structured JSON. */
+    getMatrizCurricular(credentials: EcampusCredentials, query: MatrizCurricularQuery): Promise<MatrizCurricular>;
 }

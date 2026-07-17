@@ -177,6 +177,81 @@ export async function moderateCommunityPost(token: string, id: string, action: '
     }
 }
 
+export type GlobalDataType = 'ACADEMIC_CALENDAR' | 'INSTITUTIONAL_INFO' | 'RU_MENU' | 'OFFICIAL_NOTICE';
+
+export interface GlobalDataItem {
+    id: string;
+    type: GlobalDataType;
+    title: string;
+    payload: Record<string, unknown> | null;
+    active: boolean;
+    updatedAt: string;
+}
+
+export async function fetchGlobalData(token: string): Promise<GlobalDataItem[]> {
+    const response = await fetch(`${getApiBaseUrl()}/admin/global-data`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (response.status === 401) {
+        throw new AdminUnauthorizedError();
+    }
+    if (!response.ok) {
+        throw new Error('Nao foi possivel carregar os dados globais.');
+    }
+
+    return response.json() as Promise<GlobalDataItem[]>;
+}
+
+export async function createGlobalData(
+    token: string,
+    input: { type: GlobalDataType; title: string; payload: Record<string, unknown> }
+): Promise<GlobalDataItem> {
+    const response = await fetch(`${getApiBaseUrl()}/admin/global-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input)
+    });
+
+    if (response.status === 401) {
+        throw new AdminUnauthorizedError();
+    }
+    if (!response.ok) {
+        throw new Error('Nao foi possivel salvar o dado global.');
+    }
+
+    return response.json() as Promise<GlobalDataItem>;
+}
+
+export async function setGlobalDataActive(token: string, id: string, active: boolean): Promise<void> {
+    const response = await fetch(`${getApiBaseUrl()}/admin/global-data/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ active })
+    });
+
+    if (response.status === 401) {
+        throw new AdminUnauthorizedError();
+    }
+    if (!response.ok) {
+        throw new Error('Nao foi possivel atualizar o dado global.');
+    }
+}
+
+export async function deleteGlobalData(token: string, id: string): Promise<void> {
+    const response = await fetch(`${getApiBaseUrl()}/admin/global-data/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (response.status === 401) {
+        throw new AdminUnauthorizedError();
+    }
+    if (!response.ok) {
+        throw new Error('Nao foi possivel remover o dado global.');
+    }
+}
+
 export function connectAdminLiveUsers(token: string, onCount: (count: number) => void): () => void {
     const socket: Socket = io(`${new URL(getApiBaseUrl()).origin}/admin`, {
         auth: { token },

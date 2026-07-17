@@ -49,3 +49,5 @@ Thumbs.db
 
 # Docker (ignore images but keep dockerfiles)
 # .dockerignore is already handled separately
+
+docs
