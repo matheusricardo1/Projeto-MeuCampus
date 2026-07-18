@@ -164,11 +164,16 @@ function MiniChip({ text, tone }: { text: string; tone?: 'warn' }) {
 // Layered top-down DAG: each período is a horizontal ROW (1º at the top), and
 // pre-requisito arrows flow downward into the disciplinas that depend on them.
 
-const NODE_W = 148;
-const NODE_H = 50;
-const H_GAP = 12; // between disciplinas of the same período (kept tight)
-const V_GAP = 50; // between período rows (vertical) — room for the arrows
+const NODE_W = 152;
+const NODE_H = 58;
+const H_GAP = 16; // between disciplinas of the same período (kept tight)
+const V_GAP = 52; // between período rows (vertical) — room for the arrows
 const PAD = 16;
+
+// Card palette by category, echoing the reference diagram (beige = obrigatória).
+const CARD_FILL = '#EFE2B0';
+const CARD_STROKE = '#D9C179';
+const CARD_TEXT = '#4A3E12';
 
 interface GraphNode {
     codigo: string;
@@ -187,7 +192,8 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
                 <StateView emoji="🗺️" title="Sem grafo" subtitle="Não há disciplinas obrigatórias com período para montar o grafo." />
             ) : (
                 <ScrollView contentContainerStyle={{ paddingTop: 64, paddingBottom: bottomInset + spacing[8] }}>
-                    <Text style={[styles.graphHint, { paddingLeft: 68 }]}>Cada linha é um período (1º no topo); as setas descem do pré-requisito para a disciplina que depende dele.</Text>
+                    <Text numberOfLines={2} style={[styles.graphTitle, { paddingLeft: 68 }]}>Matriz Curricular · {matriz.curso}{matriz.versao ? ` — ${matriz.versao}` : ''}</Text>
+                    <Text style={styles.graphHint}>Cada linha é um período (1º no topo); as setas descem do pré-requisito para a disciplina que depende dele.</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ padding: spacing[2] }}>
                         <Svg width={layout.width} height={layout.height}>
                             {/* edges */}
@@ -211,28 +217,69 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
 }
 
 function GraphNodeView({ node }: { node: GraphNode }) {
+    const lines = wrapLines(toTitleCase(node.nome), 18, 3);
+    const cx = node.x + NODE_W / 2;
+    const startY = node.y + NODE_H / 2 - ((lines.length - 1) * 11) / 2 + 3.5;
     return (
         <>
-            <Rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} rx={10} fill={colors.brandSubtle} stroke={colors.brand} strokeWidth={1.5} />
-            <SvgText x={node.x + NODE_W / 2} y={node.y + 20} fill={colors.brandDark} fontSize={12.5} fontWeight="800" textAnchor="middle">
-                {node.codigo}
-            </SvgText>
-            <SvgText x={node.x + NODE_W / 2} y={node.y + 36} fill={colors.textMuted} fontSize={9} textAnchor="middle">
-                {truncate(node.nome, 24)}
-            </SvgText>
+            <Rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} rx={10} fill={CARD_FILL} stroke={CARD_STROKE} strokeWidth={1.2} />
+            {lines.map((line, i) => (
+                <SvgText key={i} x={cx} y={startY + i * 11} fill={CARD_TEXT} fontSize={10} fontWeight="600" textAnchor="middle">
+                    {line}
+                </SvgText>
+            ))}
         </>
     );
 }
 
+function toTitleCase(value: string): string {
+    const small = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'a', 'à', 'o']);
+    return value.toLocaleLowerCase('pt-BR').replace(/[a-zà-ú]+/gi, (word, index) =>
+        index > 0 && small.has(word) ? word : word.charAt(0).toLocaleUpperCase('pt-BR') + word.slice(1)
+    );
+}
+
+function wrapLines(text: string, maxLen: number, maxLines: number): string[] {
+    const words = text.split(/\s+/);
+    const lines: string[] = [];
+    let current = '';
+    for (const word of words) {
+        if (!current) current = word;
+        else if ((current + ' ' + word).length <= maxLen) current += ' ' + word;
+        else { lines.push(current); current = word; }
+    }
+    if (current) lines.push(current);
+    if (lines.length > maxLines) {
+        const kept = lines.slice(0, maxLines);
+        kept[maxLines - 1] = truncate(kept[maxLines - 1]!, maxLen);
+        return kept;
+    }
+    return lines;
+}
+
 function Edge({ from, to, lane }: { from: GraphNode; to: GraphNode; lane: number }) {
-    // Orthogonal "elbow" route that never crosses a card: drop out of the
-    // pre-requisito, run horizontally in the channel just below it, go straight
-    // down the GUTTER beside the target column (the empty strip between cards,
-    // so the long vertical never enters a card), then into the target's top.
     const sx = from.x + NODE_W / 2;
     const sBottom = from.y + NODE_H;
     const tx = to.x + NODE_W / 2;
     const ty = to.y;
+
+    // Same column (the common case, like "Cálculo I -> Cálculo II" in the
+    // reference diagram): a single straight vertical line, no jog needed.
+    if (from.x === to.x) {
+        const arrow = arrowHead(tx, ty - 9, tx, ty, 9);
+        return (
+            <>
+                <Polyline points={`${sx},${sBottom} ${tx},${ty}`} fill="none" stroke={colors.brand} strokeWidth={3} strokeLinejoin="round" />
+                <Polygon points={arrow} fill={colors.brand} />
+            </>
+        );
+    }
+
+    // Different columns: orthogonal "elbow" route that never crosses a card —
+    // drop out of the pre-requisito, run horizontally in the channel just
+    // below it, go straight down the GUTTER beside the target column (the
+    // empty strip between cards, so the long vertical never enters a card),
+    // then into the target's top.
     const gutterX = to.x - H_GAP / 2; // free strip immediately left of the target
     const off = (lane % 6) * 4;
     const yA = sBottom + 8 + off;      // channel below the source row
@@ -266,36 +313,70 @@ function buildGraphLayout(matriz: MatrizCurricular): {
     const periodos = [...byPeriod.keys()].sort((a, b) => a - b);
 
     const nodeByCode = new Map<string, GraphNode>();
+    const codeToSlot = new Map<string, number>();
     const nodes: GraphNode[] = [];
     const rows: Array<{ periodo: number; y: number }> = [];
-    const slot = NODE_W + H_GAP;
+    const slotW = NODE_W + H_GAP;
+    let nextFreshSlot = 0;
+
     periodos.forEach((p, rowIndex) => {
         const y = PAD + rowIndex * (NODE_H + V_GAP);
         rows.push({ periodo: p, y });
-        // Barycenter ordering: place each disciplina near the average X of its
-        // pre-requisitos (already positioned in the rows above) so the arrows
-        // stay roughly vertical and cross as little as possible.
-        const ordered = byPeriod.get(p)!
-            .map((d, index) => {
-                const preXs = d.preRequisitos
-                    .map((pr) => nodeByCode.get(pr)?.x)
-                    .filter((x): x is number => x != null);
-                const bary = preXs.length ? preXs.reduce((a, b) => a + b, 0) / preXs.length : index * slot;
-                return { d, bary, index };
-            })
-            .sort((a, b) => a.bary - b.bary || a.index - b.index);
-        ordered.forEach(({ d }, index) => {
+
+        // Sugiyama-style column assignment: each disciplina wants the same
+        // column (slot) as its pre-requisito, so a chain like "Cálculo I ->
+        // Cálculo II" stays in one straight vertical track, exactly like the
+        // reference diagram. Disciplinas with no known pre-requisito slot get
+        // a brand-new column. Conflicts (two disciplinas wanting the same
+        // slot) resolve by scanning outward for the nearest free slot.
+        const wanted = byPeriod.get(p)!.map((d, index) => {
+            const preSlots = d.preRequisitos
+                .map((pr) => codeToSlot.get(pr))
+                .filter((s): s is number => s != null);
+            const desired = preSlots.length
+                ? Math.round(preSlots.reduce((a, b) => a + b, 0) / preSlots.length)
+                : nextFreshSlot++;
+            return { d, desired, index };
+        });
+
+        const taken = new Set<number>();
+        const placed = wanted
+            .slice()
+            .sort((a, b) => a.desired - b.desired || a.index - b.index)
+            .map((entry) => {
+                let slot = entry.desired;
+                if (slot < 0) slot = 0;
+                let step = 0;
+                while (taken.has(slot)) {
+                    step += 1;
+                    slot = entry.desired + (step % 2 === 1 ? Math.ceil(step / 2) : -Math.ceil(step / 2));
+                    if (slot < 0) slot = entry.desired + step;
+                }
+                taken.add(slot);
+                return { ...entry, slot };
+            });
+
+        for (const { d, slot } of placed) {
             const node: GraphNode = {
                 codigo: d.codigo,
                 nome: d.nome,
                 periodo: p,
-                x: PAD + index * slot,
+                x: PAD + slot * slotW,
                 y
             };
             nodes.push(node);
             nodeByCode.set(d.codigo, node);
-        });
+            codeToSlot.set(d.codigo, slot);
+        }
     });
+
+    // Normalize x so the leftmost used column starts at PAD (slot assignment
+    // above can start negative-ish / sparse when chains diverge left).
+    const minX = nodes.length ? Math.min(...nodes.map((n) => n.x)) : PAD;
+    const shift = PAD - minX;
+    if (shift !== 0) {
+        for (const n of nodes) n.x += shift;
+    }
 
     const edges: Array<{ from: GraphNode; to: GraphNode; lane: number }> = [];
     const laneByPeriod = new Map<number, number>();
@@ -305,14 +386,19 @@ function buildGraphLayout(matriz: MatrizCurricular): {
         for (const pre of d.preRequisitos) {
             const source = nodeByCode.get(pre);
             if (!source) continue;
-            const lane = laneByPeriod.get(source.periodo) ?? 0;
-            laneByPeriod.set(source.periodo, lane + 1);
+            // A lane offset is only needed when the edge has to jog sideways
+            // (different columns) — same-column chains draw as one straight
+            // line and don't need to be separated from anything.
+            let lane = 0;
+            if (source.x !== target.x) {
+                lane = laneByPeriod.get(source.periodo) ?? 0;
+                laneByPeriod.set(source.periodo, lane + 1);
+            }
             edges.push({ from: source, to: target, lane });
         }
     }
 
-    const maxRowLen = Math.max(1, ...periodos.map((p) => byPeriod.get(p)!.length));
-    const width = PAD + maxRowLen * (NODE_W + H_GAP) - H_GAP + PAD;
+    const width = nodes.length ? Math.max(...nodes.map((n) => n.x)) + NODE_W + PAD : PAD;
     const height = periodos.length > 0 ? PAD + periodos.length * (NODE_H + V_GAP) - V_GAP + PAD : PAD;
     return { nodes, edges, rows, width, height };
 }
@@ -411,6 +497,7 @@ const styles = StyleSheet.create({
     miniChipWarn: { backgroundColor: colors.warningSubtle },
     miniChipWarnText: { color: colors.warning },
     // graph
+    graphTitle: { color: colors.brandDark, fontFamily: typography.title.fontFamily, fontSize: 16, fontWeight: '800', paddingHorizontal: spacing[4] },
     graphHint: { color: colors.textMuted, fontFamily: typography.body.fontFamily, fontSize: 12.5, paddingHorizontal: spacing[4], paddingTop: spacing[1], paddingBottom: spacing[2] },
     graphBackButton: {
         alignItems: 'center',
