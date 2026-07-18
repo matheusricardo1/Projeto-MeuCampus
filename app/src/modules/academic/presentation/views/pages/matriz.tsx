@@ -1,12 +1,14 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Polygon, Polyline, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Path, Polygon, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, GitBranch, List, RefreshCw } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ArrowLeft, GitBranch, List, RefreshCw, RotateCcw } from 'lucide-react-native';
 import { colors, gradients, radii, shadows, spacing, textShadows, typography } from '@/shared/design-system';
 import { hapticTap } from '@/shared/haptics';
 import { useMatrizCurricular } from '@/modules/academic/presentation/hooks/use-matriz-curricular';
+import { ZoomPanCanvas } from '@/modules/academic/presentation/components/zoom-pan-canvas';
 import type { MatrizCategoria, MatrizCurricular, MatrizDisciplina } from '@/modules/academic/domain/entities/matriz-curricular';
 
 type ViewMode = 'list' | 'graph';
@@ -183,18 +185,58 @@ interface GraphNode {
     y: number;
 }
 
+function completedStorageKey(matriz: MatrizCurricular): string {
+    return `matriz.completed.${matriz.curso}.${matriz.versao}`;
+}
+
 function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurricular; bottomInset: number; onBack: () => void }) {
     const layout = useMemo(() => buildGraphLayout(matriz), [matriz]);
+    const [completed, setCompleted] = useState<Set<string>>(new Set());
+    const storageKey = completedStorageKey(matriz);
+
+    useEffect(() => {
+        let cancelled = false;
+        void AsyncStorage.getItem(storageKey).then((raw) => {
+            if (cancelled || !raw) return;
+            try {
+                const codes = JSON.parse(raw) as string[];
+                setCompleted(new Set(codes));
+            } catch {
+                // ignore malformed storage
+            }
+        });
+        return () => { cancelled = true; };
+    }, [storageKey]);
+
+    const toggleCompleted = (codigo: string) => {
+        hapticTap();
+        setCompleted((current) => {
+            const next = new Set(current);
+            if (next.has(codigo)) next.delete(codigo);
+            else next.add(codigo);
+            void AsyncStorage.setItem(storageKey, JSON.stringify([...next]));
+            return next;
+        });
+    };
+
+    const clearCompleted = () => {
+        hapticTap();
+        setCompleted(new Set());
+        void AsyncStorage.removeItem(storageKey);
+    };
 
     return (
         <View style={styles.screen}>
             {layout.nodes.length === 0 ? (
                 <StateView emoji="🗺️" title="Sem grafo" subtitle="Não há disciplinas obrigatórias com período para montar o grafo." />
             ) : (
-                <ScrollView contentContainerStyle={{ paddingTop: 64, paddingBottom: bottomInset + spacing[8] }}>
-                    <Text numberOfLines={2} style={[styles.graphTitle, { paddingLeft: 68 }]}>Matriz Curricular · {matriz.curso}{matriz.versao ? ` — ${matriz.versao}` : ''}</Text>
-                    <Text style={styles.graphHint}>Cada linha é um período (1º no topo); as setas descem do pré-requisito para a disciplina que depende dele.</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ padding: spacing[2] }}>
+                <>
+                    <View style={styles.graphHeader}>
+                        <Text numberOfLines={2} style={[styles.graphTitle, { paddingLeft: 68, paddingRight: 68 }]}>Matriz Curricular · {matriz.curso}{matriz.versao ? ` — ${matriz.versao}` : ''}</Text>
+                        <Text style={styles.graphHint}>Toque numa matéria para marcar como concluída. Belisque (ou role o mouse) para dar zoom.</Text>
+                    </View>
+
+                    <ZoomPanCanvas contentWidth={layout.width} contentHeight={layout.height} minScale={0.15} maxScale={3}>
                         <Svg width={layout.width} height={layout.height}>
                             {/* edges */}
                             {layout.edges.map((e, i) => (
@@ -202,11 +244,18 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
                             ))}
                             {/* nodes */}
                             {layout.nodes.map((n) => (
-                                <GraphNodeView key={n.codigo} node={n} />
+                                <GraphNodeView key={n.codigo} node={n} done={completed.has(n.codigo)} onToggle={() => toggleCompleted(n.codigo)} />
                             ))}
                         </Svg>
-                    </ScrollView>
-                </ScrollView>
+                    </ZoomPanCanvas>
+
+                    {completed.size > 0 ? (
+                        <Pressable onPress={clearCompleted} style={({ pressed }) => [styles.graphClearButton, pressed ? styles.pressed : null]}>
+                            <RotateCcw color={colors.brandDark} size={14} />
+                            <Text style={styles.graphClearButtonText}>{completed.size} concluída{completed.size > 1 ? 's' : ''} · limpar</Text>
+                        </Pressable>
+                    ) : null}
+                </>
             )}
 
             <Pressable onPress={() => { hapticTap(); onBack(); }} style={({ pressed }) => [styles.graphBackButton, pressed ? styles.pressed : null]}>
@@ -216,19 +265,27 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
     );
 }
 
-function GraphNodeView({ node }: { node: GraphNode }) {
+function GraphNodeView({ node, done, onToggle }: { node: GraphNode; done: boolean; onToggle: () => void }) {
     const lines = wrapLines(toTitleCase(node.nome), 18, 3);
     const cx = node.x + NODE_W / 2;
     const startY = node.y + NODE_H / 2 - ((lines.length - 1) * 11) / 2 + 3.5;
+    const badgeCx = node.x + NODE_W - 12;
+    const badgeCy = node.y + 12;
     return (
-        <>
-            <Rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} rx={10} fill={CARD_FILL} stroke={CARD_STROKE} strokeWidth={1.2} />
+        <G onPress={onToggle}>
+            <Rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} rx={10} fill={done ? colors.brandMuted : CARD_FILL} stroke={done ? colors.brand : CARD_STROKE} strokeWidth={done ? 2 : 1.2} opacity={done ? 0.85 : 1} />
             {lines.map((line, i) => (
-                <SvgText key={i} x={cx} y={startY + i * 11} fill={CARD_TEXT} fontSize={10} fontWeight="600" textAnchor="middle">
+                <SvgText key={i} x={cx} y={startY + i * 11} fill={done ? colors.textSubtle : CARD_TEXT} fontSize={10} fontWeight="600" textAnchor="middle" textDecoration={done ? 'line-through' : 'none'}>
                     {line}
                 </SvgText>
             ))}
-        </>
+            {done ? (
+                <>
+                    <Circle cx={badgeCx} cy={badgeCy} r={9} fill={colors.brand} />
+                    <SvgText x={badgeCx} y={badgeCy + 3.5} fill={colors.inverseText} fontSize={11} fontWeight="900" textAnchor="middle">✓</SvgText>
+                </>
+            ) : null}
+        </G>
     );
 }
 
@@ -279,19 +336,46 @@ function Edge({ from, to, lane }: { from: GraphNode; to: GraphNode; lane: number
     // drop out of the pre-requisito, run horizontally in the channel just
     // below it, go straight down the GUTTER beside the target column (the
     // empty strip between cards, so the long vertical never enters a card),
-    // then into the target's top.
+    // then into the target's top. Corners are rounded (small arcs) instead of
+    // sharp right angles for a softer, less "wiring diagram" look.
     const gutterX = to.x - H_GAP / 2; // free strip immediately left of the target
     const off = (lane % 6) * 4;
     const yA = sBottom + 8 + off;      // channel below the source row
     const yB = ty - 8 - off;           // channel just above the target row
-    const points = `${sx},${sBottom} ${sx},${yA} ${gutterX},${yA} ${gutterX},${yB} ${tx},${yB} ${tx},${ty}`;
+    const points: Array<[number, number]> = [[sx, sBottom], [sx, yA], [gutterX, yA], [gutterX, yB], [tx, yB], [tx, ty]];
+    const path = roundedPathFromPoints(points, 10);
     const arrow = arrowHead(tx, ty - 9, tx, ty, 9);
     return (
         <>
-            <Polyline points={points} fill="none" stroke={colors.brand} strokeWidth={3} strokeLinejoin="round" />
+            <Path d={path} fill="none" stroke={colors.brand} strokeWidth={3} strokeLinecap="round" />
             <Polygon points={arrow} fill={colors.brand} />
         </>
     );
+}
+
+/** Builds an SVG path through `points`, rounding each interior corner with a
+ *  small quadratic-bezier arc instead of a sharp right angle. */
+function roundedPathFromPoints(points: Array<[number, number]>, radius: number): string {
+    if (points.length < 2) return '';
+    if (points.length === 2) return `M ${points[0]![0]},${points[0]![1]} L ${points[1]![0]},${points[1]![1]}`;
+
+    let d = `M ${points[0]![0]},${points[0]![1]}`;
+    for (let i = 1; i < points.length - 1; i++) {
+        const [x0, y0] = points[i - 1]!;
+        const [x1, y1] = points[i]!;
+        const [x2, y2] = points[i + 1]!;
+        const d1 = Math.hypot(x1 - x0, y1 - y0) || 1;
+        const d2 = Math.hypot(x2 - x1, y2 - y1) || 1;
+        const r = Math.min(radius, d1 / 2, d2 / 2);
+        const inX = x1 - ((x1 - x0) / d1) * r;
+        const inY = y1 - ((y1 - y0) / d1) * r;
+        const outX = x1 + ((x2 - x1) / d2) * r;
+        const outY = y1 + ((y2 - y1) / d2) * r;
+        d += ` L ${inX},${inY} Q ${x1},${y1} ${outX},${outY}`;
+    }
+    const last = points[points.length - 1]!;
+    d += ` L ${last[0]},${last[1]}`;
+    return d;
 }
 
 function buildGraphLayout(matriz: MatrizCurricular): {
@@ -497,8 +581,30 @@ const styles = StyleSheet.create({
     miniChipWarn: { backgroundColor: colors.warningSubtle },
     miniChipWarnText: { color: colors.warning },
     // graph
+    graphHeader: { paddingBottom: spacing[2], paddingTop: 64 },
     graphTitle: { color: colors.brandDark, fontFamily: typography.title.fontFamily, fontSize: 16, fontWeight: '800', paddingHorizontal: spacing[4] },
-    graphHint: { color: colors.textMuted, fontFamily: typography.body.fontFamily, fontSize: 12.5, paddingHorizontal: spacing[4], paddingTop: spacing[1], paddingBottom: spacing[2] },
+    graphHint: { color: colors.textMuted, fontFamily: typography.body.fontFamily, fontSize: 12.5, paddingHorizontal: spacing[4], paddingTop: spacing[1] },
+    graphClearButton: {
+        alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        bottom: spacing[4],
+        elevation: 6,
+        flexDirection: 'row',
+        gap: spacing[2],
+        paddingHorizontal: spacing[4],
+        paddingVertical: spacing[2],
+        position: 'absolute',
+        right: spacing[4],
+        shadowColor: '#0B3D32',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.18,
+        shadowRadius: 10,
+        zIndex: 10
+    },
+    graphClearButtonText: { color: colors.brandDark, fontFamily: typography.label.fontFamily, fontSize: 12, fontWeight: '700' },
     graphBackButton: {
         alignItems: 'center',
         backgroundColor: colors.surface,
