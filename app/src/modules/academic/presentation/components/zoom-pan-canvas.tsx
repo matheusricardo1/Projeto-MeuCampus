@@ -185,9 +185,28 @@ export function ZoomPanCanvas({ contentWidth, contentHeight, minScale = DEFAULT_
         }
     }), [viewport.width, viewport.height, contentWidth, contentHeight, minScale, maxScale, onTap]);
 
+    // DOM Touch objects have the same pageX/pageY fields RN's touches carry,
+    // so the pinch math (distance/midpointOf) works for either — this just
+    // adapts a TouchList (array-like, not a real array) into a plain array.
+    const toTouchArray = (touches: any): Array<{ pageX: number; pageY: number }> => {
+        const list: Array<{ pageX: number; pageY: number }> = [];
+        for (let i = 0; i < touches.length; i++) list.push(touches[i]);
+        return list;
+    };
+
     // Web: mouse wheel zoom (centered on the cursor) + click-drag pan, using
     // native DOM events since RN's touch responder system doesn't cover wheel.
-    const webHandlersRef = useRef<{ onWheel?: (e: any) => void; onMouseDown?: (e: any) => void }>({});
+    // ALSO handles real touch gestures (pinch/pan/tap) for mobile browsers —
+    // Platform.OS is 'web' there too, so without this a phone's browser had
+    // no gesture handling at all (wheel never fires from a pinch).
+    const webHandlersRef = useRef<{
+        onWheel?: (e: any) => void;
+        onMouseDown?: (e: any) => void;
+        onTouchStart?: (e: any) => void;
+        onTouchMove?: (e: any) => void;
+        onTouchEnd?: (e: any) => void;
+        onTouchCancel?: (e: any) => void;
+    }>({});
     if (Platform.OS === 'web') {
         webHandlersRef.current.onWheel = (event: any) => {
             event.preventDefault?.();
@@ -230,13 +249,104 @@ export function ZoomPanCanvas({ contentWidth, contentHeight, minScale = DEFAULT_
             window.addEventListener('mousemove', onMove);
             window.addEventListener('mouseup', onUp);
         };
+
+        webHandlersRef.current.onTouchStart = (event: any) => {
+            const touches = toTouchArray(event.touches);
+            if (touches.length >= 2) {
+                pinchRef.current = {
+                    startDistance: distance(touches as any) || 1,
+                    startScale: transformRef.current.scale,
+                    midpoint: midpointOf(touches as any),
+                    startX: transformRef.current.x,
+                    startY: transformRef.current.y
+                };
+                panStartRef.current = null;
+                tapCandidateRef.current = null;
+            } else {
+                panStartRef.current = { x: transformRef.current.x, y: transformRef.current.y };
+                pinchRef.current = null;
+                const t = touches[0];
+                tapCandidateRef.current = t
+                    ? { startPageX: t.pageX, startPageY: t.pageY, startedAt: Date.now(), everMoved: false }
+                    : null;
+            }
+        };
+
+        webHandlersRef.current.onTouchMove = (event: any) => {
+            // Best-effort — some browsers attach React's touch listeners as
+            // passive, in which case this no-ops; touch-action: none on the
+            // viewport (below) is what actually stops the page from also
+            // zooming/scrolling under our gesture.
+            event.preventDefault?.();
+            const touches = toTouchArray(event.touches);
+
+            if (touches.length >= 2) {
+                if (!pinchRef.current || panStartRef.current) {
+                    pinchRef.current = {
+                        startDistance: distance(touches as any) || 1,
+                        startScale: transformRef.current.scale,
+                        midpoint: midpointOf(touches as any),
+                        startX: transformRef.current.x,
+                        startY: transformRef.current.y
+                    };
+                    panStartRef.current = null;
+                }
+                tapCandidateRef.current = null;
+                const pinch = pinchRef.current;
+                const currentDistance = distance(touches as any) || 1;
+                const rawScale = pinch.startScale * (currentDistance / pinch.startDistance);
+                const scale = Math.min(maxScale, Math.max(minScale, rawScale));
+                const scaleRatio = scale / pinch.startScale;
+                const x = pinch.midpoint.x - (pinch.midpoint.x - pinch.startX) * scaleRatio;
+                const y = pinch.midpoint.y - (pinch.midpoint.y - pinch.startY) * scaleRatio;
+                setTransform(clamp({ scale, x, y }, viewport.width, viewport.height));
+                return;
+            }
+
+            const t = touches[0];
+            const tap = tapCandidateRef.current;
+            if (t && tap && panStartRef.current) {
+                const dx = t.pageX - tap.startPageX;
+                const dy = t.pageY - tap.startPageY;
+                if (Math.abs(dx) > TAP_MOVE_THRESHOLD || Math.abs(dy) > TAP_MOVE_THRESHOLD) tap.everMoved = true;
+                const x = panStartRef.current.x + dx;
+                const y = panStartRef.current.y + dy;
+                setTransform((current) => clamp({ scale: current.scale, x, y }, viewport.width, viewport.height));
+            }
+        };
+
+        const endTouch = (event: any) => {
+            const tap = tapCandidateRef.current;
+            if (onTap && tap && !tap.everMoved && Date.now() - tap.startedAt <= TAP_MAX_DURATION_MS) {
+                const touch = event.changedTouches?.[0];
+                const rect = event.currentTarget?.getBoundingClientRect?.();
+                if (touch && rect) {
+                    const current = transformRef.current;
+                    const localX = touch.clientX - rect.left;
+                    const localY = touch.clientY - rect.top;
+                    onTap((localX - current.x) / current.scale, (localY - current.y) / current.scale);
+                }
+            }
+            pinchRef.current = null;
+            panStartRef.current = null;
+            tapCandidateRef.current = null;
+        };
+        webHandlersRef.current.onTouchEnd = endTouch;
+        webHandlersRef.current.onTouchCancel = endTouch;
     }
 
     return (
         <View
             onLayout={onLayout}
-            style={styles.viewport}
-            {...(Platform.OS === 'web' ? { onWheel: webHandlersRef.current.onWheel, onMouseDown: webHandlersRef.current.onMouseDown } as any : panResponder.panHandlers)}
+            style={Platform.OS === 'web' ? ([styles.viewport, { touchAction: 'none' }] as any) : styles.viewport}
+            {...(Platform.OS === 'web' ? {
+                onWheel: webHandlersRef.current.onWheel,
+                onMouseDown: webHandlersRef.current.onMouseDown,
+                onTouchStart: webHandlersRef.current.onTouchStart,
+                onTouchMove: webHandlersRef.current.onTouchMove,
+                onTouchEnd: webHandlersRef.current.onTouchEnd,
+                onTouchCancel: webHandlersRef.current.onTouchCancel
+            } as any : panResponder.panHandlers)}
         >
             <View
                 style={{
