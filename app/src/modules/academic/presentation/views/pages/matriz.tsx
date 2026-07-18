@@ -375,26 +375,30 @@ interface GraphLayout {
     height: number;
 }
 
-const ROW_MARGIN = 8;       // how far into a row-gap a horizontal jog sits
-const EXTERIOR_LANE_GAP = 14; // spacing between stacked exterior (border) lanes
+const ROW_MARGIN = 8;         // how far into a row-gap a horizontal jog sits
+const EXTERIOR_LANE_GAP = 14; // how far past the right border the exterior lane sits
 
 /**
- * Routes every edge into a concrete point list, geometrically guaranteed to
- * never cross a card: every row shares the same y-band across ALL columns
- * (uniform grid), so any horizontal jog placed in the empty gap BETWEEN two
- * rows is card-free for the entire width; likewise every vertical run sits
- * at a column-gap x that no card, in any row, ever occupies. Two routing
- * styles:
+ * Routes every edge into a concrete point list, like a small road network:
+ * a fixed, shared horizontal "lane" in each row-gap and a fixed, shared
+ * vertical "lane" in each column-gap — every edge that needs to travel
+ * through a given gap reuses the SAME lane (same y for horizontal runs, same
+ * x for vertical runs) rather than being nudged apart, so parallel/converging
+ * edges simply overlap where they run together (like cars sharing a road)
+ * instead of fanning out into near-duplicate lines. The only hard rules are
+ * geometric: no line ever crosses under a card, and no line takes a diagonal
+ * — everything the roads/lanes give you for free, since every row shares the
+ * same y-band across ALL columns (a horizontal lane placed in the empty gap
+ * between two rows is card-free for the whole width) and every vertical lane
+ * sits at a column-gap x that no card, in any row, ever occupies.
+ *
+ * Two routing styles:
  *  - Same-column: a single straight line, no jog.
  *  - Adjacent período (one row apart): an elbow through the gutter beside the
- *    target's column — lanes are assigned per SOURCE NODE (not per source
- *    período), so a one-to-many branch (e.g. one subject feeding three
- *    others) exits as a single shared trunk that only splits at the jog,
- *    matching the "uma origem, vários destinos" rule.
+ *    target's column.
  *  - Long-distance (skips 2+ períodos, e.g. "Tx. Acad. -> TCC"): contoured
- *    along a dedicated lane OUTSIDE every card column, past the right border
- *    of the whole diagram — physically isolated from the interior gutters
- *    local edges use, so it can never cross them either.
+ *    along one shared lane OUTSIDE every card column, past the right border
+ *    of the whole diagram — isolated from the interior lanes local edges use.
  */
 function buildRoutedEdges(
     nodeByCode: Map<string, GraphNode>,
@@ -403,10 +407,7 @@ function buildRoutedEdges(
     rightEdgeX: number
 ): { edges: Array<{ from: GraphNode; to: GraphNode; points: Array<[number, number]> }>; maxExteriorX: number } {
     const edges: Array<{ from: GraphNode; to: GraphNode; points: Array<[number, number]> }> = [];
-    const laneBySourceCode = new Map<string, number>();
-    const nextLaneInGap = new Map<number, number>();
-    let nextExteriorLane = 0;
-    let maxExteriorX = rightEdgeX;
+    const exteriorX = rightEdgeX + EXTERIOR_LANE_GAP;
 
     for (const [preCode, code] of pairs) {
         const source = nodeByCode.get(preCode);
@@ -427,28 +428,24 @@ function buildRoutedEdges(
         const tRow = rowIndexOf.get(target.periodo) ?? 0;
 
         if (Math.abs(tRow - sRow) <= 1) {
-            if (!laneBySourceCode.has(source.codigo)) {
-                const next = nextLaneInGap.get(sRow) ?? 0;
-                nextLaneInGap.set(sRow, next + 1);
-                laneBySourceCode.set(source.codigo, next);
-            }
-            const lane = laneBySourceCode.get(source.codigo)!;
+            // Shared lane: every edge passing through this row-gap uses the
+            // exact same y, and every edge heading into this target's column
+            // uses the exact same x — so a one-to-many branch (or a
+            // many-to-one convergence) overlaps into a single shared trunk
+            // instead of fanning into separate parallel lines.
             const gutterX = target.x - H_GAP / 2;
-            const off = (lane % 6) * 4;
-            const yA = sBottom + ROW_MARGIN + off;
-            const yB = ty - ROW_MARGIN - off;
+            const yA = sBottom + ROW_MARGIN;
+            const yB = ty - ROW_MARGIN;
             edges.push({ from: source, to: target, points: [[sx, sBottom], [sx, yA], [gutterX, yA], [gutterX, yB], [tx, yB], [tx, ty]] });
         } else {
-            nextExteriorLane += 1;
-            const exteriorX = rightEdgeX + EXTERIOR_LANE_GAP * nextExteriorLane;
-            maxExteriorX = Math.max(maxExteriorX, exteriorX);
             const yA = sBottom + ROW_MARGIN;
             const yB = ty - ROW_MARGIN;
             edges.push({ from: source, to: target, points: [[sx, sBottom], [sx, yA], [exteriorX, yA], [exteriorX, yB], [tx, yB], [tx, ty]] });
         }
     }
 
-    return { edges, maxExteriorX };
+    const usedExterior = edges.some(({ points }) => points.some(([x]) => x === exteriorX));
+    return { edges, maxExteriorX: usedExterior ? exteriorX : rightEdgeX };
 }
 
 function buildGraphLayout(matriz: MatrizCurricular): GraphLayout {
