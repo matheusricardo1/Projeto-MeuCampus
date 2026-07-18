@@ -236,7 +236,16 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
                         <Text style={styles.graphHint}>Toque numa matéria para marcar como concluída. Belisque (ou role o mouse) para dar zoom.</Text>
                     </View>
 
-                    <ZoomPanCanvas contentWidth={layout.width} contentHeight={layout.height} minScale={0.15} maxScale={3}>
+                    <ZoomPanCanvas
+                        contentWidth={layout.width}
+                        contentHeight={layout.height}
+                        minScale={0.15}
+                        maxScale={3}
+                        onTap={(x, y) => {
+                            const hit = layout.nodes.find((n) => x >= n.x && x <= n.x + NODE_W && y >= n.y && y <= n.y + NODE_H);
+                            if (hit) toggleCompleted(hit.codigo);
+                        }}
+                    >
                         <Svg width={layout.width} height={layout.height}>
                             {/* edges */}
                             {layout.edges.map((e, i) => (
@@ -244,7 +253,7 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
                             ))}
                             {/* nodes */}
                             {layout.nodes.map((n) => (
-                                <GraphNodeView key={n.codigo} node={n} done={completed.has(n.codigo)} onToggle={() => toggleCompleted(n.codigo)} />
+                                <GraphNodeView key={n.codigo} node={n} done={completed.has(n.codigo)} />
                             ))}
                         </Svg>
                     </ZoomPanCanvas>
@@ -265,14 +274,17 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
     );
 }
 
-function GraphNodeView({ node, done, onToggle }: { node: GraphNode; done: boolean; onToggle: () => void }) {
+function GraphNodeView({ node, done }: { node: GraphNode; done: boolean }) {
     const lines = wrapLines(toTitleCase(node.nome), 18, 3);
     const cx = node.x + NODE_W / 2;
     const startY = node.y + NODE_H / 2 - ((lines.length - 1) * 11) / 2 + 3.5;
     const badgeCx = node.x + NODE_W - 12;
     const badgeCy = node.y + 12;
+    // No touch handler here on purpose: taps are detected centrally by
+    // ZoomPanCanvas (onTap, hit-tested against layout.nodes) so an individual
+    // card's own responder never competes with the pan/pinch gesture.
     return (
-        <G onPress={onToggle}>
+        <G>
             <Rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} rx={10} fill={done ? colors.brandMuted : CARD_FILL} stroke={done ? colors.brand : CARD_STROKE} strokeWidth={done ? 2 : 1.2} opacity={done ? 0.85 : 1} />
             {lines.map((line, i) => (
                 <SvgText key={i} x={cx} y={startY + i * 11} fill={done ? colors.textSubtle : CARD_TEXT} fontSize={10} fontWeight="600" textAnchor="middle" textDecoration={done ? 'line-through' : 'none'}>

@@ -6,8 +6,12 @@ interface ZoomPanCanvasProps {
     contentHeight: number;
     minScale?: number;
     maxScale?: number;
-    /** Called once the viewport is measured and an initial fit-to-screen scale
-     *  is applied, so callers can adjust chrome (e.g. hide a "fit" hint). */
+    /** Fired on a plain tap (not a pan/pinch), with the tapped point already
+     *  converted into CONTENT-local (unscaled) coordinates — i.e. the same
+     *  space as contentWidth/contentHeight — so callers can hit-test their own
+     *  children directly, instead of giving children their own touch
+     *  responders (which would compete with pan/pinch and break gestures). */
+    onTap?: (x: number, y: number) => void;
     children: ReactNode;
 }
 
@@ -29,7 +33,10 @@ const DEFAULT_MAX_SCALE = 3;
  * Starts fit-to-screen (the whole content visible) once the viewport is
  * measured, and always clamps scale/translate so content can't get lost.
  */
-export function ZoomPanCanvas({ contentWidth, contentHeight, minScale = DEFAULT_MIN_SCALE, maxScale = DEFAULT_MAX_SCALE, children }: ZoomPanCanvasProps) {
+const TAP_MOVE_THRESHOLD = 8; // px of screen movement still considered a tap, not a pan
+const TAP_MAX_DURATION_MS = 350;
+
+export function ZoomPanCanvas({ contentWidth, contentHeight, minScale = DEFAULT_MIN_SCALE, maxScale = DEFAULT_MAX_SCALE, onTap, children }: ZoomPanCanvasProps) {
     const [viewport, setViewport] = useState({ width: 0, height: 0 });
     const [transform, setTransform] = useState<Transform>({ scale: 1, x: 0, y: 0 });
     const didFitRef = useRef(false);
@@ -40,6 +47,10 @@ export function ZoomPanCanvas({ contentWidth, contentHeight, minScale = DEFAULT_
     transformRef.current = transform;
     const pinchRef = useRef<{ startDistance: number; startScale: number; midpoint: { x: number; y: number }; startX: number; startY: number } | null>(null);
     const panStartRef = useRef<{ x: number; y: number } | null>(null);
+    // Tracks whether the whole gesture, from grant to release, ever became a
+    // real pan/pinch (moved past the threshold, or a second finger joined) —
+    // only a gesture that never did is treated as a tap on release.
+    const tapCandidateRef = useRef<{ startPageX: number; startPageY: number; startedAt: number; everMoved: boolean } | null>(null);
 
     const clamp = (t: Transform, vpWidth: number, vpHeight: number): Transform => {
         const scale = Math.min(maxScale, Math.max(minScale, t.scale));
@@ -102,9 +113,14 @@ export function ZoomPanCanvas({ contentWidth, contentHeight, minScale = DEFAULT_
                     startY: transformRef.current.y
                 };
                 panStartRef.current = null;
+                tapCandidateRef.current = null; // a gesture that starts with 2 fingers is never a tap
             } else {
                 panStartRef.current = { x: transformRef.current.x, y: transformRef.current.y };
                 pinchRef.current = null;
+                const t = touches[0];
+                tapCandidateRef.current = t
+                    ? { startPageX: t.pageX, startPageY: t.pageY, startedAt: Date.now(), everMoved: false }
+                    : null;
             }
         },
         onPanResponderMove: (event: GestureResponderEvent, gesture: PanResponderGestureState) => {
@@ -121,6 +137,7 @@ export function ZoomPanCanvas({ contentWidth, contentHeight, minScale = DEFAULT_
                     };
                     panStartRef.current = null;
                 }
+                tapCandidateRef.current = null; // a second finger joined — definitely not a tap
                 const pinch = pinchRef.current;
                 const currentDistance = distance(touches) || 1;
                 const rawScale = pinch.startScale * (currentDistance / pinch.startDistance);
@@ -133,21 +150,40 @@ export function ZoomPanCanvas({ contentWidth, contentHeight, minScale = DEFAULT_
                 return;
             }
 
+            if (Math.abs(gesture.dx) > TAP_MOVE_THRESHOLD || Math.abs(gesture.dy) > TAP_MOVE_THRESHOLD) {
+                if (tapCandidateRef.current) tapCandidateRef.current.everMoved = true;
+            }
+
             if (panStartRef.current) {
                 const x = panStartRef.current.x + gesture.dx;
                 const y = panStartRef.current.y + gesture.dy;
                 setTransform((current) => clamp({ scale: current.scale, x, y }, viewport.width, viewport.height));
             }
         },
-        onPanResponderRelease: () => {
+        onPanResponderRelease: (event: GestureResponderEvent) => {
+            const tap = tapCandidateRef.current;
+            if (onTap && tap && !tap.everMoved && Date.now() - tap.startedAt <= TAP_MAX_DURATION_MS) {
+                const touch = event.nativeEvent.changedTouches[0] ?? event.nativeEvent.touches[0];
+                if (touch) {
+                    // locationX/Y are already relative to this responder view (the
+                    // viewport), so no page-coordinate math is needed — just undo
+                    // the current pan/zoom transform to get content-local coords.
+                    const current = transformRef.current;
+                    const contentX = (touch.locationX - current.x) / current.scale;
+                    const contentY = (touch.locationY - current.y) / current.scale;
+                    onTap(contentX, contentY);
+                }
+            }
             pinchRef.current = null;
             panStartRef.current = null;
+            tapCandidateRef.current = null;
         },
         onPanResponderTerminate: () => {
             pinchRef.current = null;
             panStartRef.current = null;
+            tapCandidateRef.current = null;
         }
-    }), [viewport.width, viewport.height, contentWidth, contentHeight, minScale, maxScale]);
+    }), [viewport.width, viewport.height, contentWidth, contentHeight, minScale, maxScale, onTap]);
 
     // Web: mouse wheel zoom (centered on the cursor) + click-drag pan, using
     // native DOM events since RN's touch responder system doesn't cover wheel.
@@ -171,14 +207,25 @@ export function ZoomPanCanvas({ contentWidth, contentHeight, minScale = DEFAULT_
             const start = transformRef.current;
             const startX = downEvent.clientX;
             const startY = downEvent.clientY;
+            const rect = downEvent.currentTarget?.getBoundingClientRect?.();
+            let moved = false;
             const onMove = (moveEvent: any) => {
-                const x = start.x + (moveEvent.clientX - startX);
-                const y = start.y + (moveEvent.clientY - startY);
+                const dx = moveEvent.clientX - startX;
+                const dy = moveEvent.clientY - startY;
+                if (Math.abs(dx) > TAP_MOVE_THRESHOLD || Math.abs(dy) > TAP_MOVE_THRESHOLD) moved = true;
+                const x = start.x + dx;
+                const y = start.y + dy;
                 setTransform((c) => clamp({ scale: c.scale, x, y }, viewport.width, viewport.height));
             };
-            const onUp = () => {
+            const onUp = (upEvent: any) => {
                 window.removeEventListener('mousemove', onMove);
                 window.removeEventListener('mouseup', onUp);
+                if (!moved && onTap && rect) {
+                    const current = transformRef.current;
+                    const localX = upEvent.clientX - rect.left;
+                    const localY = upEvent.clientY - rect.top;
+                    onTap((localX - current.x) / current.scale, (localY - current.y) / current.scale);
+                }
             };
             window.addEventListener('mousemove', onMove);
             window.addEventListener('mouseup', onUp);
