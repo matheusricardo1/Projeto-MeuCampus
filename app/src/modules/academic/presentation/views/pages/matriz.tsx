@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, G, Path, Polygon, Polyline, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Path, Polygon, Rect, Text as SvgText } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ArrowLeft, GitBranch, List, RefreshCw, RotateCcw } from 'lucide-react-native';
@@ -249,7 +249,7 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
                         <Svg width={layout.width} height={layout.height}>
                             {/* edges */}
                             {layout.edges.map((e, i) => (
-                                <Edge key={`e${i}`} from={e.from} to={e.to} lane={e.lane} />
+                                <Edge key={`e${i}`} points={e.points} />
                             ))}
                             {/* nodes */}
                             {layout.nodes.map((n) => (
@@ -326,40 +326,17 @@ function wrapLines(text: string, maxLen: number, maxLines: number): string[] {
     return lines;
 }
 
-function Edge({ from, to, lane }: { from: GraphNode; to: GraphNode; lane: number }) {
-    const sx = from.x + NODE_W / 2;
-    const sBottom = from.y + NODE_H;
-    const tx = to.x + NODE_W / 2;
-    const ty = to.y;
-
-    // Same column (the common case, like "Cálculo I -> Cálculo II" in the
-    // reference diagram): a single straight vertical line, no jog needed.
-    if (from.x === to.x) {
-        const arrow = arrowHead(tx, ty - 9, tx, ty, 9);
-        return (
-            <>
-                <Polyline points={`${sx},${sBottom} ${tx},${ty}`} fill="none" stroke={colors.brand} strokeWidth={3} strokeLinejoin="round" />
-                <Polygon points={arrow} fill={colors.brand} />
-            </>
-        );
-    }
-
-    // Different columns: orthogonal "elbow" route that never crosses a card —
-    // drop out of the pre-requisito, run horizontally in the channel just
-    // below it, go straight down the GUTTER beside the target column (the
-    // empty strip between cards, so the long vertical never enters a card),
-    // then into the target's top. Corners are rounded (small arcs) instead of
-    // sharp right angles for a softer, less "wiring diagram" look.
-    const gutterX = to.x - H_GAP / 2; // free strip immediately left of the target
-    const off = (lane % 6) * 4;
-    const yA = sBottom + 8 + off;      // channel below the source row
-    const yB = ty - 8 - off;           // channel just above the target row
-    const points: Array<[number, number]> = [[sx, sBottom], [sx, yA], [gutterX, yA], [gutterX, yB], [tx, yB], [tx, ty]];
+/** Pure renderer — all routing decisions already happened in buildGraphLayout,
+ *  so this just draws the given point list as a rounded path with an arrowhead
+ *  aimed along its final segment. */
+function Edge({ points }: { points: Array<[number, number]> }) {
     const path = roundedPathFromPoints(points, 10);
-    const arrow = arrowHead(tx, ty - 9, tx, ty, 9);
+    const [px, py] = points[points.length - 2]!;
+    const [tx, ty] = points[points.length - 1]!;
+    const arrow = arrowHead(px, py, tx, ty, 9);
     return (
         <>
-            <Path d={path} fill="none" stroke={colors.brand} strokeWidth={3} strokeLinecap="round" />
+            <Path d={path} fill="none" stroke={colors.brand} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
             <Polygon points={arrow} fill={colors.brand} />
         </>
     );
@@ -392,43 +369,86 @@ function roundedPathFromPoints(points: Array<[number, number]>, radius: number):
 
 interface GraphLayout {
     nodes: GraphNode[];
-    edges: Array<{ from: GraphNode; to: GraphNode; lane: number }>;
+    edges: Array<{ from: GraphNode; to: GraphNode; points: Array<[number, number]> }>;
     rows: Array<{ periodo: number; y: number }>;
     width: number;
     height: number;
 }
 
+const ROW_MARGIN = 8;       // how far into a row-gap a horizontal jog sits
+const EXTERIOR_LANE_GAP = 14; // spacing between stacked exterior (border) lanes
+
 /**
- * Assigns arrows to lanes per SOURCE NODE (not per source período): every
- * edge leaving the same disciplina shares one lane, so a one-to-many
- * branch (e.g. AED I feeding three different subjects) exits as a single
- * shared trunk that only splits at the horizontal jog — matching the
- * "uma origem, vários destinos" rule. Edges from a DIFFERENT source in the
- * same período still get their own lane, so unrelated branches don't overlap.
+ * Routes every edge into a concrete point list, geometrically guaranteed to
+ * never cross a card: every row shares the same y-band across ALL columns
+ * (uniform grid), so any horizontal jog placed in the empty gap BETWEEN two
+ * rows is card-free for the entire width; likewise every vertical run sits
+ * at a column-gap x that no card, in any row, ever occupies. Two routing
+ * styles:
+ *  - Same-column: a single straight line, no jog.
+ *  - Adjacent período (one row apart): an elbow through the gutter beside the
+ *    target's column — lanes are assigned per SOURCE NODE (not per source
+ *    período), so a one-to-many branch (e.g. one subject feeding three
+ *    others) exits as a single shared trunk that only splits at the jog,
+ *    matching the "uma origem, vários destinos" rule.
+ *  - Long-distance (skips 2+ períodos, e.g. "Tx. Acad. -> TCC"): contoured
+ *    along a dedicated lane OUTSIDE every card column, past the right border
+ *    of the whole diagram — physically isolated from the interior gutters
+ *    local edges use, so it can never cross them either.
  */
-function buildEdgesWithLanes(nodeByCode: Map<string, GraphNode>, pairs: Array<[string, string]>): Array<{ from: GraphNode; to: GraphNode; lane: number }> {
-    const edges: Array<{ from: GraphNode; to: GraphNode; lane: number }> = [];
+function buildRoutedEdges(
+    nodeByCode: Map<string, GraphNode>,
+    pairs: Array<[string, string]>,
+    rowIndexOf: Map<number, number>,
+    rightEdgeX: number
+): { edges: Array<{ from: GraphNode; to: GraphNode; points: Array<[number, number]> }>; maxExteriorX: number } {
+    const edges: Array<{ from: GraphNode; to: GraphNode; points: Array<[number, number]> }> = [];
     const laneBySourceCode = new Map<string, number>();
-    const nextLaneInPeriod = new Map<number, number>();
+    const nextLaneInGap = new Map<number, number>();
+    let nextExteriorLane = 0;
+    let maxExteriorX = rightEdgeX;
 
     for (const [preCode, code] of pairs) {
         const source = nodeByCode.get(preCode);
         const target = nodeByCode.get(code);
         if (!source || !target) continue;
 
-        let lane = 0;
-        if (source.x !== target.x) {
+        const sx = source.x + NODE_W / 2;
+        const sBottom = source.y + NODE_H;
+        const tx = target.x + NODE_W / 2;
+        const ty = target.y;
+
+        if (source.x === target.x) {
+            edges.push({ from: source, to: target, points: [[sx, sBottom], [tx, ty]] });
+            continue;
+        }
+
+        const sRow = rowIndexOf.get(source.periodo) ?? 0;
+        const tRow = rowIndexOf.get(target.periodo) ?? 0;
+
+        if (Math.abs(tRow - sRow) <= 1) {
             if (!laneBySourceCode.has(source.codigo)) {
-                const next = nextLaneInPeriod.get(source.periodo) ?? 0;
-                nextLaneInPeriod.set(source.periodo, next + 1);
+                const next = nextLaneInGap.get(sRow) ?? 0;
+                nextLaneInGap.set(sRow, next + 1);
                 laneBySourceCode.set(source.codigo, next);
             }
-            lane = laneBySourceCode.get(source.codigo)!;
+            const lane = laneBySourceCode.get(source.codigo)!;
+            const gutterX = target.x - H_GAP / 2;
+            const off = (lane % 6) * 4;
+            const yA = sBottom + ROW_MARGIN + off;
+            const yB = ty - ROW_MARGIN - off;
+            edges.push({ from: source, to: target, points: [[sx, sBottom], [sx, yA], [gutterX, yA], [gutterX, yB], [tx, yB], [tx, ty]] });
+        } else {
+            nextExteriorLane += 1;
+            const exteriorX = rightEdgeX + EXTERIOR_LANE_GAP * nextExteriorLane;
+            maxExteriorX = Math.max(maxExteriorX, exteriorX);
+            const yA = sBottom + ROW_MARGIN;
+            const yB = ty - ROW_MARGIN;
+            edges.push({ from: source, to: target, points: [[sx, sBottom], [sx, yA], [exteriorX, yA], [exteriorX, yB], [tx, yB], [tx, ty]] });
         }
-        edges.push({ from: source, to: target, lane });
     }
 
-    return edges;
+    return { edges, maxExteriorX };
 }
 
 function buildGraphLayout(matriz: MatrizCurricular): GraphLayout {
@@ -515,9 +535,12 @@ function buildGraphLayout(matriz: MatrizCurricular): GraphLayout {
             pairs.push([pre, d.codigo]);
         }
     }
-    const edges = buildEdgesWithLanes(nodeByCode, pairs);
 
-    const width = nodes.length ? Math.max(...nodes.map((n) => n.x)) + NODE_W + PAD : PAD;
+    const rowIndexOf = new Map<number, number>(rows.map((r, i) => [r.periodo, i]));
+    const rightEdgeX = nodes.length ? Math.max(...nodes.map((n) => n.x)) + NODE_W : PAD;
+    const { edges, maxExteriorX } = buildRoutedEdges(nodeByCode, pairs, rowIndexOf, rightEdgeX);
+
+    const width = Math.max(rightEdgeX, maxExteriorX) + PAD;
     const height = periodos.length > 0 ? PAD + periodos.length * (NODE_H + V_GAP) - V_GAP + PAD : PAD;
     return { nodes, edges, rows, width, height };
 }
