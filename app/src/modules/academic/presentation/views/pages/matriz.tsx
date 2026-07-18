@@ -9,6 +9,7 @@ import { colors, gradients, radii, shadows, spacing, textShadows, typography } f
 import { hapticTap } from '@/shared/haptics';
 import { useMatrizCurricular } from '@/modules/academic/presentation/hooks/use-matriz-curricular';
 import { ZoomPanCanvas } from '@/modules/academic/presentation/components/zoom-pan-canvas';
+import { findMatrizGraphOverride, MATRIZ_GRAPH_COLOR_HEX, type MatrizGraphOverride } from '@/modules/academic/domain/matriz-graph-overrides';
 import type { MatrizCategoria, MatrizCurricular, MatrizDisciplina } from '@/modules/academic/domain/entities/matriz-curricular';
 
 type ViewMode = 'list' | 'graph';
@@ -183,6 +184,14 @@ interface GraphNode {
     periodo: number;
     x: number;
     y: number;
+    /** Curated-override nodes carry their own already-formatted label and
+     *  colors; auto-generated nodes omit these and get the default palette. */
+    fill?: string;
+    stroke?: string;
+    text?: string;
+    /** True for curated-override nodes — their label is already short/cased
+     *  correctly, so it skips the ALL-CAPS -> Title Case conversion. */
+    preformatted?: boolean;
 }
 
 function completedStorageKey(matriz: MatrizCurricular): string {
@@ -275,19 +284,23 @@ function MatrizGraphView({ matriz, bottomInset, onBack }: { matriz: MatrizCurric
 }
 
 function GraphNodeView({ node, done }: { node: GraphNode; done: boolean }) {
-    const lines = wrapLines(toTitleCase(node.nome), 18, 3);
+    const label = node.preformatted ? node.nome : toTitleCase(node.nome);
+    const lines = wrapLines(label, 18, 3);
     const cx = node.x + NODE_W / 2;
     const startY = node.y + NODE_H / 2 - ((lines.length - 1) * 11) / 2 + 3.5;
     const badgeCx = node.x + NODE_W - 12;
     const badgeCy = node.y + 12;
+    const fill = node.fill ?? CARD_FILL;
+    const stroke = node.stroke ?? CARD_STROKE;
+    const text = node.text ?? CARD_TEXT;
     // No touch handler here on purpose: taps are detected centrally by
     // ZoomPanCanvas (onTap, hit-tested against layout.nodes) so an individual
     // card's own responder never competes with the pan/pinch gesture.
     return (
         <G>
-            <Rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} rx={10} fill={done ? colors.brandMuted : CARD_FILL} stroke={done ? colors.brand : CARD_STROKE} strokeWidth={done ? 2 : 1.2} opacity={done ? 0.85 : 1} />
+            <Rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} rx={10} fill={done ? colors.brandMuted : fill} stroke={done ? colors.brand : stroke} strokeWidth={done ? 2 : 1.2} opacity={done ? 0.85 : 1} />
             {lines.map((line, i) => (
-                <SvgText key={i} x={cx} y={startY + i * 11} fill={done ? colors.textSubtle : CARD_TEXT} fontSize={10} fontWeight="600" textAnchor="middle" textDecoration={done ? 'line-through' : 'none'}>
+                <SvgText key={i} x={cx} y={startY + i * 11} fill={done ? colors.textSubtle : text} fontSize={10} fontWeight="600" textAnchor="middle" textDecoration={done ? 'line-through' : 'none'}>
                     {line}
                 </SvgText>
             ))}
@@ -390,13 +403,51 @@ function roundedPathFromPoints(points: Array<[number, number]>, radius: number):
     return d;
 }
 
-function buildGraphLayout(matriz: MatrizCurricular): {
+interface GraphLayout {
     nodes: GraphNode[];
     edges: Array<{ from: GraphNode; to: GraphNode; lane: number }>;
     rows: Array<{ periodo: number; y: number }>;
     width: number;
     height: number;
-} {
+}
+
+/**
+ * Assigns arrows to lanes per SOURCE NODE (not per source período): every
+ * edge leaving the same disciplina shares one lane, so a one-to-many
+ * branch (e.g. AED I feeding three different subjects) exits as a single
+ * shared trunk that only splits at the horizontal jog — matching the
+ * "uma origem, vários destinos" rule. Edges from a DIFFERENT source in the
+ * same período still get their own lane, so unrelated branches don't overlap.
+ */
+function buildEdgesWithLanes(nodeByCode: Map<string, GraphNode>, pairs: Array<[string, string]>): Array<{ from: GraphNode; to: GraphNode; lane: number }> {
+    const edges: Array<{ from: GraphNode; to: GraphNode; lane: number }> = [];
+    const laneBySourceCode = new Map<string, number>();
+    const nextLaneInPeriod = new Map<number, number>();
+
+    for (const [preCode, code] of pairs) {
+        const source = nodeByCode.get(preCode);
+        const target = nodeByCode.get(code);
+        if (!source || !target) continue;
+
+        let lane = 0;
+        if (source.x !== target.x) {
+            if (!laneBySourceCode.has(source.codigo)) {
+                const next = nextLaneInPeriod.get(source.periodo) ?? 0;
+                nextLaneInPeriod.set(source.periodo, next + 1);
+                laneBySourceCode.set(source.codigo, next);
+            }
+            lane = laneBySourceCode.get(source.codigo)!;
+        }
+        edges.push({ from: source, to: target, lane });
+    }
+
+    return edges;
+}
+
+function buildGraphLayout(matriz: MatrizCurricular): GraphLayout {
+    const override = findMatrizGraphOverride(matriz);
+    if (override) return buildCuratedGraphLayout(override);
+
     const obrigatorias = matriz.categorias.find((c) => c.nome.toUpperCase().includes('OBRIGAT'))?.disciplinas ?? [];
     const withPeriod = obrigatorias.filter((d) => d.periodo != null) as Array<MatrizDisciplina & { periodo: number }>;
 
@@ -474,28 +525,52 @@ function buildGraphLayout(matriz: MatrizCurricular): {
         for (const n of nodes) n.x += shift;
     }
 
-    const edges: Array<{ from: GraphNode; to: GraphNode; lane: number }> = [];
-    const laneByPeriod = new Map<number, number>();
+    const pairs: Array<[string, string]> = [];
     for (const d of withPeriod) {
-        const target = nodeByCode.get(d.codigo);
-        if (!target) continue;
         for (const pre of d.preRequisitos) {
-            const source = nodeByCode.get(pre);
-            if (!source) continue;
-            // A lane offset is only needed when the edge has to jog sideways
-            // (different columns) — same-column chains draw as one straight
-            // line and don't need to be separated from anything.
-            let lane = 0;
-            if (source.x !== target.x) {
-                lane = laneByPeriod.get(source.periodo) ?? 0;
-                laneByPeriod.set(source.periodo, lane + 1);
-            }
-            edges.push({ from: source, to: target, lane });
+            pairs.push([pre, d.codigo]);
         }
     }
+    const edges = buildEdgesWithLanes(nodeByCode, pairs);
 
     const width = nodes.length ? Math.max(...nodes.map((n) => n.x)) + NODE_W + PAD : PAD;
     const height = periodos.length > 0 ? PAD + periodos.length * (NODE_H + V_GAP) - V_GAP + PAD : PAD;
+    return { nodes, edges, rows, width, height };
+}
+
+/** Builds a graph layout straight from a hand-curated override's col/row grid
+ *  (1-indexed) instead of the automatic Sugiyama-style column assignment —
+ *  used to match a reference diagram exactly for a specific course+versão. */
+function buildCuratedGraphLayout(override: MatrizGraphOverride): GraphLayout {
+    const nodeByCode = new Map<string, GraphNode>();
+    const nodes: GraphNode[] = [];
+    const rows: Array<{ periodo: number; y: number }> = [];
+    const seenRows = new Set<number>();
+
+    for (const n of override.nodes) {
+        const colorHex = MATRIZ_GRAPH_COLOR_HEX[n.color];
+        const node: GraphNode = {
+            codigo: n.id,
+            nome: n.label,
+            periodo: n.row,
+            x: PAD + (n.col - 1) * (NODE_W + H_GAP),
+            y: PAD + (n.row - 1) * (NODE_H + V_GAP),
+            fill: colorHex.fill,
+            stroke: colorHex.stroke,
+            text: colorHex.text,
+            preformatted: true
+        };
+        nodes.push(node);
+        nodeByCode.set(n.id, node);
+        if (!seenRows.has(n.row)) {
+            seenRows.add(n.row);
+            rows.push({ periodo: n.row, y: node.y });
+        }
+    }
+
+    const edges = buildEdgesWithLanes(nodeByCode, override.edges);
+    const width = nodes.length ? Math.max(...nodes.map((n) => n.x)) + NODE_W + PAD : PAD;
+    const height = nodes.length ? Math.max(...nodes.map((n) => n.y)) + NODE_H + PAD : PAD;
     return { nodes, edges, rows, width, height };
 }
 
