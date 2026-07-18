@@ -8,6 +8,8 @@ import { AcademicDataRepository } from '@academic/domain/repositories/academic-d
 import { ScrapingJobService } from '@academic/application/ports/scraping-job-service';
 import { AcademicBootstrapTracker } from '@academic/application/ports/academic-bootstrap-tracker';
 import { AcademicController } from '@academic/presentation/http/academic.controller';
+import { PrismaService } from '@/shared/prisma/prisma.service';
+import { MatrizCurricularCacheRepository } from '@academic/infrastructure/prisma/matriz-curricular-cache.repository';
 import { GetAcademicSubjectsUseCase } from '@academic/application/use-cases/get-academic-subjects.usecase';
 import { GetGradesUseCase } from '@academic/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@academic/application/use-cases/get-lesson-plan.usecase';
@@ -24,6 +26,8 @@ import { ValidateAcademicSessionUseCase } from '@academic/application/use-cases/
     controllers: [AcademicController],
     providers: [
         AcademicAuthGuard,
+        PrismaService,
+        MatrizCurricularCacheRepository,
         {
             provide: GetAcademicSubjectsUseCase,
             useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetAcademicSubjectsUseCase(cache, jobs),
@@ -46,8 +50,8 @@ import { ValidateAcademicSessionUseCase } from '@academic/application/use-cases/
         },
         {
             provide: GetMatrizCurricularUseCase,
-            useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetMatrizCurricularUseCase(cache, jobs),
-            inject: [AcademicDataRepository, ScrapingJobService]
+            useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService, dbCache: MatrizCurricularCacheRepository) => new GetMatrizCurricularUseCase(cache, jobs, dbCache),
+            inject: [AcademicDataRepository, ScrapingJobService, MatrizCurricularCacheRepository]
         },
         {
             provide: GetScheduleUseCase,

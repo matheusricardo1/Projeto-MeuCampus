@@ -153,6 +153,20 @@ model GlobalData {
   @@index([type, active])
 }
 
+/// Persistent cache-aside for the curriculum matrix report, keyed by course
+/// code (e.g. "IE17") rather than by student — the matrix changes maybe once
+/// every 5-10 years, so once ANY student's request triggers a live eCampus
+/// scrape for a course, every other student (and every future request) reads
+/// straight from here and never scrapes that course again. `payload` holds
+/// the full parsed MatrizCurricular JSON (curso, versao, categorias, ...).
+model MatrizCurricularCache {
+  id        String   @id @default(uuid())
+  codCurso  String   @unique
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 /// Browser Web Push subscriptions for the owner's admin dashboard. Not tied
 /// to a User row - the owner has no student account (see admin-login
 /// usecase, env-credential based) - keyed by the browser's unique push

@@ -6,6 +6,8 @@ import { AcademicDataRepository } from '@academic/domain/repositories/academic-d
 import { ScrapingJobService } from '@academic/application/ports/scraping-job-service';
 import { FindGradesAcrossPreviousPeriodsUseCase } from '@academic/application/use-cases/find-grades-across-previous-periods.usecase';
 import { GetMatrizCurricularUseCase } from '@academic/application/use-cases/get-matriz-curricular.usecase';
+import { MatrizCurricularCacheRepository } from '@academic/infrastructure/prisma/matriz-curricular-cache.repository';
+import { PrismaService } from '@/shared/prisma/prisma.service';
 import { InternalSecretGuard } from '@/shared/mcp/internal-secret.guard';
 import { McpController } from '@composition/mcp/mcp.controller';
 
@@ -14,6 +16,8 @@ import { McpController } from '@composition/mcp/mcp.controller';
     controllers: [McpController],
     providers: [
         InternalSecretGuard,
+        PrismaService,
+        MatrizCurricularCacheRepository,
         {
             provide: FindGradesAcrossPreviousPeriodsUseCase,
             useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new FindGradesAcrossPreviousPeriodsUseCase(cache, jobs),
@@ -21,8 +25,8 @@ import { McpController } from '@composition/mcp/mcp.controller';
         },
         {
             provide: GetMatrizCurricularUseCase,
-            useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetMatrizCurricularUseCase(cache, jobs),
-            inject: [AcademicDataRepository, ScrapingJobService]
+            useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService, dbCache: MatrizCurricularCacheRepository) => new GetMatrizCurricularUseCase(cache, jobs, dbCache),
+            inject: [AcademicDataRepository, ScrapingJobService, MatrizCurricularCacheRepository]
         }
     ]
 })
