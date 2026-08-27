@@ -116,10 +116,16 @@ export const styles = StyleSheet.create({
     sidebarHeader: { alignItems: 'center', backgroundColor: '#ffffff', borderBottomColor: '#c0c9be', borderBottomWidth: 1, flexDirection: 'row', height: 64, justifyContent: 'space-between', paddingHorizontal: 24 },
     content: { gap: spacing[4], paddingHorizontal: spacing[5], paddingTop: 0 },
     contentShell: { alignSelf: 'center', gap: spacing[4], width: '100%' },
-    errorBanner: { alignItems: 'center', backgroundColor: colors.dangerSubtle, borderColor: colors.dangerBorder, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing[3], justifyContent: 'space-between', paddingHorizontal: spacing[3], paddingVertical: spacing[3] },
-    errorText: { color: colors.danger, flex: 1, fontFamily: fonts.medium, fontSize: 14, fontWeight: '600' },
-    errorRetryButton: { backgroundColor: colors.danger, borderRadius: radii.pill, paddingHorizontal: spacing[3], paddingVertical: spacing[2] },
-    errorRetryText: { color: colors.inverseText, fontFamily: fonts.medium, fontSize: 13, fontWeight: '700' },
+    // Floating global error notification (ErrorToast) - replaces the old inline
+    // errorBanner that used to be duplicated per-screen. Deliberately a dark
+    // pill (unlike any content card in the app) so it reads as a transient
+    // system notification, not another card competing with the page content.
+    toastLayer: { alignItems: 'center', left: 0, paddingHorizontal: spacing[5], position: 'absolute', right: 0, zIndex: 500 },
+    toastCard: { ...shadows.elevated, alignItems: 'center', backgroundColor: colors.text, borderRadius: radii.md, flexDirection: 'row', gap: spacing[3], maxWidth: 520, paddingHorizontal: spacing[4], paddingVertical: spacing[3], width: '100%' },
+    toastText: { color: colors.inverseText, flex: 1, fontFamily: fonts.sans, fontSize: 13.5, lineHeight: 19 },
+    toastRetryButton: { backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: radii.pill, paddingHorizontal: spacing[3], paddingVertical: spacing[2] },
+    toastRetryText: { color: colors.inverseText, fontFamily: fonts.medium, fontSize: 12.5, fontWeight: '800' },
+    toastCloseButton: { alignItems: 'center', height: 24, justifyContent: 'center', width: 24 },
     sectionStack: { gap: spacing[4] },
     notificationsPage: { alignSelf: 'center', gap: 32, maxWidth: 760, paddingTop: 24, width: '100%' },
     notificationsTopRow: { alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between' },
@@ -385,15 +391,13 @@ export const styles = StyleSheet.create({
     coursesPeriodSummary: { display: 'none' },
     coursesPeriodKicker: { display: 'none' },
     coursesPeriodTitle: { display: 'none' },
-    coursesMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4, marginTop: 2 },
-    coursesMetaChip: { alignItems: 'center', backgroundColor: '#eef3ec', borderRadius: 999, flexDirection: 'row', gap: 6, paddingHorizontal: 12, paddingVertical: 6 },
-    coursesMetaChipText: { color: '#003215', fontFamily: fonts.medium, fontSize: 12.5, fontWeight: '700' },
-    coursesSelectorRow: { flexDirection: 'row', gap: 12, marginTop: 6, overflow: 'visible', zIndex: 110 },
-    coursesSelectorColumn: { flex: 1, gap: 6, overflow: 'visible', position: 'relative', zIndex: 120 },
-    coursesSelectorLabel: { color: '#404941', fontFamily: fonts.medium, fontSize: 11, fontWeight: '800', lineHeight: 14, textTransform: 'uppercase' },
-    coursesSelectorButton: { backgroundColor: '#ffffff', borderColor: '#c0c9be', borderRadius: 8, borderWidth: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
-    coursesSelectorValue: { color: '#0b1c30', fontFamily: fonts.medium, fontSize: 14, fontWeight: '800', lineHeight: 20 },
-    coursesOptionsPanel: { backgroundColor: '#ffffff', borderColor: '#c0c9be', borderRadius: 8, borderWidth: 1, elevation: 80, left: 0, maxHeight: 220, overflow: 'hidden', position: 'absolute', right: 0, shadowOpacity: 0, shadowRadius: 0, top: 66, zIndex: 900 },
+    // One grouped panel (same visual language as profileGlassCard/profileListRow)
+    // instead of a different box per fact - enrollment, year, semester and the two
+    // shortcuts all live as divided rows inside a single card.
+    coursesInfoCard: { ...shadows.elevated, backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, marginTop: 4, overflow: 'visible', padding: 20, position: 'relative', zIndex: 200 },
+    coursesInfoFieldWrap: { position: 'relative' },
+    coursesActionRowText: { color: colors.text, flex: 1, fontFamily: fonts.medium, fontSize: 15, fontWeight: '700' },
+    coursesOptionsPanel: { backgroundColor: '#ffffff', borderColor: '#c0c9be', borderRadius: 8, borderWidth: 1, elevation: 80, left: 0, marginTop: 4, maxHeight: 220, overflow: 'hidden', position: 'absolute', right: 0, shadowOpacity: 0, shadowRadius: 0, top: '100%', zIndex: 900 },
     coursesOptionItem: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 12 },
     coursesOptionItemActive: { backgroundColor: '#0B6B52' },
     coursesOptionText: { color: '#0b1c30', fontFamily: fonts.medium, fontSize: 13, fontWeight: '700' },

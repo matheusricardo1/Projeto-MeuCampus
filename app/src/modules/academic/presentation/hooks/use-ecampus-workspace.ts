@@ -940,6 +940,7 @@ export function useEcampusWorkspace() {
     return {
         changeLessonPlanSubject,
         changeGradesInputAndLoad,
+        clearError,
         currentGradesInput,
         error,
         isErrorRetryable,

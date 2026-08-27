@@ -10,7 +10,7 @@ import { useWorkspace } from '@/modules/academic/presentation/context/workspace-
 import { useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
 import { aiInputBarStyles } from '@/modules/academic/presentation/views/pages/ai-input-bar.styles';
-import { AiOnboardingModal } from '@/modules/academic/presentation/views/components';
+import { AiOnboardingModal, ErrorToast } from '@/modules/academic/presentation/views/components';
 import { hapticTap } from '@/shared/haptics';
 
 type TabId = 'home' | 'lessonPlan' | 'ai' | 'schedule' | 'community' | 'profile' | 'notifications';
@@ -455,19 +455,6 @@ export default function TabsLayout() {
             style={Platform.OS === 'web' ? styles.webFreeScroll : styles.flexScroll}
         >
             <View style={[styles.contentShell, { maxWidth: layout.contentMaxWidth }]}>
-                {activeTab !== 'notifications' && workspace.error ? (
-                    <View style={styles.errorBanner}>
-                        <Text style={styles.errorText}>{workspace.error}</Text>
-                        {workspace.isErrorRetryable ? (
-                            <Pressable
-                                onPress={() => { hapticTap(); void tabActions[activeTab](); }}
-                                style={({ pressed }) => [styles.errorRetryButton, pressed ? styles.pressedFeedback : null]}
-                            >
-                                <Text style={styles.errorRetryText}>{t('common.retry')}</Text>
-                            </Pressable>
-                        ) : null}
-                    </View>
-                ) : null}
                 <Slot />
             </View>
         </ScrollView>
@@ -542,6 +529,16 @@ export default function TabsLayout() {
                 ) : null}
 
                 {sharedBottomNav}
+
+                {activeTab !== 'notifications' ? (
+                    <ErrorToast
+                        bottomOffset={bottomNavInset + 16}
+                        message={workspace.error}
+                        onDismiss={workspace.clearError}
+                        onRetry={workspace.isErrorRetryable ? () => { hapticTap(); void tabActions[activeTab](); } : undefined}
+                        retryLabel={t('common.retry')}
+                    />
+                ) : null}
             </View>
 
             <AiOnboardingModal onDismiss={() => setShowAiOnboarding(false)} visible={showAiOnboarding} />

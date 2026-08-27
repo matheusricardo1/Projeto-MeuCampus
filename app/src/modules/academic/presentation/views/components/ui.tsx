@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
-import { RefreshCw } from 'lucide-react-native';
+import { AlertTriangle, RefreshCw, X } from 'lucide-react-native';
 import { colors, radii } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import { styles } from '@/modules/academic/presentation/views/workspace.styles';
@@ -90,6 +90,89 @@ export function EmptyState({ label, loading, onRefresh }: { label: string; loadi
                 <Text style={styles.primaryButtonText}>{loading ? t('common.loading') : label}</Text>
             </Pressable>
         </View>
+    );
+}
+
+// How long a toast stays up before it auto-dismisses on its own.
+const TOAST_AUTO_DISMISS_MS = 6000;
+
+/**
+ * Global, floating error notification - one shared component instead of each
+ * screen rendering its own inline error banner. Auto-dismisses after
+ * TOAST_AUTO_DISMISS_MS; `message` becoming falsy (manual close, retry
+ * succeeding, or the timeout calling onDismiss) always drives the same
+ * fade/slide-out before unmounting, so every dismissal path looks identical.
+ */
+export function ErrorToast({
+    bottomOffset = 24,
+    message,
+    onDismiss,
+    onRetry,
+    retryLabel
+}: {
+    bottomOffset?: number;
+    message: string | null;
+    onDismiss: () => void;
+    onRetry?: () => void;
+    retryLabel?: string;
+}) {
+    const [rendered, setRendered] = useState<string | null>(null);
+    const translateY = useRef(new Animated.Value(40)).current;
+    const opacity = useRef(new Animated.Value(0)).current;
+    const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        if (dismissTimer.current) {
+            clearTimeout(dismissTimer.current);
+            dismissTimer.current = null;
+        }
+
+        if (message) {
+            setRendered(message);
+            translateY.setValue(40);
+            opacity.setValue(0);
+            Animated.parallel([
+                Animated.timing(translateY, { toValue: 0, duration: 240, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+                Animated.timing(opacity, { toValue: 1, duration: 240, useNativeDriver: true })
+            ]).start();
+
+            dismissTimer.current = setTimeout(onDismiss, TOAST_AUTO_DISMISS_MS);
+            return;
+        }
+
+        if (rendered) {
+            Animated.parallel([
+                Animated.timing(translateY, { toValue: 40, duration: 180, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+                Animated.timing(opacity, { toValue: 0, duration: 180, useNativeDriver: true })
+            ]).start(({ finished }) => {
+                if (finished) setRendered(null);
+            });
+        }
+        // rendered is read for its value-at-dismissal only, not a re-trigger condition.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [message]);
+
+    useEffect(() => () => {
+        if (dismissTimer.current) clearTimeout(dismissTimer.current);
+    }, []);
+
+    if (!rendered) return null;
+
+    return (
+        <Animated.View pointerEvents="box-none" style={[styles.toastLayer, { bottom: bottomOffset, opacity, transform: [{ translateY }] }]}>
+            <View style={styles.toastCard}>
+                <AlertTriangle color="#febf31" size={18} />
+                <Text numberOfLines={3} style={styles.toastText}>{rendered}</Text>
+                {onRetry ? (
+                    <Pressable onPress={onRetry} style={({ pressed }) => [styles.toastRetryButton, pressed ? styles.pressedFeedback : null]}>
+                        <Text style={styles.toastRetryText}>{retryLabel}</Text>
+                    </Pressable>
+                ) : null}
+                <Pressable hitSlop={8} onPress={onDismiss} style={({ pressed }) => [styles.toastCloseButton, pressed ? styles.pressedFeedback : null]}>
+                    <X color="rgba(255,255,255,0.7)" size={16} />
+                </Pressable>
+            </View>
+        </Animated.View>
     );
 }
 

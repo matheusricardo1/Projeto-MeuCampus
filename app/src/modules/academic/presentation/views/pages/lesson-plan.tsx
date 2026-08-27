@@ -1,7 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ClipboardList, Clock3, Filter, Fingerprint, GitBranch, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock3, Filter, Fingerprint, GitBranch, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
+import { colors } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Translate } from '@/shared/i18n/languages';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
@@ -47,13 +48,6 @@ export function LessonPlanListPage({
     }, [admissionYear, currentYear]);
     const periodOptions = ['1', '2', 'ferias1', 'ferias2', 'especial'];
     const courseName = profile?.academic?.course || t('lesson.courseUnknown');
-    // '1'/'2' keep the familiar "Semestre 2026.1" look; intersession periods
-    // (only fetchable by explicitly picking them here - eCampus's own
-    // "current period" never resolves to one, see AcademicPeriod.fromEcampusCode)
-    // don't fit that "year.period" template, so they get their own short label.
-    const semesterChipLabel = REGULAR_SEMESTERS.includes(gradesInput.period)
-        ? t('lesson.semesterChip', { period: gradesInput.period, year: gradesInput.year })
-        : `${periodLabel(gradesInput.period, t)} ${gradesInput.year}`;
     const courses = useLessonPlanCourses({ grades, items, schedule, selectedSubjectCode, subjects, t });
 
     if (loading && subjects.length === 0 && grades.length === 0) return <LessonPlanSkeleton />;
@@ -82,24 +76,33 @@ export function LessonPlanListPage({
                 <Text style={styles.coursesTitle}>{t('lesson.title')}</Text>
                 <Text numberOfLines={1} style={styles.coursesCourseText}>{courseName}</Text>
 
-                <View style={styles.coursesMetaRow}>
-                    <View style={styles.coursesMetaChip}>
-                        <CalendarClock color="#003215" size={14} />
-                        <Text style={styles.coursesMetaChipText}>{semesterChipLabel}</Text>
-                    </View>
+                <View style={styles.coursesInfoCard}>
                     {profile?.academic?.enrollment_number ? (
-                        <View style={styles.coursesMetaChip}>
-                            <Fingerprint color="#003215" size={14} />
-                            <Text style={styles.coursesMetaChipText}>{t('lesson.enrollment', { enrollment: profile.academic.enrollment_number })}</Text>
+                        <View style={styles.profileListRow}>
+                            <View style={styles.profileListRowBody}>
+                                <View style={styles.profileListIcon}>
+                                    <Fingerprint color={colors.brand} size={20} />
+                                </View>
+                                <View style={styles.profileListText}>
+                                    <Text style={styles.profileListLabel}>{t('profile.enrollment')}</Text>
+                                    <Text style={styles.profileListValue}>{profile.academic.enrollment_number}</Text>
+                                </View>
+                            </View>
                         </View>
                     ) : null}
-                </View>
 
-                <View style={styles.coursesSelectorRow}>
-                    <View style={styles.coursesSelectorColumn}>
-                        <Text style={styles.coursesSelectorLabel}>{t('lesson.year')}</Text>
-                        <Pressable onPress={() => setOpenSelector(openSelector === 'year' ? null : 'year')} style={({ pressed }) => [styles.coursesSelectorButton, pressed ? styles.pressedFeedback : null]}>
-                            <Text style={styles.coursesSelectorValue}>{gradesInput.year}</Text>
+                    <View style={[styles.coursesInfoFieldWrap, { zIndex: 30 }]}>
+                        <Pressable onPress={() => setOpenSelector(openSelector === 'year' ? null : 'year')} style={({ pressed }) => [styles.profileListRow, pressed ? styles.pressedFeedback : null]}>
+                            <View style={styles.profileListRowBody}>
+                                <View style={styles.profileListIcon}>
+                                    <CalendarClock color={colors.brand} size={20} />
+                                </View>
+                                <View style={styles.profileListText}>
+                                    <Text style={styles.profileListLabel}>{t('lesson.year')}</Text>
+                                    <Text style={styles.profileListValue}>{gradesInput.year}</Text>
+                                </View>
+                            </View>
+                            <ChevronDown color={colors.textMuted} size={20} />
                         </Pressable>
                         {openSelector === 'year' ? (
                             <View style={styles.coursesOptionsPanel}>
@@ -112,10 +115,18 @@ export function LessonPlanListPage({
                         ) : null}
                     </View>
 
-                    <View style={styles.coursesSelectorColumn}>
-                        <Text style={styles.coursesSelectorLabel}>{t('lesson.semester')}</Text>
-                        <Pressable onPress={() => setOpenSelector(openSelector === 'period' ? null : 'period')} style={({ pressed }) => [styles.coursesSelectorButton, pressed ? styles.pressedFeedback : null]}>
-                            <Text style={styles.coursesSelectorValue}>{formatPeriodOption(gradesInput.period, gradesInput.year, currentGradesInput, t)}</Text>
+                    <View style={[styles.coursesInfoFieldWrap, { zIndex: 20 }]}>
+                        <Pressable onPress={() => setOpenSelector(openSelector === 'period' ? null : 'period')} style={({ pressed }) => [styles.profileListRow, pressed ? styles.pressedFeedback : null]}>
+                            <View style={styles.profileListRowBody}>
+                                <View style={styles.profileListIcon}>
+                                    <BookOpen color={colors.brand} size={20} />
+                                </View>
+                                <View style={styles.profileListText}>
+                                    <Text style={styles.profileListLabel}>{t('lesson.semester')}</Text>
+                                    <Text style={styles.profileListValue}>{formatPeriodOption(gradesInput.period, gradesInput.year, currentGradesInput, t)}</Text>
+                                </View>
+                            </View>
+                            <ChevronDown color={colors.textMuted} size={20} />
                         </Pressable>
                         {openSelector === 'period' ? (
                             <View style={styles.coursesOptionsPanel}>
@@ -127,22 +138,25 @@ export function LessonPlanListPage({
                             </View>
                         ) : null}
                     </View>
-                </View>
 
-                <View style={matrizButtonStyle.row}>
-                    <Pressable
-                        onPress={() => router.push('/schedule')}
-                        style={({ pressed }) => [matrizButtonStyle.button, pressed ? styles.pressedFeedback : null]}
-                    >
-                        <CalendarClock color="#003215" size={16} />
-                        <Text style={matrizButtonStyle.text}>{t('nav.schedule')}</Text>
+                    <Pressable onPress={() => router.push('/schedule')} style={({ pressed }) => [styles.profileListRow, pressed ? styles.pressedFeedback : null]}>
+                        <View style={styles.profileListRowBody}>
+                            <View style={styles.profileListIcon}>
+                                <CalendarClock color={colors.brand} size={20} />
+                            </View>
+                            <Text style={styles.coursesActionRowText}>{t('nav.schedule')}</Text>
+                        </View>
+                        <ChevronRight color={colors.textMuted} size={20} />
                     </Pressable>
-                    <Pressable
-                        onPress={() => router.push('/lesson-plan/matriz')}
-                        style={({ pressed }) => [matrizButtonStyle.button, pressed ? styles.pressedFeedback : null]}
-                    >
-                        <GitBranch color="#003215" size={16} />
-                        <Text style={matrizButtonStyle.text}>Matriz curricular</Text>
+
+                    <Pressable onPress={() => router.push('/lesson-plan/matriz')} style={({ pressed }) => [styles.profileListRow, pressed ? styles.pressedFeedback : null]}>
+                        <View style={styles.profileListRowBody}>
+                            <View style={styles.profileListIcon}>
+                                <GitBranch color={colors.brand} size={20} />
+                            </View>
+                            <Text style={styles.coursesActionRowText}>Matriz curricular</Text>
+                        </View>
+                        <ChevronRight color={colors.textMuted} size={20} />
                     </Pressable>
                 </View>
             </View>
@@ -803,8 +817,6 @@ function uniqueValues(values: string[]): string[] {
     return Array.from(new Set(values));
 }
 
-const REGULAR_SEMESTERS = ['1', '2'];
-
 function periodLabel(period: string, t: Translate): string {
     switch (period) {
         case '1': return t('lesson.firstSemester');
@@ -827,16 +839,18 @@ function LessonPlanSkeleton() {
             <View style={styles.coursesHero}>
                 <SkeletonBlock height={26} style={{ width: '55%' }} />
                 <SkeletonBlock height={14} style={{ width: '70%' }} />
-                <SkeletonBlock height={12} style={{ width: '45%' }} />
-                <View style={styles.coursesSelectorRow}>
-                    <View style={styles.coursesSelectorColumn}>
-                        <SkeletonBlock height={11} style={{ width: 40 }} />
-                        <SkeletonBlock height={44} style={{ width: '100%' }} />
-                    </View>
-                    <View style={styles.coursesSelectorColumn}>
-                        <SkeletonBlock height={11} style={{ width: 60 }} />
-                        <SkeletonBlock height={44} style={{ width: '100%' }} />
-                    </View>
+                <View style={styles.coursesInfoCard}>
+                    {[0, 1, 2].map((index) => (
+                        <View key={index} style={styles.profileListRow}>
+                            <View style={styles.profileListRowBody}>
+                                <SkeletonBlock borderRadius={999} height={44} style={{ width: 44 }} />
+                                <View style={{ flex: 1, gap: 6 }}>
+                                    <SkeletonBlock height={11} style={{ width: 60 }} />
+                                    <SkeletonBlock height={16} style={{ width: '70%' }} />
+                                </View>
+                            </View>
+                        </View>
+                    ))}
                 </View>
             </View>
 
@@ -874,32 +888,3 @@ function CourseCardsSkeleton() {
         </>
     );
 }
-
-const matrizButtonStyle = StyleSheet.create({
-    row: {
-        flexDirection: 'row',
-        gap: 8,
-        marginTop: 12
-    },
-    button: {
-        alignItems: 'center',
-        backgroundColor: '#FFFFFF',
-        borderRadius: 12,
-        elevation: 4,
-        flex: 1,
-        flexDirection: 'row',
-        gap: 8,
-        justifyContent: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 12,
-        shadowColor: '#0B3D32',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.16,
-        shadowRadius: 10
-    },
-    text: {
-        color: '#0B3D32',
-        fontSize: 13,
-        fontWeight: '800'
-    }
-});

@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Eye, EyeOff, KeyRound, LockKeyhole } from 'lucide-react-native';
 import { colors, gradients } from '@/shared/design-system';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
-import { Field } from '@/modules/academic/presentation/views/components';
+import { ErrorToast, Field } from '@/modules/academic/presentation/views/components';
 import { LanguageSelector } from '@/modules/academic/presentation/views/components/language-selector';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import { formatCpf, onlyDigits, useResponsiveLayout } from '@/modules/academic/presentation/views/workspace.utils';
@@ -165,12 +165,6 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                                 </Field>
                             </View>
 
-                            {workspace.error ? (
-                                <View style={styles.errorBanner}>
-                                    <Text style={styles.errorText}>{workspace.error}</Text>
-                                </View>
-                            ) : null}
-
                             <Pressable
                                 disabled={workspace.isLoading || onlyDigits(user).length === 0 || password.length === 0}
                                 onPress={() => { hapticConfirm(); void workspace.login({ password, user: onlyDigits(user) }); }}
@@ -182,6 +176,7 @@ export function LoginPage({ workspace }: { workspace: Workspace }) {
                         </View>
                     </View>
                 </ScrollView>
+                <ErrorToast bottomOffset={Math.max(24, insets.bottom + 12)} message={workspace.error} onDismiss={workspace.clearError} />
             </View>
         </SafeAreaView>
     );
