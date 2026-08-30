@@ -1,6 +1,8 @@
 .agents
 .claude
 .vscode
+.serena
+.DS_Store
 
 # graphify
 graphify-out/
