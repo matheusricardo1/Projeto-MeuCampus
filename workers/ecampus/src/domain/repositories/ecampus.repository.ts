@@ -1,4 +1,5 @@
 import type { EcampusCredentials } from '@/domain/value-objects/ecampus-credentials';
+import type { EcampusAnnouncement } from '@/domain/value-objects/ecampus-announcement';
 import type { Grade } from '@/domain/entities/grade';
 import type { LessonPlanItem } from '@/domain/value-objects/lesson-plan-item';
 import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
@@ -37,4 +38,10 @@ export interface EcampusRepository {
     listMatrizVersoes(credentials: EcampusCredentials, cursoId: number): Promise<MatrizVersaoOption[]>;
     /** Downloads and parses the curriculum matrix PDF into structured JSON. */
     getMatrizCurricular(credentials: EcampusCredentials, query: MatrizCurricularQuery): Promise<MatrizCurricular>;
+    /**
+     * Institutional announcements ("Avisos") from eCampus's own home page —
+     * identical for every student, not tied to `credentials` beyond needing
+     * *an* authenticated session to view them.
+     */
+    getAnnouncements(credentials: EcampusCredentials): Promise<EcampusAnnouncement[]>;
 }

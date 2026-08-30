@@ -22,6 +22,8 @@
       "@academic/*": ["src/modules/academic/*"],
       "@auth/*": ["src/modules/auth/*"],
       "@ecampus/*": ["src/modules/ecampus/*"],
+      "@ru-digital/*": ["src/modules/ru-digital/*"],
+      "@moodle/*": ["src/modules/moodle/*"],
       "@health/*": ["src/modules/health/*"],
       "@push/*": ["src/modules/push/*"],
       "@composition/*": ["src/composition/*"]

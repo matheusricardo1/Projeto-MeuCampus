@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, Clock3, GraduationCap, Sparkles, Star } from 'lucide-react-native';
+import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, Clock3, GraduationCap, Sparkles, Star, UtensilsCrossed } from 'lucide-react-native';
 import { colors, gradients } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Workspace } from '@/modules/academic/presentation/views/workspace.types';
@@ -185,6 +185,25 @@ export function DashboardPage({ workspace }: { workspace: Workspace }) {
                         </View>
                     </View>
                 </View>
+            </View>
+
+            <View style={styles.homeSection}>
+                <View style={styles.homeSectionHeader}>
+                    <Text style={styles.homeSectionTitle}>RU Digital</Text>
+                    <Pressable onPress={() => router.push('/ru-digital')} style={({ pressed }) => (pressed ? styles.pressedFeedback : null)}>
+                        <Text style={styles.homeSectionAction}>{t('home.viewAll')}</Text>
+                    </Pressable>
+                </View>
+                <Pressable onPress={() => router.push('/ru-digital')} style={({ pressed }) => [styles.homeNextClassCard, pressed ? styles.pressedFeedback : null]}>
+                    <UtensilsCrossed color="rgba(255,255,255,0.12)" size={118} style={styles.homeNextClassWatermark} />
+                    <View style={styles.homeNextClassTop}>
+                        <View style={styles.homeNextClassBody}>
+                            <Text numberOfLines={1} style={styles.homeNextClassCode}>Bandejao</Text>
+                            <Text numberOfLines={2} style={styles.homeNextClassTitle}>Saldo, cardapio e restaurante</Text>
+                            <Text style={styles.homeNextClassText}>Veja seus tickets do dia</Text>
+                        </View>
+                    </View>
+                </Pressable>
             </View>
 
             <Pressable onPress={() => router.push('/ai')} style={({ pressed }) => [styles.homeAiCta, pressed ? styles.pressedFeedback : null]}>

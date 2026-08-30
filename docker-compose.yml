@@ -66,5 +66,27 @@ services:
       - redis
     restart: unless-stopped
 
+  rudigital-worker:
+    build:
+      context: .
+      dockerfile: workers/rudigital/Dockerfile
+    container_name: ufam-academics-rudigital-worker
+    env_file:
+      - ./workers/rudigital/.env.local
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  moodle-worker:
+    build:
+      context: .
+      dockerfile: workers/moodle/Dockerfile
+    container_name: ufam-academics-moodle-worker
+    env_file:
+      - ./workers/moodle/.env.local
+    depends_on:
+      - redis
+    restart: unless-stopped
+
 volumes:
   postgres-data:

@@ -15,7 +15,7 @@ function buildDeps() {
 describe('GetScheduleUseCase', () => {
     it('returns the cached schedule when present', async () => {
         const { cache, scrapingJobService } = buildDeps();
-        const schedule = [{ weekday: 'Monday', start_time: '08:00', end_time: '10:00', code: 'MAT101', subject: 'Calculo I', class_identifier: 'T01' }];
+        const schedule = [{ weekday: 'Monday', start_time: '08:00', end_time: '10:00', code: 'MAT101', subject: 'Calculo I', class_identifier: 'T01', professor_email: null, virtual_classroom_url: null }];
         (cache.getSchedule as any).mockResolvedValue(schedule);
 
         const useCase = new GetScheduleUseCase(cache, scrapingJobService);

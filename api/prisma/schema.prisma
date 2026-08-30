@@ -167,6 +167,17 @@ model MatrizCurricularCache {
   updatedAt DateTime @updatedAt
 }
 
+/// Persistent cache-aside for eCampus's institutional announcements
+/// ("Avisos") — identical for every student, so this is a single global row
+/// (fixed id "singleton") rather than keyed by student or course. `payload`
+/// holds the full parsed EcampusAnnouncement[] JSON.
+model EcampusAnnouncementCache {
+  id        String   @id @default("singleton")
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 /// Browser Web Push subscriptions for the owner's admin dashboard. Not tied
 /// to a User row - the owner has no student account (see admin-login
 /// usecase, env-credential based) - keyed by the browser's unique push
@@ -178,4 +189,29 @@ model PushSubscription {
   p256dh    String
   auth      String
   createdAt DateTime @default(now())
+}
+
+/// A student's linked Moodle account (Colab ICOMP, ColabWeb, ...), used to
+/// simulate SSO: once linked, the backend can silently re-authenticate to
+/// Moodle on the student's behalf (e.g. when the AI needs fresh data)
+/// without asking them to log in again. `userId` is the same one-way
+/// HMAC(CPF) as User.id (see pseudonymousUserId) - not the raw CPF, and not
+/// FK'd to User since not every academic-authenticated student has a User
+/// row (that table exists for billing). `encryptedPassword` uses its own
+/// dedicated cipher/key (MOODLE_ACCOUNT_ENCRYPTION_KEY), isolated from the
+/// cache/queue-payload ciphers workers/moodle already uses - this is the
+/// only place in the system a raw password is persisted at rest, so it
+/// deliberately never shares key material with anything else.
+model MoodleAccountLink {
+  id                String    @id @default(uuid())
+  userId            String
+  instanceId        String
+  username          String
+  encryptedPassword String
+  linkedAt          DateTime  @default(now())
+  lastSyncAt        DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([userId, instanceId])
+  @@index([userId])
 }

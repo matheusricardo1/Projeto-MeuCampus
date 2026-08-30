@@ -309,6 +309,27 @@ export function isFinalExamWaived(mee: number | null, pf: number | null, hasEnou
     return mee !== null && mee >= 8 && hasEnoughPresence && (pf === null || pf === mee);
 }
 
+// eCampus announcements arrive as rich HTML; the app has no HTML renderer, so
+// block-level tags become newlines before everything else is stripped, and
+// the handful of HTML entities eCampus actually uses get decoded.
+export function stripHtmlToText(html: string): string {
+    return html
+        .replace(/<(br|\/p|\/div|\/li|\/h[1-6])\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .split('\n')
+        .map((line) => line.trim())
+        .join('\n')
+        .trim();
+}
+
 export function formatWorkload(workload: string | number): string {
     if (typeof workload === 'number') return `${workload}h`;
     if (!workload) return '-';

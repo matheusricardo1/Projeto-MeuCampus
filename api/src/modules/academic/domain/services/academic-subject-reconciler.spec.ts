@@ -51,6 +51,8 @@ function buildScheduleItem(overrides: Partial<ScheduleClass> = {}): ScheduleClas
         code: 'MAT101',
         subject: 'Calculo I',
         class_identifier: 'T01',
+        professor_email: null,
+        virtual_classroom_url: null,
         ...overrides
     };
 }

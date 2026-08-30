@@ -1,7 +1,7 @@
 import { AiUsageRepository } from '@billing/infrastructure/prisma/ai-usage.repository';
 import { GEMINI_FLASH_FREE_TIER_LIMITS } from '@billing/domain/services/ai-rate-limits';
 
-export interface HourlyAiUsagePoint {
+interface HourlyAiUsagePoint {
     hour: string;
     requests: number;
     inputTokens: number;

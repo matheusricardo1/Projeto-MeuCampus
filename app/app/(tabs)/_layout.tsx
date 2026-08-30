@@ -13,7 +13,7 @@ import { aiInputBarStyles } from '@/modules/academic/presentation/views/pages/ai
 import { AiOnboardingModal, ErrorToast } from '@/modules/academic/presentation/views/components';
 import { hapticTap } from '@/shared/haptics';
 
-type TabId = 'home' | 'lessonPlan' | 'ai' | 'schedule' | 'community' | 'profile' | 'notifications';
+type TabId = 'home' | 'lessonPlan' | 'ai' | 'schedule' | 'community' | 'profile' | 'notifications' | 'ruDigital';
 
 /** UI-only chrome state routes need from this layout — not workspace data, so it stays out of WorkspaceContext. */
 interface TabsChrome {
@@ -51,7 +51,8 @@ const TAB_PATHS: Record<Exclude<TabId, 'notifications'>, string> = {
     ai: '/ai',
     schedule: '/schedule',
     community: '/community',
-    profile: '/profile'
+    profile: '/profile',
+    ruDigital: '/ru-digital'
 };
 
 function getActiveTab(pathname: string): TabId {
@@ -60,6 +61,7 @@ function getActiveTab(pathname: string): TabId {
     if (pathname.startsWith('/community')) return 'community';
     if (pathname.startsWith('/profile')) return 'profile';
     if (pathname.startsWith('/notifications')) return 'notifications';
+    if (pathname.startsWith('/ru-digital')) return 'ruDigital';
     if (pathname.startsWith('/ai')) return 'ai';
     if (pathname.startsWith('/lesson-plan')) return 'lessonPlan';
     return 'home';
@@ -178,7 +180,8 @@ export default function TabsLayout() {
         schedule: t('nav.schedule'),
         community: t('nav.community'),
         ai: t('nav.ai'),
-        notifications: t('notifications.title')
+        notifications: t('notifications.title'),
+        ruDigital: 'RU Digital'
     };
     const bottomTabs = [
         { id: 'home' as const, label: t('nav.panel'), icon: LayoutDashboard },
@@ -196,7 +199,8 @@ export default function TabsLayout() {
         schedule: workspace.loadSchedule,
         community: async () => undefined,
         ai: async () => undefined,
-        notifications: async () => undefined
+        notifications: async () => undefined,
+        ruDigital: async () => undefined
     };
     const navigateToTab = (tabId: Exclude<TabId, 'notifications'>) => {
         setShowChatHistory(false);

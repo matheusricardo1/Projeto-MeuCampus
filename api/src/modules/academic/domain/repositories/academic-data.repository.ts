@@ -3,6 +3,7 @@ import type { Grade } from '@academic/domain/entities/grade.entity';
 import type { LessonPlanItem } from '@academic/domain/value-objects/lesson-plan-item.value-object';
 import type { LessonPlanSubject } from '@academic/domain/entities/lesson-plan-subject.entity';
 import type { MatrizCurricular } from '@academic/domain/entities/matriz-curricular.entity';
+import type { EcampusAnnouncement } from '@academic/domain/value-objects/ecampus-announcement.value-object';
 import type { ScheduleClass } from '@academic/domain/value-objects/schedule-class.value-object';
 import type { StudentProfile } from '@academic/domain/entities/student-profile.entity';
 
@@ -24,6 +25,8 @@ export abstract class AcademicDataRepository {
   abstract getLessonPlan(cpf: string, planId: string): Promise<LessonPlanItem[]>;
   /** The student's cached curriculum matrix (scraped from the "Matriz de Curso" report). */
   abstract getMatrizCurricular(cpf: string): Promise<MatrizCurricular>;
+  /** eCampus's institutional announcements, scraped via this student's session but identical for everyone. */
+  abstract getAnnouncements(cpf: string): Promise<EcampusAnnouncement[]>;
   abstract getAcademicSubjects(cpf: string, year: string, period: string): Promise<AcademicSubject[]>;
   /** The year/period eCampus itself last resolved as "current" for this student, if known yet. */
   abstract getCurrentPeriodHint(cpf: string): Promise<CurrentAcademicPeriod | null>;

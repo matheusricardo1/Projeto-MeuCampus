@@ -23,6 +23,7 @@ import {
     type WorkspaceTab
 } from '@/modules/academic/presentation/hooks/use-ecampus-workspace.constants';
 import { createBootstrapSync, type BootstrapSync } from '@/modules/academic/presentation/hooks/resource-sync-engine';
+import { RuDigitalHttpClient } from '@/modules/ru-digital/infrastructure/http/ru-digital-http-client';
 
 interface LoginInput {
     user: string;
@@ -801,6 +802,13 @@ export function useEcampusWorkspace() {
         setIsAuthenticated(true);
         clearError();
         beginBootstrap();
+
+        // RU Digital shares the same CPF/password as eCampus — piggyback its
+        // login here (the only point the plain password is still in memory)
+        // so the student never sees a second login screen. Best-effort: a
+        // failure here doesn't affect the eCampus session at all, the RU
+        // Digital dashboard just shows its own "not connected" state.
+        void new RuDigitalHttpClient().login(input.user, input.password).catch(() => undefined);
     };
 
     const logout = async () => {
@@ -808,6 +816,8 @@ export function useEcampusWorkspace() {
         setIsAuthenticated(false);
         clearWorkspaceData();
         clearError();
+
+        void new RuDigitalHttpClient().logout().catch(() => undefined);
 
         await runSingle('logout', () => useCases.logout.execute()).catch((caught) => {
             if (caught instanceof Error) {

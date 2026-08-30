@@ -10,11 +10,13 @@ import { AcademicBootstrapTracker } from '@academic/application/ports/academic-b
 import { AcademicController } from '@academic/presentation/http/academic.controller';
 import { PrismaService } from '@/shared/prisma/prisma.service';
 import { MatrizCurricularCacheRepository } from '@academic/infrastructure/prisma/matriz-curricular-cache.repository';
+import { EcampusAnnouncementCacheRepository } from '@academic/infrastructure/prisma/ecampus-announcement-cache.repository';
 import { GetAcademicSubjectsUseCase } from '@academic/application/use-cases/get-academic-subjects.usecase';
 import { GetGradesUseCase } from '@academic/application/use-cases/get-grades.usecase';
 import { GetLessonPlanUseCase } from '@academic/application/use-cases/get-lesson-plan.usecase';
 import { GetLessonPlanSubjectsUseCase } from '@academic/application/use-cases/get-lesson-plan-subjects.usecase';
 import { GetMatrizCurricularUseCase } from '@academic/application/use-cases/get-matriz-curricular.usecase';
+import { GetAnnouncementsUseCase } from '@academic/application/use-cases/get-announcements.usecase';
 import { GetScheduleUseCase } from '@academic/application/use-cases/get-schedule.usecase';
 import { GetProfileUseCase } from '@academic/application/use-cases/get-profile.usecase';
 import { LoginUseCase } from '@academic/application/use-cases/login.usecase';
@@ -28,6 +30,7 @@ import { ValidateAcademicSessionUseCase } from '@academic/application/use-cases/
         AcademicAuthGuard,
         PrismaService,
         MatrizCurricularCacheRepository,
+        EcampusAnnouncementCacheRepository,
         {
             provide: GetAcademicSubjectsUseCase,
             useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService) => new GetAcademicSubjectsUseCase(cache, jobs),
@@ -52,6 +55,11 @@ import { ValidateAcademicSessionUseCase } from '@academic/application/use-cases/
             provide: GetMatrizCurricularUseCase,
             useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService, dbCache: MatrizCurricularCacheRepository) => new GetMatrizCurricularUseCase(cache, jobs, dbCache),
             inject: [AcademicDataRepository, ScrapingJobService, MatrizCurricularCacheRepository]
+        },
+        {
+            provide: GetAnnouncementsUseCase,
+            useFactory: (cache: AcademicDataRepository, jobs: ScrapingJobService, dbCache: EcampusAnnouncementCacheRepository) => new GetAnnouncementsUseCase(cache, jobs, dbCache),
+            inject: [AcademicDataRepository, ScrapingJobService, EcampusAnnouncementCacheRepository]
         },
         {
             provide: GetScheduleUseCase,

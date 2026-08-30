@@ -6,6 +6,9 @@ import { FindGradesAcrossPreviousPeriodsUseCase } from '@academic/application/us
 import { GetMatrizCurricularUseCase } from '@academic/application/use-cases/get-matriz-curricular.usecase';
 import { CommunityPostRepository } from '@community/infrastructure/prisma/community-post.repository';
 import { GlobalDataRepository } from '@global-data/infrastructure/prisma/global-data.repository';
+import { RuDigitalDataRepository } from '@ru-digital/domain/repositories/ru-digital-data.repository';
+import { GetMoodleCoursesForAiUseCase } from '@moodle/application/use-cases/get-moodle-courses-for-ai.usecase';
+import { GetMoodleTimelineForAiUseCase } from '@moodle/application/use-cases/get-moodle-timeline-for-ai.usecase';
 import { InternalSecretGuard } from '@/shared/mcp/internal-secret.guard';
 import { createAcademicMcpServer } from '@academic/presentation/mcp/academic-mcp.server';
 
@@ -17,7 +20,10 @@ export class McpController {
         private readonly findGradesAcrossPreviousPeriods: FindGradesAcrossPreviousPeriodsUseCase,
         private readonly communityPostRepository: CommunityPostRepository,
         private readonly globalDataRepository: GlobalDataRepository,
-        private readonly getMatrizCurricular: GetMatrizCurricularUseCase
+        private readonly getMatrizCurricular: GetMatrizCurricularUseCase,
+        private readonly ruDigitalRepository: RuDigitalDataRepository,
+        private readonly getMoodleCoursesForAi: GetMoodleCoursesForAiUseCase,
+        private readonly getMoodleTimelineForAi: GetMoodleTimelineForAiUseCase
     ) {}
 
     @Post()
@@ -28,7 +34,7 @@ export class McpController {
             return;
         }
 
-        const server = createAcademicMcpServer(userId, this.academicDataRepository, this.findGradesAcrossPreviousPeriods, this.communityPostRepository, this.globalDataRepository, this.getMatrizCurricular);
+        const server = createAcademicMcpServer(userId, this.academicDataRepository, this.findGradesAcrossPreviousPeriods, this.communityPostRepository, this.globalDataRepository, this.getMatrizCurricular, this.ruDigitalRepository, this.getMoodleCoursesForAi, this.getMoodleTimelineForAi);
         // Stateless mode: a fresh McpServer/transport is created per HTTP request, so
         // there is never a stored session to resume. Passing a sessionIdGenerator here
         // would make the SDK require a prior "initialize" call on THIS SAME transport

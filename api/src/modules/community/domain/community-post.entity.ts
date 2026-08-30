@@ -24,7 +24,7 @@ export type CommunityPostStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
  */
 const REALTIME_CATEGORIES: readonly CommunityCategory[] = ['BOLSA', 'ENERGIA', 'FILA_RU'];
 
-export function isRealtimeCategory(category: CommunityCategory): boolean {
+function isRealtimeCategory(category: CommunityCategory): boolean {
     return REALTIME_CATEGORIES.includes(category);
 }
 
@@ -33,7 +33,7 @@ export function initialStatusFor(category: CommunityCategory): CommunityPostStat
 }
 
 /** Category-specific structured fields, persisted as JSON alongside the free-text body. */
-export type CommunityPayload = Record<string, unknown>;
+type CommunityPayload = Record<string, unknown>;
 
 export interface CommunityPost {
     id: string;

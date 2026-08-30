@@ -10,6 +10,8 @@ import { GlobalDataModule } from '@global-data/global-data.module';
 import { HealthModule } from '@health/health.module';
 import { McpModule } from '@composition/mcp/mcp.module';
 import { RealtimeModule } from '@composition/realtime/realtime.module';
+import { RuDigitalModule } from '@ru-digital/ru-digital.module';
+import { MoodleModule } from '@moodle/moodle.module';
 
 @Module({
     imports: [
@@ -18,6 +20,8 @@ import { RealtimeModule } from '@composition/realtime/realtime.module';
         RealtimeModule,
         EcampusModule,
         AcademicModule,
+        RuDigitalModule,
+        MoodleModule,
         AiModule,
         BillingModule,
         CommunityModule,

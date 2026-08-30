@@ -1,6 +1,6 @@
 import type { AcademicResource } from '@academic/domain/value-objects/academic-resource.value-object';
 
-export type AcademicBootstrapStatus = 'pending' | 'ready' | 'failed';
+type AcademicBootstrapStatus = 'pending' | 'ready' | 'failed';
 
 export interface AcademicBootstrapState {
   cpf: string;

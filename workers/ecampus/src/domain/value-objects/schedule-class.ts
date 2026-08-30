@@ -5,4 +5,6 @@ export interface ScheduleClass {
     code: string;
     subject: string;
     class_identifier: string;
+    professor_email: string | null;
+    virtual_classroom_url: string | null;
 }

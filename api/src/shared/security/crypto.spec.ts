@@ -3,6 +3,9 @@ import { deriveKey } from '@/shared/security/derive-key';
 import { decryptJson, encryptJson } from '@/shared/security/aes-gcm-cipher';
 import { decryptCachePayload } from '@/shared/security/ecampus-cache-cipher';
 import { decryptQueuePayload, encryptQueuePayload } from '@/shared/security/ecampus-queue-payload-cipher';
+import { decryptCachePayload as decryptMoodleCachePayload } from '@/shared/security/moodle-cache-cipher';
+import { decryptQueuePayload as decryptMoodleQueuePayload, encryptQueuePayload as encryptMoodleQueuePayload } from '@/shared/security/moodle-queue-payload-cipher';
+import { decryptAccountSecret, encryptAccountSecret } from '@/shared/security/moodle-account-cipher';
 import { pseudonymousUserId } from '@/shared/security/pseudonymous-user-id';
 
 const TEST_SECRET = 'unit-test-secret-do-not-use-in-prod';
@@ -102,6 +105,75 @@ describe('ecampus-queue-payload-cipher', () => {
     });
 });
 
+describe('moodle-cache-cipher (API decrypt side)', () => {
+    beforeAll(() => {
+        process.env.MOODLE_CACHE_ENCRYPTION_KEY = TEST_SECRET;
+    });
+
+    it("decrypts a payload encrypted by anyone deriving the same moodle-cache-v1 subkey — this is exactly what the Moodle worker's independent encryptCachePayload produces", () => {
+        const payload = { courses: [{ id: 350, shortName: 'IBD-ES' }] };
+        const key = deriveKey(TEST_SECRET, 'moodle-cache-v1');
+        const encrypted = encryptJson(key, payload);
+
+        expect(decryptMoodleCachePayload(encrypted)).toEqual(payload);
+    });
+});
+
+describe('moodle-queue-payload-cipher', () => {
+    beforeAll(() => {
+        process.env.MOODLE_CACHE_ENCRYPTION_KEY = TEST_SECRET;
+    });
+
+    it('round-trips a payload through encrypt/decrypt', () => {
+        const payload = { credentials: { instanceId: 'icomp-colab', username: 'matheusricardo1' } };
+        const encrypted = encryptMoodleQueuePayload(payload);
+        expect(decryptMoodleQueuePayload(encrypted)).toEqual(payload);
+    });
+
+    it('is cryptographically isolated from the cache-cipher purpose: a cache-derived key cannot decrypt a queue-payload ciphertext', () => {
+        const encrypted = encryptMoodleQueuePayload({ credentials: { instanceId: 'icomp-colab', username: 'matheusricardo1' } });
+        const cacheKey = deriveKey(TEST_SECRET, 'moodle-cache-v1');
+        expect(() => decryptJson(cacheKey, encrypted)).toThrow();
+    });
+
+    it('is cryptographically isolated from the ecampus queue-payload purpose (different purpose string, same root secret)', () => {
+        const encrypted = encryptMoodleQueuePayload({ credentials: { instanceId: 'icomp-colab', username: 'matheusricardo1' } });
+        const ecampusKey = deriveKey(TEST_SECRET, 'ecampus-queue-payload-v1');
+        expect(() => decryptJson(ecampusKey, encrypted)).toThrow();
+    });
+});
+
+describe('moodle-account-cipher', () => {
+    beforeAll(() => {
+        process.env.MOODLE_ACCOUNT_ENCRYPTION_KEY = TEST_SECRET;
+    });
+
+    it('round-trips a password through encrypt/decrypt', () => {
+        const encrypted = encryptAccountSecret('correct horse battery staple');
+        expect(decryptAccountSecret(encrypted)).toBe('correct horse battery staple');
+    });
+
+    it('is cryptographically isolated from the moodle cache/queue ciphers (different purpose, same root secret)', () => {
+        const encrypted = encryptAccountSecret('correct horse battery staple');
+        const cacheKey = deriveKey(TEST_SECRET, 'moodle-cache-v1');
+        expect(() => decryptJson(cacheKey, encrypted)).toThrow();
+    });
+
+    it('throws instead of silently encrypting with an undefined secret when MOODLE_ACCOUNT_ENCRYPTION_KEY is missing', async () => {
+        const original = process.env.MOODLE_ACCOUNT_ENCRYPTION_KEY;
+        delete process.env.MOODLE_ACCOUNT_ENCRYPTION_KEY;
+        vi.resetModules();
+        const freshModule = await import('./moodle-account-cipher.js');
+
+        try {
+            expect(() => freshModule.encryptAccountSecret('anything'))
+                .toThrow('CRITICAL: MOODLE_ACCOUNT_ENCRYPTION_KEY must be defined.');
+        } finally {
+            restoreEnv('MOODLE_ACCOUNT_ENCRYPTION_KEY', original);
+        }
+    });
+});
+
 describe('pseudonymousUserId', () => {
     beforeAll(() => {
         process.env.ECAMPUS_JWT_SECRET = TEST_SECRET;
@@ -129,10 +201,12 @@ describe('pseudonymousUserId', () => {
 describe('key derivation fails fast when misconfigured', () => {
     const ORIGINAL_CACHE_KEY = process.env.ECAMPUS_CACHE_ENCRYPTION_KEY;
     const ORIGINAL_JWT_SECRET = process.env.ECAMPUS_JWT_SECRET;
+    const ORIGINAL_MOODLE_CACHE_KEY = process.env.MOODLE_CACHE_ENCRYPTION_KEY;
 
     afterAll(() => {
         restoreEnv('ECAMPUS_CACHE_ENCRYPTION_KEY', ORIGINAL_CACHE_KEY);
         restoreEnv('ECAMPUS_JWT_SECRET', ORIGINAL_JWT_SECRET);
+        restoreEnv('MOODLE_CACHE_ENCRYPTION_KEY', ORIGINAL_MOODLE_CACHE_KEY);
     });
 
     it('throws instead of silently decrypting with an undefined secret when ECAMPUS_CACHE_ENCRYPTION_KEY is missing', async () => {
@@ -142,6 +216,15 @@ describe('key derivation fails fast when misconfigured', () => {
 
         expect(() => freshModule.decryptCachePayload('anything'))
             .toThrow('CRITICAL: ECAMPUS_CACHE_ENCRYPTION_KEY must be defined.');
+    });
+
+    it('throws instead of silently decrypting with an undefined secret when MOODLE_CACHE_ENCRYPTION_KEY is missing', async () => {
+        delete process.env.MOODLE_CACHE_ENCRYPTION_KEY;
+        vi.resetModules();
+        const freshModule = await import('./moodle-cache-cipher.js');
+
+        expect(() => freshModule.decryptCachePayload('anything'))
+            .toThrow('CRITICAL: MOODLE_CACHE_ENCRYPTION_KEY must be defined.');
     });
 
     it('throws instead of silently pseudonymizing with an undefined secret when ECAMPUS_JWT_SECRET and JWT_SECRET are both missing', async () => {

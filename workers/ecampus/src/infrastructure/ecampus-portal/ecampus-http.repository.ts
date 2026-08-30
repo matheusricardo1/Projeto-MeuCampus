@@ -1,6 +1,7 @@
 import { parse, type HTMLElement } from 'node-html-parser';
 import { AxiosError } from 'axios';
 import type { EcampusCredentials } from '@/domain/value-objects/ecampus-credentials';
+import type { EcampusAnnouncement } from '@/domain/value-objects/ecampus-announcement';
 import type { Grade } from '@/domain/entities/grade';
 import type { LessonPlanItem } from '@/domain/value-objects/lesson-plan-item';
 import type { LessonPlanSubject } from '@/domain/entities/lesson-plan-subject';
@@ -11,6 +12,7 @@ import type { CurrentAcademicPeriod, EcampusRepository, MatrizCurricularQuery } 
 import type { MatrizCurricular, MatrizCursoOption, MatrizVersaoOption } from '@/domain/entities/matriz-curricular';
 import { AcademicPeriod } from '@/domain/value-objects/academic-period.value-object';
 import { EcampusAuthService } from '@/infrastructure/ecampus-portal/ecampus-auth-service';
+import type { EcampusClient } from '@/infrastructure/ecampus-portal/ecampus-client';
 import { parseMatrizCurricularPdf } from '@/infrastructure/ecampus-portal/matriz-curricular-pdf';
 import { appLogger as logger } from '@/infrastructure/logging/app-logger';
 
@@ -317,16 +319,25 @@ export class EcampusHttpRepository implements EcampusRepository {
             const html = response.data;
             const tree = parse(html);
             const subjectMap: Record<string, string> = {};
+            const turmaIdMap: Record<string, string> = {};
             const tables = tree.querySelectorAll('table.grid-notas');
 
             if (tables.length > 0) {
                 for (const row of tables[0]!.querySelectorAll('tbody tr')) {
                     const cols = row.querySelectorAll('td');
                     if (cols.length >= 3) {
-                        subjectMap[cols[0]!.textContent.trim()] = cols[1]!.textContent.trim();
+                        const code = cols[0]!.textContent.trim();
+                        subjectMap[code] = cols[1]!.textContent.trim();
+
+                        const turmaMatch = cols[3]?.querySelector('input')?.getAttribute('onclick')?.match(/abrirModalInformacoes\((\d+)\)/);
+                        if (turmaMatch?.[1]) {
+                            turmaIdMap[code] = turmaMatch[1];
+                        }
                     }
                 }
             }
+
+            const docentesByTurma = await this.fetchDocentesByTurma(client, Array.from(new Set(Object.values(turmaIdMap))));
 
             const pattern = /"start":\s*new Date\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*\d+)*\).*?"end":\s*new Date\(\d+,\s*\d+,\s*\d+,\s*(\d+),\s*(\d+)(?:,\s*\d+)*\).*?"title":\s*"(.*?)"/gs;
             const schedule: ScheduleClass[] = [];
@@ -342,6 +353,8 @@ export class EcampusHttpRepository implements EcampusRepository {
                 const dateObj = new Date(parseInt(year), parseInt(jsMonth), parseInt(day));
                 const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
                 const code = title.includes(' - ') ? title.split(' - ')[0]!.trim() : title;
+                const turmaId = turmaIdMap[code];
+                const docente = turmaId ? docentesByTurma[turmaId] : undefined;
 
                 schedule.push({
                     weekday,
@@ -349,7 +362,9 @@ export class EcampusHttpRepository implements EcampusRepository {
                     end_time: `${endH.padStart(2, '0')}:${endM.padStart(2, '0')}`,
                     code,
                     subject: subjectMap[code] || "Unknown Subject",
-                    class_identifier: title
+                    class_identifier: title,
+                    professor_email: docente?.email ?? null,
+                    virtual_classroom_url: docente?.virtualClassroomUrl ?? null
                 });
             }
 
@@ -363,6 +378,47 @@ export class EcampusHttpRepository implements EcampusRepository {
             logger.info(`Extraction complete: ${schedule.length} classes mapped.`);
             return schedule;
         });
+    }
+
+    // The schedule's own HTML embeds a numeric "turma" id per subject (used by
+    // the portal's "Selecionar" button to open its teacher-info modal). That id
+    // isn't tied to credentials, so each is fetched once here and shared across
+    // every ScheduleClass entry for that subject rather than re-fetched per
+    // weekday occurrence. A single turma's fetch failing (or having no
+    // "Responsável" docente) degrades to null fields rather than failing the
+    // whole schedule.
+    private async fetchDocentesByTurma(
+        client: EcampusClient,
+        turmaIds: string[]
+    ): Promise<Record<string, { email: string | null; virtualClassroomUrl: string | null }>> {
+        const results = await Promise.allSettled(turmaIds.map(async (turmaId) => {
+            const params = new URLSearchParams();
+            params.append('turma', turmaId);
+            const response = await client.post<Array<{ DOCENTE: string; PAPEL: string; EMAIL: string; OBS: string }>>(
+                '/quadroHorarioGraduacaoRegular/getDocentes',
+                params,
+                { timeout: 15000 }
+            );
+
+            const docente = response.data.find((entry) => entry.PAPEL === 'Responsável') ?? response.data[0];
+            return { turmaId, docente };
+        }));
+
+        const docentesByTurma: Record<string, { email: string | null; virtualClassroomUrl: string | null }> = {};
+        for (const result of results) {
+            if (result.status !== 'fulfilled') {
+                logger.warning("Failed to fetch docente info for a turma.", { error: String(result.reason) });
+                continue;
+            }
+
+            const { turmaId, docente } = result.value;
+            docentesByTurma[turmaId] = {
+                email: docente?.EMAIL?.trim().toLowerCase() || null,
+                virtualClassroomUrl: docente?.OBS?.trim() || null
+            };
+        }
+
+        return docentesByTurma;
     }
 
     async getLessonPlanSubjects(credentials: EcampusCredentials): Promise<LessonPlanSubject[]> {
@@ -572,6 +628,67 @@ export class EcampusHttpRepository implements EcampusRepository {
             logger.info("Curriculum matrix parsed.", { disciplinas: matriz.totalDisciplinas, categorias: matriz.categorias.length });
             return matriz;
         });
+    }
+
+    // --- Announcements ("Avisos") ----------------------------------------
+    // eCampus's own home page (/home/index), paginated 10-per-page, renders
+    // a jQuery UI accordion (#accordion1) with one <h3> title + one hidden
+    // <div class="ui-accordion-content"> body per announcement — all already
+    // present in the server-rendered HTML (display:none only hides it
+    // visually), so a plain GET + HTML parse gets everything, no JS needed.
+    // Content is identical for every student; only login access is per-CPF.
+    private static readonly ANNOUNCEMENTS_PAGE_SIZE = 10;
+    private static readonly ANNOUNCEMENTS_MAX_PAGES = 5;
+
+    async getAnnouncements(credentials: EcampusCredentials): Promise<EcampusAnnouncement[]> {
+        return this.runExclusive(credentials.cpf, async () => {
+            const client = await this.authService.getAuthenticatedClient(credentials);
+            logger.info("Fetching eCampus announcements...");
+
+            const announcements: EcampusAnnouncement[] = [];
+            for (let page = 0; page < EcampusHttpRepository.ANNOUNCEMENTS_MAX_PAGES; page++) {
+                const offset = page * EcampusHttpRepository.ANNOUNCEMENTS_PAGE_SIZE;
+                const url = page === 0
+                    ? '/home/index'
+                    : `/home/index?offset=${offset}&max=${EcampusHttpRepository.ANNOUNCEMENTS_PAGE_SIZE}`;
+
+                const response = await client.get<string>(url, { timeout: 15000 });
+                const pageItems = this.extractAnnouncements(response.data);
+                if (pageItems.length === 0) break;
+
+                announcements.push(...pageItems);
+            }
+
+            logger.info(`Extraction complete: ${announcements.length} announcements mapped.`);
+            return announcements;
+        });
+    }
+
+    private extractAnnouncements(html: string): EcampusAnnouncement[] {
+        const tree = parse(html);
+        const accordion = tree.querySelector('#accordion1');
+        if (!accordion) return [];
+
+        const headers = accordion.querySelectorAll('h3');
+        const contents = accordion.querySelectorAll('div.ui-accordion-content');
+        const announcements: EcampusAnnouncement[] = [];
+
+        for (let i = 0; i < headers.length; i++) {
+            const title = headers[i]?.querySelector('a')?.textContent.trim() || headers[i]?.textContent.trim();
+            const contentEl = contents[i];
+            if (!title || !contentEl) continue;
+
+            const rawText = contentEl.textContent;
+            const dateMatch = rawText.match(/Postada em:\s*(\d{2}\/\d{2}\/\d{4})/);
+
+            announcements.push({
+                title,
+                postedDate: dateMatch?.[1] ?? null,
+                bodyHtml: contentEl.innerHTML.trim()
+            });
+        }
+
+        return announcements;
     }
 
     private asArray(data: unknown): Array<Record<string, unknown>> {

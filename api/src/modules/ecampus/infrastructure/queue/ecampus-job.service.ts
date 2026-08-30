@@ -10,7 +10,7 @@ import { ScrapingJobService, type EnqueueJobOptions, type QueuedJob } from '@aca
  * session cookie jar — both sensitive — so it is encrypted end-to-end
  * instead of sitting in Redis as plain JSON while the job waits/retries.
  */
-export interface EncryptedJobData {
+interface EncryptedJobData {
   __enc: string;
 }
 

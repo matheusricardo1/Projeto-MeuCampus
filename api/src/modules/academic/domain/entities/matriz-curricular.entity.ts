@@ -1,14 +1,14 @@
 /** Curriculum matrix scraped from eCampus's "Matriz de Curso" report and
  *  cached by the worker. Mirrors workers/ecampus's MatrizCurricular shape. */
 
-export interface MatrizCargaHoraria {
+interface MatrizCargaHoraria {
     teorica: number;
     pratica: number;
     extensao: number;
     total: number;
 }
 
-export interface MatrizDisciplina {
+interface MatrizDisciplina {
     periodo: number | null;
     codigo: string;
     nome: string;
@@ -17,7 +17,7 @@ export interface MatrizDisciplina {
     preRequisitos: string[];
 }
 
-export interface MatrizCategoria {
+interface MatrizCategoria {
     nome: string;
     disciplinas: MatrizDisciplina[];
 }

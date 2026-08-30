@@ -2,21 +2,21 @@ import type { AiChatMessage } from '@ai/domain/entities/ai-chat-message.entity';
 
 export const AI_CHAT_RESULT_CHANNEL = process.env.AI_CHAT_RESULT_CHANNEL || 'ai:chat:result';
 
-export interface AiChatUsage {
+interface AiChatUsage {
     provider: string;
     model: string;
     inputTokens: number;
     outputTokens: number;
 }
 
-export interface AiChatToolEvent {
+interface AiChatToolEvent {
     type: 'tool';
     jobId: string;
     userId: string;
     toolName: string;
 }
 
-export interface AiChatReadyEvent {
+interface AiChatReadyEvent {
     type: 'ready';
     jobId: string;
     userId: string;
@@ -27,7 +27,7 @@ export interface AiChatReadyEvent {
     };
 }
 
-export interface AiChatFailedEvent {
+interface AiChatFailedEvent {
     type: 'failed';
     jobId: string;
     userId: string;

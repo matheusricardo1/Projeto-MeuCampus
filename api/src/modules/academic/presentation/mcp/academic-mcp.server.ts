@@ -9,8 +9,14 @@ import type { CommunityPostRepository } from '@community/infrastructure/prisma/c
 import { GLOBAL_DATA_TYPES, isGlobalDataType } from '@global-data/domain/global-data.entity';
 import type { GlobalDataRepository } from '@global-data/infrastructure/prisma/global-data.repository';
 import type { GetMatrizCurricularUseCase } from '@academic/application/use-cases/get-matriz-curricular.usecase';
+import type { RuDigitalDataRepository } from '@ru-digital/domain/repositories/ru-digital-data.repository';
+import type { GetMoodleCoursesForAiUseCase } from '@moodle/application/use-cases/get-moodle-courses-for-ai.usecase';
+import type { GetMoodleTimelineForAiUseCase } from '@moodle/application/use-cases/get-moodle-timeline-for-ai.usecase';
+import { NOT_LINKED } from '@moodle/application/use-cases/resolve-moodle-session-for-ai.usecase';
+import { isMoodleInstanceId } from '@moodle/domain/value-objects/moodle-instance.value-object';
 
 const NOT_AVAILABLE = 'Dados não disponíveis. Oriente o usuário a abrir o app para sincronizar.';
+const MOODLE_NOT_LINKED = 'O aluno ainda não conectou nenhuma conta do Moodle. Oriente-o a ir em Configurações → Contas vinculadas e conectar sua conta (Colab ICOMP, ColabWeb, etc).';
 
 export function createAcademicMcpServer(
     userId: string,
@@ -18,7 +24,10 @@ export function createAcademicMcpServer(
     findGradesAcrossPreviousPeriods: FindGradesAcrossPreviousPeriodsUseCase,
     communityRepository: CommunityPostRepository,
     globalDataRepository: GlobalDataRepository,
-    getMatrizCurricular: GetMatrizCurricularUseCase
+    getMatrizCurricular: GetMatrizCurricularUseCase,
+    ruDigitalRepository: RuDigitalDataRepository,
+    getMoodleCoursesForAi: GetMoodleCoursesForAiUseCase,
+    getMoodleTimelineForAi: GetMoodleTimelineForAiUseCase
 ): McpServer {
     const server = new McpServer({
         name: 'academic-data',
@@ -190,6 +199,105 @@ export function createAcademicMcpServer(
                     return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
                 }
                 return { content: [{ type: 'text' as const, text: JSON.stringify(matriz) }] };
+            } catch {
+                return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+            }
+        }
+    );
+
+    server.tool(
+        'get_ru_balance',
+        'Retorna o saldo de tickets do aluno no RU Digital (restaurante universitario) para desjejum, almoco e jantar: preco do ticket, saldo atual e quantos ainda pode comprar. Use para perguntas como "quantos tickets eu tenho?" ou "quanto custa o almoco no RU?".',
+        {},
+        async () => {
+            try {
+                const balance = await ruDigitalRepository.getBalance(userId);
+                return { content: [{ type: 'text' as const, text: JSON.stringify(balance) }] };
+            } catch {
+                return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+            }
+        }
+    );
+
+    server.tool(
+        'get_ru_daily_menu',
+        'Retorna o cardapio do RU Digital (restaurante universitario) para uma data. Se date nao for informado, usa hoje. Use para perguntas como "qual o cardapio de hoje no RU?" ou "o que tem no almoco amanha?".',
+        {
+            date: z.string().optional().describe('Data no formato YYYY-MM-DD. Omita para usar o dia de hoje.')
+        },
+        async ({ date }) => {
+            try {
+                const resolvedDate = date || new Date().toISOString().slice(0, 10);
+                const menu = await ruDigitalRepository.getDailyMenu(userId, resolvedDate);
+                return { content: [{ type: 'text' as const, text: JSON.stringify(menu) }] };
+            } catch {
+                return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+            }
+        }
+    );
+
+    server.tool(
+        'get_ru_default_restaurant',
+        'Retorna qual restaurante universitario (campus/cidade) esta configurado como padrao do aluno no RU Digital. Use para perguntas como "qual e o meu RU?" ou antes de responder sobre saldo/cardapio se o aluno perguntar de qual unidade se trata.',
+        {},
+        async () => {
+            try {
+                const restaurant = await ruDigitalRepository.getDefaultRestaurant(userId);
+                return { content: [{ type: 'text' as const, text: JSON.stringify(restaurant) }] };
+            } catch {
+                return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+            }
+        }
+    );
+
+    server.tool(
+        'list_ru_restaurants',
+        'Lista todos os restaurantes universitarios (RUs) disponiveis no RU Digital, um por campus/cidade da UFAM. Use para perguntas como "quais RUs existem?" ou "tem RU em Itacoatiara?". Nao troca o RU padrao do aluno — se ele quiser trocar, oriente a fazer isso pelo proprio app, voce nao tem essa capacidade.',
+        {},
+        async () => {
+            try {
+                const restaurants = await ruDigitalRepository.listRestaurants(userId);
+                return { content: [{ type: 'text' as const, text: JSON.stringify(restaurants) }] };
+            } catch {
+                return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+            }
+        }
+    );
+
+    server.tool(
+        'get_moodle_courses',
+        'Retorna os cursos/disciplinas do aluno no Moodle (Colab ICOMP, ColabWeb, etc) — nome, imagem, progresso e datas. Se o aluno tiver mais de uma conta Moodle conectada e nao especificar qual, usa a primeira conectada. Se ele ainda nao conectou nenhuma conta, oriente-o a fazer isso em Configuracoes -> Contas vinculadas antes de tentar de novo. Pode demorar alguns segundos na primeira chamada (login e sincronizacao em tempo real).',
+        {
+            instanceId: z.string().optional().describe('Instancia especifica do Moodle (ex: "icomp-colab", "colabweb"). Omita para usar a conta que o aluno conectou primeiro.')
+        },
+        async ({ instanceId }) => {
+            try {
+                const resolvedInstanceId = instanceId && isMoodleInstanceId(instanceId) ? instanceId : undefined;
+                const courses = await getMoodleCoursesForAi.execute(userId, resolvedInstanceId);
+                if (courses === NOT_LINKED) {
+                    return { content: [{ type: 'text' as const, text: MOODLE_NOT_LINKED }] };
+                }
+                return { content: [{ type: 'text' as const, text: JSON.stringify(courses) }] };
+            } catch {
+                return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
+            }
+        }
+    );
+
+    server.tool(
+        'get_moodle_timeline',
+        'Retorna a linha do tempo de tarefas/prazos do aluno no Moodle (Colab ICOMP, ColabWeb, etc): nome da atividade, disciplina, tipo (assign, quiz, forum...), link e data de entrega. Use para perguntas como "que tarefas eu tenho pendentes?" ou "quando entrega tal atividade?". Se o aluno ainda nao conectou nenhuma conta Moodle, oriente-o a fazer isso em Configuracoes -> Contas vinculadas. Pode demorar alguns segundos na primeira chamada.',
+        {
+            instanceId: z.string().optional().describe('Instancia especifica do Moodle (ex: "icomp-colab", "colabweb"). Omita para usar a conta que o aluno conectou primeiro.')
+        },
+        async ({ instanceId }) => {
+            try {
+                const resolvedInstanceId = instanceId && isMoodleInstanceId(instanceId) ? instanceId : undefined;
+                const timeline = await getMoodleTimelineForAi.execute(userId, resolvedInstanceId);
+                if (timeline === NOT_LINKED) {
+                    return { content: [{ type: 'text' as const, text: MOODLE_NOT_LINKED }] };
+                }
+                return { content: [{ type: 'text' as const, text: JSON.stringify(timeline) }] };
             } catch {
                 return { content: [{ type: 'text' as const, text: NOT_AVAILABLE }] };
             }

@@ -24,6 +24,7 @@ function buildController(overrides: Partial<Record<string, any>> = {}) {
         getLessonPlanUseCase: { execute: vi.fn() },
         getLessonPlanSubjectsUseCase: { execute: vi.fn() },
         getMatrizCurricularUseCase: { execute: vi.fn(), requestCachedOrPending: vi.fn() },
+        getAnnouncementsUseCase: { execute: vi.fn(), requestCachedOrPending: vi.fn() },
         validateAcademicSessionUseCase: { execute: vi.fn() },
         scrapingJobService: { enqueue: vi.fn() },
         ...overrides
@@ -39,6 +40,7 @@ function buildController(overrides: Partial<Record<string, any>> = {}) {
         useCases.getLessonPlanUseCase as any,
         useCases.getLessonPlanSubjectsUseCase as any,
         useCases.getMatrizCurricularUseCase as any,
+        useCases.getAnnouncementsUseCase as any,
         useCases.validateAcademicSessionUseCase as any,
         useCases.scrapingJobService as any
     );

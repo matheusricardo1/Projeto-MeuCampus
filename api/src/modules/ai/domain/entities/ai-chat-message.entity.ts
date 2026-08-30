@@ -1,6 +1,6 @@
-export type AiChatMessageRole = 'user' | 'assistant' | 'system';
+type AiChatMessageRole = 'user' | 'assistant' | 'system';
 
-export interface AiChatTable {
+interface AiChatTable {
     headers: string[];
     rows: string[][];
 }

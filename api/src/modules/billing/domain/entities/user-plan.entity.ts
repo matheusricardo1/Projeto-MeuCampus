@@ -1,4 +1,4 @@
-export type PlanTier = 'FREE' | 'PAID';
+type PlanTier = 'FREE' | 'PAID';
 
 export interface UserPlan {
     id: string;

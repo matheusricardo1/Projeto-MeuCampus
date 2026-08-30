@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Linking, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock3, Filter, Fingerprint, GitBranch, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, ArrowRight, BarChart3, BookOpen, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock3, ExternalLink, Filter, Fingerprint, GitBranch, Mail, MapPin, MoreVertical, School, Timer } from 'lucide-react-native';
 import { colors } from '@/shared/design-system';
 import { useLanguage } from '@/shared/i18n/language-provider';
 import type { Translate } from '@/shared/i18n/languages';
@@ -263,6 +263,8 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
     const evaluations = course.evaluationItems.length > 0 ? course.evaluationItems : parseEvaluationItems(course.evaluations, t);
     const previewItems = getCurrentLessonPreview(course.planItems, 3);
     const scheduleLabel = formatCourseSchedule(course.scheduleItems, t);
+    const professorEmail = course.scheduleItems.find((item) => item.professor_email)?.professor_email ?? null;
+    const virtualClassroomUrl = course.scheduleItems.find((item) => item.virtual_classroom_url)?.virtual_classroom_url ?? null;
 
     return (
         <View style={styles.courseDetailsPage}>
@@ -286,6 +288,21 @@ export function CourseDetailsScreen({ course, loading, onBack, onOpenFullContent
                     <School color="rgba(255,255,255,0.82)" size={18} />
                     <Text style={styles.courseDetailsTeacher}>{course.professor || t('lesson.teacherUnknown')}</Text>
                 </View>
+                {professorEmail ? (
+                    <View style={styles.courseDetailsTeacherRow}>
+                        <Mail color="rgba(255,255,255,0.72)" size={15} />
+                        <Text style={styles.courseDetailsTeacherEmail}>{professorEmail}</Text>
+                    </View>
+                ) : null}
+                {virtualClassroomUrl ? (
+                    <Pressable
+                        onPress={() => void Linking.openURL(virtualClassroomUrl)}
+                        style={({ pressed }) => [styles.courseDetailsVirtualClassroomButton, pressed ? styles.pressedFeedback : null]}
+                    >
+                        <ExternalLink color="#003215" size={16} />
+                        <Text style={styles.courseDetailsVirtualClassroomText}>{t('lesson.openVirtualClassroom')}</Text>
+                    </Pressable>
+                ) : null}
             </View>
 
             <View style={styles.courseDetailsGrid}>

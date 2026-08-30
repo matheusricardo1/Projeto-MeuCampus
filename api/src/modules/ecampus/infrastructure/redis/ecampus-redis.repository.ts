@@ -11,6 +11,7 @@ import type { AttendanceSummary, Grade, GradeEvaluation } from '@academic/domain
 import type { LessonPlanItem } from '@academic/domain/value-objects/lesson-plan-item.value-object';
 import type { LessonPlanSubject } from '@academic/domain/entities/lesson-plan-subject.entity';
 import type { MatrizCurricular } from '@academic/domain/entities/matriz-curricular.entity';
+import type { EcampusAnnouncement } from '@academic/domain/value-objects/ecampus-announcement.value-object';
 import type { ScheduleClass } from '@academic/domain/value-objects/schedule-class.value-object';
 import type { StudentProfile } from '@academic/domain/entities/student-profile.entity';
 import { isSameSubject } from '@academic/domain/services/academic-subject-identity';
@@ -94,6 +95,11 @@ export class EcampusRedisRepository extends AcademicDataRepository {
     return this.getRequired<MatrizCurricular>('matriz', cpf);
   }
 
+  async getAnnouncements(cpf: string): Promise<EcampusAnnouncement[]> {
+    const raw = await this.getRequired<unknown>('announcements', cpf);
+    return this.parseAnnouncements(raw);
+  }
+
   async getAcademicSubjects(cpf: string, year: string, period: string): Promise<AcademicSubject[]> {
     const isCurrentPeriod = await this.isCurrentPeriod(cpf, year, period);
 
@@ -125,6 +131,17 @@ export class EcampusRedisRepository extends AcademicDataRepository {
     } while (cursor !== '0');
 
     return deletedKeys;
+  }
+
+  private parseAnnouncements(raw: unknown): EcampusAnnouncement[] {
+    return this.toArray(raw).map((item) => {
+      const record = this.toRecord(item);
+      return {
+        title: this.readString(record, 'title'),
+        postedDate: this.readNullableString(record, 'postedDate'),
+        bodyHtml: this.readString(record, 'bodyHtml')
+      };
+    });
   }
 
   private async getRequired<T = unknown>(resource: EcampusCachedResource, cpf: string, extra?: string): Promise<T> {
@@ -214,7 +231,9 @@ export class EcampusRedisRepository extends AcademicDataRepository {
         end_time: this.readString(record, 'end_time') || this.readString(record, 'endTime'),
         code: this.readString(record, 'code'),
         subject: this.readString(record, 'subject'),
-        class_identifier: this.readString(record, 'class_identifier') || this.readString(record, 'classIdentifier')
+        class_identifier: this.readString(record, 'class_identifier') || this.readString(record, 'classIdentifier'),
+        professor_email: this.readNullableString(record, 'professor_email'),
+        virtual_classroom_url: this.readNullableString(record, 'virtual_classroom_url')
       };
     });
   }

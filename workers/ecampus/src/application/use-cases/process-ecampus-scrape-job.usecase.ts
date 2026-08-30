@@ -7,6 +7,7 @@ import { GetGradesUseCase } from '@/application/use-cases/get-grades.usecase';
 import { GetLessonPlanSubjectsUseCase } from '@/application/use-cases/get-lesson-plan-subjects.usecase';
 import { GetLessonPlanUseCase } from '@/application/use-cases/get-lesson-plan.usecase';
 import { GetMatrizCurricularUseCase } from '@/application/use-cases/get-matriz-curricular.usecase';
+import { GetAnnouncementsUseCase } from '@/application/use-cases/get-announcements.usecase';
 import { ReportEcampusScrapeFailureUseCase } from '@/application/use-cases/report-ecampus-scrape-failure.usecase';
 
 type AuthenticatedScrapeJobData = Extract<EcampusScrapeJobData, { credentials: unknown }>;
@@ -26,6 +27,7 @@ export class ProcessEcampusScrapeJobUseCase {
         private readonly getLessonPlanSubjects: GetLessonPlanSubjectsUseCase,
         private readonly getLessonPlan: GetLessonPlanUseCase,
         private readonly getMatrizCurricular: GetMatrizCurricularUseCase,
+        private readonly getAnnouncements: GetAnnouncementsUseCase,
         private readonly reportFailure: ReportEcampusScrapeFailureUseCase
     ) {}
 
@@ -56,6 +58,8 @@ export class ProcessEcampusScrapeJobUseCase {
             }
             case 'matriz-curricular':
                 return this.getMatrizCurricular.execute(authenticatedData.credentials);
+            case 'announcements':
+                return this.getAnnouncements.execute(authenticatedData.credentials);
             default:
                 throw new Error(`Unsupported eCampus scraping job: ${name}`);
         }

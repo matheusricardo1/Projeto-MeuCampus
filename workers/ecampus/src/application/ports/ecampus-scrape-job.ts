@@ -10,7 +10,8 @@ export type EcampusScrapeJobName =
     | 'grades'
     | 'lesson-plan-subjects'
     | 'lesson-plan'
-    | 'matriz-curricular';
+    | 'matriz-curricular'
+    | 'announcements';
 
 export type EcampusScrapeJobData =
     | {

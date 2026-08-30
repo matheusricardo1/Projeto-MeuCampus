@@ -4,4 +4,5 @@ export type AcademicResource =
   | 'grades'
   | 'lesson-plan-subjects'
   | 'lesson-plan'
-  | 'matriz';
+  | 'matriz'
+  | 'announcements';
